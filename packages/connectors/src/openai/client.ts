@@ -56,6 +56,14 @@ export interface OpenaiClient {
   embed(params: OpenaiEmbedParams, opts?: RequestOptions): Promise<number[][]>;
 }
 
+function usesCompletionTokenLimit(model: string): boolean {
+  return /^gpt-5(?:[.-]|$)/u.test(model);
+}
+
+function supportsCustomTemperature(model: string): boolean {
+  return !/^gpt-5\.5(?:[.-]|$)/u.test(model);
+}
+
 export function createOpenaiClient(config: OpenaiConfig): OpenaiClient {
   const gatewayUrl =
     typeof config.gatewayUrl === 'string' && config.gatewayUrl.length > 0
@@ -80,8 +88,13 @@ export function createOpenaiClient(config: OpenaiConfig): OpenaiClient {
         model: params.model,
         messages: params.messages,
       };
-      if (params.maxTokens !== undefined) body['max_tokens'] = params.maxTokens;
-      if (params.temperature !== undefined) body['temperature'] = params.temperature;
+      if (params.maxTokens !== undefined) {
+        body[usesCompletionTokenLimit(params.model) ? 'max_completion_tokens' : 'max_tokens'] =
+          params.maxTokens;
+      }
+      if (params.temperature !== undefined && supportsCustomTemperature(params.model)) {
+        body['temperature'] = params.temperature;
+      }
       if (params.topP !== undefined) body['top_p'] = params.topP;
       if (params.stop !== undefined) body['stop'] = params.stop;
       if (params.responseFormat !== undefined) body['response_format'] = params.responseFormat;
