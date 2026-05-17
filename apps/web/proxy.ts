@@ -13,6 +13,7 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
  *   - /api/healthz                    → public liveness probe
  *   - /api/mcp/*                      → API-key auth (per-workspace MCP key)
  *   - /api/billing/usage              → metered-billing webhook signed by Stripe
+ *   - /api/monitoring                 → Sentry tunnel (outbound proxy, DSN-validated)
  *
  * Everything else under /api/* and every page route is protected: an
  * unauthenticated request will be redirected to Clerk's sign-in page (pages)
@@ -35,6 +36,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/healthz',
   '/api/mcp(.*)',
   '/api/billing/usage(.*)',
+  '/api/monitoring(.*)',
   // Clerk's own sign-in/sign-up routes also need to be public so unauthenticated
   // users can actually reach them.
   '/sign-in(.*)',

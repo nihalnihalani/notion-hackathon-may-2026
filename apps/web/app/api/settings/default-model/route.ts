@@ -3,14 +3,21 @@
  *
  * The dashboard `/settings` page lets the user pick which model Tool Coder
  * should default to. Value is stored on `Workspace.defaultModel` (TEXT,
- * default "auto"). Validation accepts any non-empty string ≤ 64 chars so we
- * don't need a migration when a new model lands.
+ * default "auto"). Accepted values today are `auto`, `claude-opus-4-7`,
+ * and `gpt-5-thinking-mini`; new entries can land by extending the union
+ * below without a migration.
  *
- * Body: `{ model: string }`
+ * Body: `{ model: 'claude-opus-4-7' | 'gpt-5-thinking-mini' | 'auto' }`
  * Response: `{ ok: true, model: string }`
+ *
+ * We also export `POST` as an alias because the original `<ModelSelector />`
+ * client uses POST and the task spec asked for PATCH. Routing both to the
+ * same handler avoids breaking the existing frontend while honoring the
+ * new contract.
  */
 
-import { prisma } from '@forge/db';
+import { prisma, recordAuditEvent } from '@forge/db';
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -22,52 +29,78 @@ import { withSentry } from '@/lib/sentry';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const ALLOWED_MODELS = [
+  'claude-opus-4-7',
+  'gpt-5-thinking-mini',
+  'auto',
+] as const;
+
 const bodySchema = z.object({
-  model: z.string().min(1).max(64),
+  model: z.enum(ALLOWED_MODELS),
 });
 
-export const PATCH = withSentry(
-  async (req) => {
-    const r = await requireWorkspace();
-    if (!r.ok) return r.response;
-    const { user, workspace, clerkId } = r.ctx;
+async function handler(req: Request): Promise<NextResponse> {
+  const r = await requireWorkspace();
+  if (!r.ok) return r.response;
+  const { user, workspace, clerkId } = r.ctx;
 
-    let json: unknown;
-    try {
-      json = await req.json();
-    } catch {
-      return apiError('validation', 'Body must be valid JSON.');
-    }
-    const parsed = bodySchema.safeParse(json);
-    if (!parsed.success) {
-      return apiError('validation', 'Invalid body.', {
-        issues: parsed.error.issues,
-      });
-    }
-    const { model } = parsed.data;
-
-    await prisma.workspace.update({
-      where: { id: workspace.id },
-      data: { defaultModel: model },
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    return apiError('validation', 'Body must be valid JSON.');
+  }
+  const parsed = bodySchema.safeParse(json);
+  if (!parsed.success) {
+    return apiError('validation', 'Invalid body.', {
+      issues: parsed.error.issues,
     });
+  }
+  const { model } = parsed.data;
 
-    // Audit — we don't have a dedicated variant for settings changes so we
-    // skip the audit log here. PostHog carries the analytics signal; if
-    // compliance later demands an audit row for settings, add a variant
-    // (`settings.updated`) and a corresponding zod arm.
+  // Capture the prior value BEFORE the update so the audit entry shows the
+  // diff. `defaultModel` is nullable in the schema; coerce a null to "auto"
+  // for log readability — the application-level default is the same.
+  const previousModel = workspace.defaultModel ?? 'auto';
 
-    await capture({
-      distinctId: user.id,
-      event: 'forge.settings.default_model_changed',
+  await prisma.workspace.update({
+    where: { id: workspace.id },
+    data: { defaultModel: model },
+  });
+
+  // Audit write is best-effort: a transient DB hiccup on the audit table
+  // must not block the user's settings change. Sentry catches the miss.
+  try {
+    await recordAuditEvent({
       workspaceId: workspace.id,
-      properties: { model },
+      userId: clerkId,
+      action: 'workspace.default_model_changed',
+      resourceType: 'workspace',
+      resourceId: workspace.id,
+      metadata: { previousModel, newModel: model },
     });
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { phase: 'audit.workspace.default_model_changed' },
+    });
+  }
 
-    // Silence unused-var lint for `clerkId` — we keep the destructure
-    // explicit so future audit additions don't have to re-fetch.
-    void clerkId;
+  await capture({
+    distinctId: user.id,
+    event: 'forge.settings.default_model_changed',
+    workspaceId: workspace.id,
+    properties: { model, previousModel },
+  });
 
-    return NextResponse.json({ ok: true, model });
-  },
-  { routeName: 'settings.default-model' },
-);
+  return NextResponse.json({ ok: true, model });
+}
+
+export const PATCH = withSentry(handler, {
+  routeName: 'settings.default-model',
+});
+
+// Compat alias for the original POST-based frontend. Both verbs land in the
+// same place — removing once the client switches to PATCH is a one-liner.
+export const POST = withSentry(handler, {
+  routeName: 'settings.default-model',
+});

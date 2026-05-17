@@ -155,6 +155,42 @@ export type AuditEventInput =
       metadata: {
         endpoint: string;
       };
+    }
+  | {
+      action: "workspace.default_model_changed";
+      metadata: {
+        previousModel: string;
+        newModel: string;
+      };
+    }
+  | {
+      action: "workspace.uninstalled";
+      // Empty metadata object: the workspace id + actor is already on the
+      // base columns. Kept as a closed shape so reviewers see — and reject —
+      // any attempt to add PII fields here later.
+      metadata: Record<string, never>;
+    }
+  | {
+      action: "api_key.created";
+      metadata: {
+        keyId: string;
+        prefix: string;
+        name: string;
+      };
+    }
+  | {
+      action: "api_key.revoked";
+      metadata: {
+        keyId: string;
+      };
+    }
+  | {
+      action: "agent.redeployed";
+      metadata: {
+        agentId: string;
+        workerName: string;
+        newGenerationId: string;
+      };
     };
 
 /**

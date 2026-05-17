@@ -1,0 +1,130 @@
+/**
+ * PATCH /api/settings/default-model
+ *   200 + body { ok, model } on happy path; persists via prisma + audit
+ *   400 on invalid model
+ *   400 on invalid JSON body
+ *   401 without session
+ *
+ * The handler also exposes a POST alias for the legacy frontend — we
+ * cover one POST case to lock that in.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { makeCtx, makeRequest, readJson, stubSentryWrapper } from './_helpers';
+
+stubSentryWrapper();
+
+vi.mock('@clerk/nextjs/server', () => ({
+  auth: vi.fn(),
+  currentUser: vi.fn(),
+  clerkClient: vi.fn(),
+}));
+
+vi.mock('@forge/db', () => ({
+  prisma: {
+    user: { findUnique: vi.fn() },
+    workspace: { update: vi.fn() },
+  },
+  recordAuditEvent: vi.fn(),
+}));
+
+vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
+
+beforeEach(async () => {
+  vi.resetAllMocks();
+  vi.resetModules();
+  const clerk = await import('@clerk/nextjs/server');
+  vi.mocked(clerk.auth).mockResolvedValue({ userId: 'clerk_1' } as never);
+  const db = await import('@forge/db');
+  vi.mocked(db.prisma.user.findUnique).mockResolvedValue({
+    id: 'user_1',
+    clerkId: 'clerk_1',
+    workspace: {
+      id: 'ws_1',
+      ownerUserId: 'clerk_1',
+      defaultModel: 'auto',
+    },
+  } as never);
+  vi.mocked(db.prisma.workspace.update).mockResolvedValue({} as never);
+});
+
+describe('PATCH /api/settings/default-model', () => {
+  it('returns 200 and persists the new model on a valid body', async () => {
+    const { PATCH } = await import('@/app/api/settings/default-model/route');
+    const res = await PATCH(
+      makeRequest('http://localhost/api/settings/default-model', {
+        method: 'PATCH',
+        body: { model: 'claude-opus-4-7' },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson<{ ok: boolean; model: string }>(res);
+    expect(body).toEqual({ ok: true, model: 'claude-opus-4-7' });
+
+    const db = await import('@forge/db');
+    expect(db.prisma.workspace.update).toHaveBeenCalledWith({
+      where: { id: 'ws_1' },
+      data: { defaultModel: 'claude-opus-4-7' },
+    });
+    expect(db.recordAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'workspace.default_model_changed',
+        metadata: expect.objectContaining({
+          previousModel: 'auto',
+          newModel: 'claude-opus-4-7',
+        }),
+      }),
+    );
+  });
+
+  it('rejects an unknown model with 400', async () => {
+    const { PATCH } = await import('@/app/api/settings/default-model/route');
+    const res = await PATCH(
+      makeRequest('http://localhost/api/settings/default-model', {
+        method: 'PATCH',
+        body: { model: 'gpt-3' },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-JSON body with 400', async () => {
+    const { PATCH } = await import('@/app/api/settings/default-model/route');
+    const req = new Request('http://localhost/api/settings/default-model', {
+      method: 'PATCH',
+      body: 'not json',
+      headers: { 'content-type': 'application/json' },
+    });
+    const res = await PATCH(req as never, makeCtx({}));
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 401 without a session', async () => {
+    const clerk = await import('@clerk/nextjs/server');
+    vi.mocked(clerk.auth).mockResolvedValue({ userId: null } as never);
+    const { PATCH } = await import('@/app/api/settings/default-model/route');
+    const res = await PATCH(
+      makeRequest('http://localhost/api/settings/default-model', {
+        method: 'PATCH',
+        body: { model: 'auto' },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('POST alias works the same as PATCH (legacy frontend)', async () => {
+    const { POST } = await import('@/app/api/settings/default-model/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/settings/default-model', {
+        method: 'POST',
+        body: { model: 'gpt-5-thinking-mini' },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(200);
+  });
+});

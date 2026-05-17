@@ -140,6 +140,90 @@ export async function requireGenerationOwnership(
 }
 
 /**
+ * Validate an API key value (typically pulled from the
+ * `Authorization: Bearer <key>` header).
+ *
+ *   - Strips the `Bearer ` prefix if present.
+ *   - SHA-256s the plaintext using Web Crypto (Node + Edge both expose
+ *     `crypto.subtle`, so this stays runtime-agnostic).
+ *   - Looks up the matching `UserApiKey` row where `revokedAt IS NULL`.
+ *   - On hit: bumps `lastUsedAt` to `now()` (fire-and-forget) and returns
+ *     `{ userId, workspaceId }`.
+ *   - On any miss (no key, malformed prefix, revoked, unknown hash): returns
+ *     `null`. Callers MUST NOT distinguish between miss flavors — that
+ *     prevents side-channel disclosure of key existence.
+ *
+ * SECURITY notes:
+ *   - We deliberately do NOT log the plaintext anywhere, even on success.
+ *   - We do NOT throw on DB errors; a thrown exception would leak
+ *     existence vs. non-existence through a 500 vs. 401 boundary.
+ *
+ * Used by `/api/mcp/route.ts` and any other key-protected route.
+ */
+export async function validateApiKey(
+  headerValue: string,
+): Promise<{ userId: string; workspaceId: string } | null> {
+  if (!headerValue) return null;
+  // Allow callers to pass either the bare key or the full `Bearer <key>`
+  // header value — the MCP route currently strips it, but we want to be
+  // safe to call directly too.
+  const trimmed = headerValue.trim();
+  const lower = trimmed.toLowerCase();
+  const plaintext = lower.startsWith('bearer ')
+    ? trimmed.slice('bearer '.length).trim()
+    : trimmed;
+
+  // 16 chars is well below our 32-byte (~44 char base64url) format —
+  // anything shorter is guaranteed not to be one of ours.
+  if (!plaintext || plaintext.length < 16) return null;
+
+  let hashedKey: string;
+  try {
+    hashedKey = await sha256Hex(plaintext);
+  } catch {
+    return null;
+  }
+
+  let row:
+    | { id: string; userId: string; user: { workspaceId: string } | null }
+    | null;
+  try {
+    row = await prisma.userApiKey.findFirst({
+      where: { hashedKey, revokedAt: null },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { workspaceId: true } },
+      },
+    });
+  } catch {
+    return null;
+  }
+  if (!row || !row.user) return null;
+
+  // Fire-and-forget lastUsedAt bump. We do NOT await — failing to update
+  // a "last seen" timestamp must never reject a valid API call. The
+  // unhandled-rejection guard catches DB hiccups so the runtime doesn't
+  // log them as crashes.
+  void prisma.userApiKey
+    .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
+    .catch(() => {
+      // intentionally swallowed
+    });
+
+  return { userId: row.userId, workspaceId: row.user.workspaceId };
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const view = new Uint8Array(digest);
+  let out = '';
+  for (const b of view) out += b.toString(16).padStart(2, '0');
+  return out;
+}
+
+/**
  * Verify the given `agentId` belongs to the caller's workspace.
  */
 export async function requireAgentOwnership(

@@ -2,14 +2,28 @@
  * POST /api/settings/uninstall — user-requested removal of the Forge
  * surface from their Notion workspace.
  *
- * Calls `@forge/installer`'s `uninstallForgePage`, which archives the
- * root page in Notion (cascade-archives the Requests DB, Agents DB,
- * button, Build Log container). Forge's audit trail + Generation history
- * are preserved in PlanetScale — see the comment block in
- * `packages/installer/src/uninstaller.ts`.
+ * Workflow:
+ *   1. Auth + workspace bind.
+ *   2. **Workspace-owner gate**: only the user whose id matches
+ *      `Workspace.ownerUserId` may invoke this — co-collaborators get 403.
+ *   3. Confirm-string check: body must include `{ confirm: "UNINSTALL" }`
+ *      verbatim. This is the last guard against an autopilot click on a
+ *      destructive operation.
+ *   4. Call `@forge/installer`'s `uninstallForgePage`, which archives the
+ *      root Notion page (cascade-archives the Requests DB, Agents DB,
+ *      button, Build Log container).
+ *   5. Mark every `GeneratedAgent` row for this workspace as `retracted`.
+ *      The NTN workers themselves are NOT deleted here — the orchestrator
+ *      will reap them on next reconcile.
+ *   6. Audit log + analytics.
  *
- * Returns 200 with `{ ok: true }` on success (including the "nothing to
- * do" branch). 502 if the Notion archive fails. Audit best-effort.
+ * Forge's audit trail + Generation history are preserved in PlanetScale —
+ * see the comment block in `packages/installer/src/uninstaller.ts`.
+ *
+ * Returns 200 `{ ok: true, redirect: '/' }` on success (including the
+ * "nothing to archive" branch). 502 if the Notion archive fails.
+ * 400 if the confirm string is missing or wrong. 403 if the caller isn't
+ * the workspace owner.
  */
 
 import { prisma, recordAuditEvent } from '@forge/db';
@@ -20,6 +34,7 @@ import type {
 } from '@forge/installer';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 
 import { requireWorkspace } from '@/lib/auth';
 import { apiError } from '@/lib/errors';
@@ -31,8 +46,16 @@ import { withSentry } from '@/lib/sentry';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Same adapter shape used by the OAuth callback — kept inlined here so
- *  this handler doesn't depend on the callback module. */
+const bodySchema = z.object({
+  // Must match this magic value EXACTLY. The frontend asks the user to
+  // type it; anything else is presumed accidental.
+  confirm: z.literal('UNINSTALL'),
+});
+
+/**
+ * Same adapter shape used by the OAuth callback — kept inlined here so
+ * this handler doesn't depend on the callback module.
+ */
 function buildInstallerDbAdapter(): InstallerDbClient {
   return {
     async getWorkspaceForgeRecord(workspaceId) {
@@ -78,7 +101,7 @@ function buildInstallerDbAdapter(): InstallerDbClient {
 }
 
 export const POST = withSentry(
-  async () => {
+  async (req) => {
     const r = await requireWorkspace();
     if (!r.ok) return r.response;
     const { user, workspace, clerkId } = r.ctx;
@@ -86,6 +109,36 @@ export const POST = withSentry(
     const rl = await checkRateLimit(limiters.agentMutation(), user.id);
     if (!rl.success) {
       return apiError('rate_limited', 'Too many uninstall attempts.');
+    }
+
+    // Workspace-owner gate. `ownerUserId` is set at install time to the
+    // Clerk user id of the user who connected Notion (see the OAuth
+    // callback). Anyone else on the workspace (future multi-user) gets
+    // 403 — they should ask the owner to uninstall.
+    if (workspace.ownerUserId !== clerkId) {
+      return apiError(
+        'forbidden',
+        'Only the workspace owner can uninstall Forge.',
+      );
+    }
+
+    // Body parse + confirm-string check. We treat an empty/JSON-less body
+    // as a validation failure rather than throwing — the frontend has to
+    // pass `{ confirm: "UNINSTALL" }` to proceed.
+    let json: unknown = {};
+    try {
+      json = await req.json();
+    } catch {
+      // Some legacy clients call POST with no body. Fall through to the
+      // schema check below so the user gets a uniform validation error.
+    }
+    const parsed = bodySchema.safeParse(json);
+    if (!parsed.success) {
+      return apiError(
+        'validation',
+        'Body must include `{ "confirm": "UNINSTALL" }`.',
+        { issues: parsed.error.issues },
+      );
     }
 
     const token = await getNotionTokenForClerkUser(clerkId);
@@ -114,18 +167,37 @@ export const POST = withSentry(
       return apiError('upstream_failure', 'uninstallForgePage failed.');
     }
 
+    // Mark every non-retracted GeneratedAgent row as retracted. Best-effort:
+    // a transient DB error here should not fail the uninstall — the
+    // installer side has already archived the Notion page so the user's
+    // mental model says "it's gone". A nightly reconciler can sweep any
+    // stragglers.
+    try {
+      await prisma.generatedAgent.updateMany({
+        where: { workspaceId: workspace.id, status: { not: 'retracted' } },
+        data: { status: 'retracted' },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: {
+          phase: 'workspace.uninstall.retract_agents',
+          workspaceId: workspace.id,
+        },
+      });
+    }
+
     try {
       await recordAuditEvent({
         workspaceId: workspace.id,
         userId: clerkId,
-        action: 'oauth.revoked',
+        action: 'workspace.uninstalled',
         resourceType: 'workspace',
         resourceId: workspace.id,
-        metadata: { provider: 'notion' },
+        metadata: {},
       });
     } catch (err) {
       Sentry.captureException(err, {
-        tags: { phase: 'audit.oauth.revoked' },
+        tags: { phase: 'audit.workspace.uninstalled' },
       });
     }
 
@@ -135,7 +207,7 @@ export const POST = withSentry(
       workspaceId: workspace.id,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, redirect: '/' });
   },
   { routeName: 'settings.uninstall' },
 );

@@ -20,6 +20,7 @@ import {
   createGeneration,
   descriptionHash,
   prisma,
+  recordAuditEvent,
 } from '@forge/db';
 import { asBlockId } from '@forge/notion-client';
 import { publishGenerationRequested } from '@forge/workflows';
@@ -41,7 +42,7 @@ export const POST = withSentry<{ id: string }>(
     const auth = await requireAgentOwnership(id);
     if (!auth.ok) return auth.response;
     const { ctx: claims } = auth;
-    const { user, workspace } = claims;
+    const { user, workspace, clerkId } = claims;
 
     const rl = await checkRateLimit(limiters.forgeTrigger(), user.id);
     if (!rl.success) {
@@ -108,6 +109,25 @@ export const POST = withSentry<{ id: string }>(
         'upstream_failure',
         'Could not enqueue redeploy. Try again.',
       );
+    }
+
+    try {
+      await recordAuditEvent({
+        workspaceId: workspace.id,
+        userId: clerkId,
+        action: 'agent.redeployed',
+        resourceType: 'agent',
+        resourceId: id,
+        metadata: {
+          agentId: id,
+          workerName: existing.ntnWorkerName,
+          newGenerationId: generation.id,
+        },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { phase: 'audit.agent.redeployed' },
+      });
     }
 
     await capture({

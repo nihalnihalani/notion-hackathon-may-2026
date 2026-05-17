@@ -8,13 +8,19 @@
  *           are persisted on `UserApiKey`.
  *
  * Storage model: see `packages/db/prisma/schema.prisma` (model
- * `UserApiKey`) and `apps/web/lib/api-keys.ts` (validation path used by
- * the MCP endpoint). Plaintext format is `fk_live_<base64url(32 bytes)>`
- * so the prefix `fk_live_` is constant; we still persist the first 8 chars
- * to make rotation across key families forward-compatible.
+ * `UserApiKey`) and `apps/web/lib/auth.ts#validateApiKey` (the read path
+ * used by the MCP endpoint). Plaintext format is
+ * `forge_sk_<base64url(32 bytes)>` so the prefix `forge_sk_` is constant;
+ * we still persist the first 8 chars to make rotation across key families
+ * forward-compatible.
+ *
+ * The body accepts either `{ name }` (the new contract) or `{ label }`
+ * (the legacy contract used by `<ApiKeysCard />`). Both are clamped to
+ * 1–50 chars per the task spec.
  */
 
-import { prisma } from '@forge/db';
+import { prisma, recordAuditEvent } from '@forge/db';
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
@@ -27,25 +33,37 @@ import { withSentry } from '@/lib/sentry';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const createBodySchema = z.object({
-  name: z.string().min(1).max(64),
-});
+// Body shape: prefer `name` per the task spec. Fall back to `label` for
+// the existing client component. Exactly one of them must be present.
+const createBodySchema = z
+  .object({
+    name: z.string().min(1).max(50).optional(),
+    label: z.string().min(1).max(50).optional(),
+  })
+  .refine((v) => Boolean(v.name ?? v.label), {
+    message: 'Either `name` or `label` is required.',
+  });
 
 // ──────────────────────────────────────────────────────────────────────────
 // helpers — random key generation + sha256 (Web Crypto, runs on Edge too)
 // ──────────────────────────────────────────────────────────────────────────
 
-/** Generate a fresh 32-byte URL-safe random key with the `fk_live_` prefix. */
+/**
+ * Generate a fresh 32-byte URL-safe random key with the `forge_sk_` prefix.
+ *
+ * 32 bytes = 256 bits of entropy, well above any practical brute-force
+ * threat. We use base64url (no padding) so the key fits cleanly in a
+ * single header line and is greppable.
+ */
 function generatePlaintextKey(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  // Base64url without padding — fits cleanly in a single header line.
   const b64 = Buffer.from(bytes)
     .toString('base64')
     .replace(/=+$/, '')
     .replace(/\+/g, '-')
     .replace(/\//g, '_');
-  return `fk_live_${b64}`;
+  return `forge_sk_${b64}`;
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -106,7 +124,7 @@ export const POST = withSentry(
   async (req) => {
     const r = await requireWorkspace();
     if (!r.ok) return r.response;
-    const { user, workspace } = r.ctx;
+    const { user, workspace, clerkId } = r.ctx;
 
     const rl = await checkRateLimit(limiters.agentMutation(), user.id);
     if (!rl.success) {
@@ -125,24 +143,51 @@ export const POST = withSentry(
         issues: parsed.error.issues,
       });
     }
+    // `name` is the canonical field; we already refined that at least one of
+    // the two fields is present, so the fallback is safe.
+    const keyName = (parsed.data.name ?? parsed.data.label) as string;
 
     const plaintext = generatePlaintextKey();
     const hashedKey = await sha256Hex(plaintext);
-    // Prefix surface = first 8 chars (covers "fk_live_"). LastFour = the
-    // trailing 4 chars of the secret entropy.
+    // Prefix surface = first 8 chars (covers "forge_sk"). LastFour = the
+    // trailing 4 chars of the secret entropy. Persisted so the UI can
+    // surface a recognizable handle without disclosing the secret.
     const prefix = plaintext.slice(0, 8);
     const lastFour = plaintext.slice(-4);
 
     const row = await prisma.userApiKey.create({
       data: {
         userId: user.id,
-        name: parsed.data.name,
+        name: keyName,
         prefix,
         lastFour,
         hashedKey,
       },
-      select: { id: true, name: true, prefix: true, lastFour: true },
+      select: {
+        id: true,
+        name: true,
+        prefix: true,
+        lastFour: true,
+        createdAt: true,
+      },
     });
+
+    // Audit + analytics best-effort. Failing either should not block the
+    // user from copying their freshly minted key.
+    try {
+      await recordAuditEvent({
+        workspaceId: workspace.id,
+        userId: clerkId,
+        action: 'api_key.created',
+        resourceType: 'api_key',
+        resourceId: row.id,
+        metadata: { keyId: row.id, prefix: row.prefix, name: row.name },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { phase: 'audit.api_key.created' },
+      });
+    }
 
     await capture({
       distinctId: user.id,
@@ -157,6 +202,7 @@ export const POST = withSentry(
         name: row.name,
         prefix: row.prefix,
         lastFour: row.lastFour,
+        createdAt: row.createdAt.toISOString(),
         // Plaintext key — shown ONCE. Frontend must surface a "copy now"
         // affordance and warn that we cannot recover it later.
         key: plaintext,

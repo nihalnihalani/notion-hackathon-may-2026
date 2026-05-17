@@ -31,6 +31,11 @@ describe("AuditEventInput", () => {
       | "generation.cancelled"
       | "generation.failed"
       | "webhook.signature_failure"
+      | "workspace.default_model_changed"
+      | "workspace.uninstalled"
+      | "api_key.created"
+      | "api_key.revoked"
+      | "agent.redeployed"
     >();
   });
 
@@ -61,6 +66,16 @@ describe("AuditEventInput", () => {
             : ev.metadata.errorMessage;
         case "webhook.signature_failure":
           return ev.metadata.endpoint;
+        case "workspace.default_model_changed":
+          return ev.metadata.newModel;
+        case "workspace.uninstalled":
+          return "";
+        case "api_key.created":
+          return ev.metadata.prefix;
+        case "api_key.revoked":
+          return ev.metadata.keyId;
+        case "agent.redeployed":
+          return ev.metadata.workerName;
         default:
           // If this line fails to compile, a new `action` literal was added
           // to the union without a matching switch case. Update both.

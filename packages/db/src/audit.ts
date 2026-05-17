@@ -144,6 +144,51 @@ const variantSchema = z.discriminatedUnion("action", [
       endpoint: z.string().min(1),
     }),
   }),
+  z.object({
+    action: z.literal("workspace.default_model_changed"),
+    metadata: z.object({
+      // Length-cap matches the column constraint on `Workspace.defaultModel`
+      // (we declared it as TEXT with a soft 64-char ceiling enforced at the
+      // route layer). We keep the same upper bound here for parity.
+      previousModel: z.string().min(1).max(64),
+      newModel: z.string().min(1).max(64),
+    }),
+  }),
+  z.object({
+    action: z.literal("workspace.uninstalled"),
+    // Strict — no fields allowed. The base columns already capture
+    // workspaceId + actor; nothing else belongs here.
+    metadata: z.object({}).strict(),
+  }),
+  z.object({
+    action: z.literal("api_key.created"),
+    metadata: z.object({
+      keyId: z.string().min(1),
+      // Prefix is the publicly visible "fk_live_" surface — safe to log.
+      prefix: z.string().min(1).max(16),
+      // `name` is a user-chosen label ("Claude Code laptop"). Not PII per
+      // the rules above (it's about the *device*, not the person). The
+      // 64-char ceiling matches the API.
+      name: z.string().min(1).max(64),
+    }),
+  }),
+  z.object({
+    action: z.literal("api_key.revoked"),
+    metadata: z.object({
+      keyId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    action: z.literal("agent.redeployed"),
+    metadata: z.object({
+      agentId: z.string().min(1),
+      // Field is intentionally `workerName` (not `ntnWorkerName`) — matches
+      // the union type and the convention adopted for the post-PLAN
+      // variants. Older variants kept `ntnWorkerName` for backward compat.
+      workerName: z.string().min(1),
+      newGenerationId: z.string().min(1),
+    }),
+  }),
 ]);
 
 const auditSchema = baseSchema.and(variantSchema);

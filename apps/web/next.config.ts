@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -32,4 +33,62 @@ const nextConfig: NextConfig = {
   ],
 };
 
-export default nextConfig;
+/**
+ * Sentry build-time wrapper.
+ *
+ * Source-map upload pipeline (only runs when `SENTRY_AUTH_TOKEN` is set, so
+ * dev builds skip it automatically):
+ *   1. Next builds client + server bundles with hidden source maps.
+ *   2. `@sentry/nextjs` webpack plugin uploads them to the configured org +
+ *      project, tagged with the release name from `SENTRY_RELEASE` (falls
+ *      back to the Vercel commit SHA when set in instrumentation.ts).
+ *   3. `sourcemaps.deleteSourcemapsAfterUpload` (default `true` in v10) wipes
+ *      the .map files from the deployed artifact so we never ship them to
+ *      the public — this replaces the legacy `hideSourceMaps` option that
+ *      v10 removed.
+ *
+ * `tunnelRoute: '/api/monitoring'` routes browser → Sentry traffic through
+ * our own origin. This bypasses uBlock/Adblock filter lists that target
+ * `*.sentry.io` directly, which would otherwise silently drop ~30% of
+ * client error events.
+ *
+ * `silent: !process.env.CI` keeps the local `next dev` output free of the
+ * Sentry plugin's chatter while still surfacing upload progress in CI logs.
+ */
+// tsconfig has `exactOptionalPropertyTypes`, so we spread the env-derived
+// fields conditionally rather than passing `undefined` values directly to
+// `withSentryConfig`. Missing values cleanly disable source-map upload
+// without throwing a build error in environments where Sentry isn't set up
+// (dev, contributor forks).
+const sentryOrg = process.env['SENTRY_ORG'];
+const sentryProject = process.env['SENTRY_PROJECT'];
+const sentryAuthToken = process.env['SENTRY_AUTH_TOKEN'];
+
+export default withSentryConfig(nextConfig, {
+  // Org/project/auth come from env so dev builds work without secrets, and
+  // contributors can point at their personal Sentry project for testing.
+  ...(sentryOrg && { org: sentryOrg }),
+  ...(sentryProject && { project: sentryProject }),
+  ...(sentryAuthToken && { authToken: sentryAuthToken }),
+
+  // Suppress plugin logs locally; let CI builds print upload progress so
+  // a failed source-map upload is debuggable from the Vercel build log.
+  silent: !process.env['CI'],
+
+  // Upload source maps for client routes that the App Router builds into
+  // chunked bundles (e.g., dynamic imports under /agents/[id]). Without
+  // this flag the plugin only captures bundles it can statically discover.
+  widenClientFileUpload: true,
+
+  // Tunnel route — see comment above. Must match the route handler we
+  // expose at `apps/web/app/api/monitoring/route.ts`, and must be in
+  // the Clerk middleware public matcher (see `apps/web/proxy.ts`).
+  tunnelRoute: '/api/monitoring',
+
+  // Source-map handling. `deleteSourcemapsAfterUpload` defaults to `true`
+  // in v10 — restated here for explicitness so a future contributor doesn't
+  // assume maps are being shipped to clients.
+  sourcemaps: {
+    deleteSourcemapsAfterUpload: true,
+  },
+});

@@ -1,12 +1,19 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { ClerkProvider } from '@clerk/nextjs';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
+import { PostHogProvider } from '@/components/posthog-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
+
+// Sentry's client SDK is loaded automatically by Next.js from
+// `apps/web/instrumentation-client.ts` and server/edge SDKs from
+// `apps/web/instrumentation.ts`. No explicit import is needed here — this
+// comment exists so future contributors know where to look when they want
+// to find the init site.
 
 // Resolve the canonical origin from env. If NEXT_PUBLIC_APP_URL is missing we
 // intentionally leave `metadataBase` undefined so Next.js falls back to relative
@@ -42,7 +49,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             enableSystem
             disableTransitionOnChange
           >
-            {children}
+            {/*
+              PostHogProvider uses `useSearchParams` for pageview capture,
+              which Next 16 requires to live inside a Suspense boundary so
+              partial prerendering can isolate the dynamic read. An empty
+              fallback is fine — the provider renders children unchanged.
+            */}
+            <Suspense fallback={null}>
+              <PostHogProvider>{children}</PostHogProvider>
+            </Suspense>
             <Toaster position="bottom-right" />
           </ThemeProvider>
           <Analytics />
