@@ -43,6 +43,13 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   // Marketing landing page — must be reachable for logged-out visitors.
   '/',
+  // Crawler + social-preview surfaces. App Router serves these from
+  // /robots.ts, /sitemap.ts, /opengraph-image.tsx, /twitter-image.tsx —
+  // they are public by definition and must not require a Clerk session.
+  '/robots.txt',
+  '/sitemap.xml',
+  '/opengraph-image(.*)',
+  '/twitter-image(.*)',
 ]);
 
 /**
