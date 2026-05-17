@@ -1,0 +1,26 @@
+{
+  "name": "@forge/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prisma schema + typed client for the Forge PlanetScale database (workspaces, generations, agents, audit, billing).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "prisma"],
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "2.1.8"
+  }
+}

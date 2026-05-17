@@ -1,0 +1,12 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+*.min.js
+*.min.css
+.vercel
+.env
+.env.*
+!.env.example

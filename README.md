@@ -27,6 +27,43 @@ PagerDuty/Sentry webhook → live incident room renders in Notion with comms tem
 - [DEBATE.md](DEBATE.md) — multi-round brutal debate transcript
 - [RESEARCH.md](RESEARCH.md) — raw findings: platform deep-dive, judge intel, viral SHAPES, /last30days, sharp edges
 
+## Install
+
+**Prerequisites**
+
+- Node.js **20+** (`nvm use` picks up the pinned version in `.nvmrc`)
+- pnpm **9+** (`corepack enable && corepack prepare pnpm@9 --activate`)
+- The Notion `ntn` CLI: `curl -fsSL https://ntn.dev | bash`
+
+**Setup**
+
+```bash
+bash scripts/setup.sh
+```
+
+`scripts/setup.sh` verifies Node + pnpm + `ntn` versions, copies `.env.example` → `.env` if missing, installs workspace dependencies, and runs `ntn doctor`.
+
+**Fill in `.env`**, then validate it:
+
+```bash
+pnpm verify:env
+```
+
+**Run the dev stack:**
+
+```bash
+pnpm dev
+```
+
+The Next.js dashboard comes up on `http://localhost:3000`.
+
+## Architecture
+
+- **Tech stack + sponsor mapping** — [PLAN.md Part II](PLAN.md#part-ii--tech-stack-with-sponsor-mapping)
+- **`ntn` CLI surface used by Forge** — [PLAN.md Part III](PLAN.md#part-iii--ntn-cli-deep-dive)
+- **PlanetScale data model** — [PLAN.md Part V](PLAN.md#part-v--data-model-planetscale)
+- **Vercel Workflow DevKit orchestration** — [PLAN.md Part VIII](PLAN.md#part-viii--workflow-orchestration-vercel-workflow-devkit)
+
 ## Rules summary (so we don't get DQ'd)
 
 - **Fully open source**, all components, approved license — this repo is private now, **flip to public before submission**

@@ -1,0 +1,35 @@
+{
+  "name": "forge",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Forge — Notion Custom Agent Studio. Describe an agent in plain English, ship a deployed Custom Agent in 90 seconds.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,mjs}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mjs}\"",
+    "dev": "turbo run dev --parallel",
+    "verify:env": "tsx scripts/verify-env.ts"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "8.16.0",
+    "@typescript-eslint/parser": "8.16.0",
+    "eslint": "9.16.0",
+    "eslint-plugin-unicorn": "56.0.1",
+    "prettier": "3.4.2",
+    "tsx": "4.19.2",
+    "turbo": "2.3.3",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.16.0",
+    "zod": "3.23.8"
+  }
+}

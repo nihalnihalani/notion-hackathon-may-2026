@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true
+  },
+  "files": [],
+  "references": [
+    { "path": "./packages/agents" },
+    { "path": "./packages/ntn-wrapper" },
+    { "path": "./packages/notion-client" },
+    { "path": "./packages/connectors" },
+    { "path": "./packages/db" },
+    { "path": "./packages/safety" },
+    { "path": "./packages/workflows" },
+    { "path": "./packages/mcp-server" },
+    { "path": "./packages/installer" },
+    { "path": "./packages/eval-harness" }
+  ]
+}

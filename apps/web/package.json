@@ -1,0 +1,35 @@
+{
+  "name": "@forge/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Forge Next.js 16 dashboard + API routes (Notion webhook handler, generation endpoints, settings).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "6.9.0",
+    "@sentry/nextjs": "8.45.0",
+    "@vercel/analytics": "1.4.1",
+    "@vercel/speed-insights": "1.1.0",
+    "next": "16.0.0",
+    "posthog-js": "1.196.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "tailwindcss": "3.4.16"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "19.0.1",
+    "@types/react-dom": "19.0.2",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "vitest": "2.1.8"
+  }
+}

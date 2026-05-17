@@ -1,0 +1,54 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "stream",
+  "globalEnv": [
+    "NODE_ENV",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "NOTION_OAUTH_CLIENT_ID",
+    "NOTION_OAUTH_CLIENT_SECRET",
+    "NOTION_WEBHOOK_SECRET",
+    "CLERK_SECRET_KEY",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "DATABASE_URL",
+    "VERCEL_AI_GATEWAY_API_KEY",
+    "VERCEL_BLOB_READ_WRITE_TOKEN",
+    "VERCEL_EDGE_CONFIG",
+    "SENTRY_DSN",
+    "NEXT_PUBLIC_SENTRY_DSN",
+    "POSTHOG_KEY",
+    "NEXT_PUBLIC_POSTHOG_KEY",
+    "RESEND_API_KEY",
+    "UPSTASH_REDIS_REST_URL",
+    "UPSTASH_REDIS_REST_TOKEN",
+    "MINIMAX_API_KEY",
+    "NTN_VERSION",
+    "FORGE_INTERNAL_TOKEN"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "cache": true
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": true
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": ["*.tsbuildinfo"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
