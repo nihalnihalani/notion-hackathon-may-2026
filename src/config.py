@@ -27,6 +27,10 @@ class Config:
     notion_dashboard_page_id: str
     notion_command_center_data_source_id: Optional[str]
     notion_command_center_database_id: Optional[str]
+    notion_history_block_id: Optional[str]
+    notion_memory_block_id: Optional[str]
+    notion_protocol_block_id: Optional[str]
+    notion_roles_block_id: Optional[str]
     warroom_path: Path
     poll_seconds: int
 
@@ -100,6 +104,10 @@ def load_config(
         notion_dashboard_page_id=dashboard_page_id,
         notion_command_center_data_source_id=data_source_id,
         notion_command_center_database_id=database_id,
+        notion_history_block_id=get("NOTION_HISTORY_BLOCK_ID"),
+        notion_memory_block_id=get("NOTION_MEMORY_BLOCK_ID"),
+        notion_protocol_block_id=get("NOTION_PROTOCOL_BLOCK_ID"),
+        notion_roles_block_id=get("NOTION_ROLES_BLOCK_ID"),
         warroom_path=warroom_path,
         poll_seconds=poll_seconds,
     )
