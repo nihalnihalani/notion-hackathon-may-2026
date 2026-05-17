@@ -210,6 +210,16 @@ class NotionHTTPClient:
             json=dict(payload),
         )
 
+    def get_block(self, block_id: str) -> dict[str, Any]:
+        """GET /v1/blocks/{block_id} — used for two-way sync.
+
+        Returns the full Notion block response including `last_edited_time`
+        and the type-specific payload (e.g. `code.rich_text`).
+        """
+        if not block_id:
+            raise ValueError("block_id is required")
+        return self._request("GET", f"/blocks/{block_id}")
+
     def create_page(
         self,
         parent_page_id: str,
