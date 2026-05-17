@@ -44,6 +44,8 @@ import type {
 import type { SandboxRunner } from '@forge/agents';
 import type { NotionClientConfig, BlockId } from '@forge/notion-client';
 
+import type { OpsMetricsAdapter } from './ops-metrics.js';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Event payloads (wire-format)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -360,6 +362,13 @@ export interface WorkflowConfig {
   logger?: SubAgentLogger | undefined;
   /** PostHog client for funnel events. Optional but recommended in prod. */
   posthog?: PostHogLike | undefined;
+  /**
+   * Optional Forge Operations self-monitoring sink (PLAN.md §X). When present
+   * the workflow publishes one row to the Notion ops DB at every terminal
+   * outcome (succeeded, failed, cancelled, needs_clarification, cached).
+   * Best-effort: publish failures are logged but never propagate.
+   */
+  opsMetrics?: OpsMetricsAdapter | undefined;
   /**
    * Idempotency window. Defaults to 1h (PLAN.md §VI). Pass `0` to disable the
    * cache entirely (still safe — the check just always misses).

@@ -80,6 +80,20 @@ export {
 // ── Cost helpers ─────────────────────────────────────────────────────────────
 export { costExceedsBudget } from './cost-accounting.js';
 
+// ── Forge Operations self-monitoring (PLAN.md §X) ────────────────────────────
+export {
+  DEFAULT_OPS_METRICS_PROPERTY_NAMES,
+  buildOpsRowProperties,
+  createNotionOpsMetricsAdapter,
+  createOpsMetricsAdapterFromEnv,
+  type NotionOpsMetricsAdapterOptions,
+  type OpsGenerationEvent,
+  type OpsGenerationStatus,
+  type OpsMetricsAdapter,
+  type OpsMetricsEnvReader,
+  type OpsMetricsPropertyNames,
+} from './ops-metrics.js';
+
 // ── Inngest backup (re-exports the factory — runtime opt-in via env flag) ────
 export {
   createForgeInngestFunctions,

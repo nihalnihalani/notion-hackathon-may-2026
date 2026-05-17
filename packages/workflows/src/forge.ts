@@ -60,6 +60,7 @@ import {
   checkExistingGeneration,
   DEFAULT_IDEMPOTENCY_WINDOW_MS,
 } from './idempotency.js';
+import type { OpsGenerationEvent, OpsGenerationStatus } from './ops-metrics.js';
 import {
   discoverContext,
   runInspector,
@@ -231,6 +232,16 @@ export async function runForgeGeneration(
         step: 'Cache',
         status: 'info',
         message: 'identical request found in last hour — returning cached agent',
+      });
+
+      await safeOpsPublish(config, {
+        generationId: event.generationId,
+        workspaceId: event.workspaceId,
+        status: 'cached',
+        pattern: null,
+        description: event.description,
+        totalLatencyMs: 0,
+        totalCostUsd: 0,
       });
 
       return {
@@ -457,6 +468,16 @@ async function finalize(args: {
     message: `done in ${totalLatencyMs}ms`,
   });
 
+  await safeOpsPublish(config, {
+    generationId: event.generationId,
+    workspaceId: event.workspaceId,
+    status: 'succeeded',
+    pattern: schema.pattern, // pattern: null already short-circuited above
+    description: event.description,
+    totalLatencyMs,
+    totalCostUsd,
+  });
+
   return {
     generationId: event.generationId,
     status: 'succeeded',
@@ -494,6 +515,16 @@ async function handleFailure(
       status: 'info',
       message: `awaiting clarification — see comment on the request row`,
     });
+    await safeOpsPublish(config, {
+      generationId: event.generationId,
+      workspaceId: event.workspaceId,
+      status: 'needs_clarification',
+      pattern: null,
+      description: event.description,
+      totalLatencyMs,
+      totalCostUsd: 0,
+      errorMessage: err.rationale,
+    });
     return;
   }
 
@@ -511,6 +542,16 @@ async function handleFailure(
       step: 'Cancelled',
       status: 'info',
       message: `run cancelled (${err.reason})`,
+    });
+    await safeOpsPublish(config, {
+      generationId: event.generationId,
+      workspaceId: event.workspaceId,
+      status: 'cancelled',
+      pattern: null,
+      description: event.description,
+      totalLatencyMs,
+      totalCostUsd: 0,
+      errorMessage: `cancelled (${err.reason})`,
     });
     return;
   }
@@ -531,6 +572,16 @@ async function handleFailure(
       step: 'Halt',
       status: 'failed',
       message: `cost budget exceeded ($${err.currentUsd.toFixed(4)} ≥ $${err.budgetUsd.toFixed(4)})`,
+    });
+    await safeOpsPublish(config, {
+      generationId: event.generationId,
+      workspaceId: event.workspaceId,
+      status: 'failed',
+      pattern: null,
+      description: event.description,
+      totalLatencyMs,
+      totalCostUsd: err.currentUsd,
+      errorMessage: `cost budget exceeded ($${err.currentUsd.toFixed(4)} ≥ $${err.budgetUsd.toFixed(4)})`,
     });
     return;
   }
@@ -555,6 +606,16 @@ async function handleFailure(
     step: 'Failure',
     status: 'failed',
     message: err instanceof Error ? err.message : String(err),
+  });
+  await safeOpsPublish(config, {
+    generationId: event.generationId,
+    workspaceId: event.workspaceId,
+    status: 'failed',
+    pattern: null,
+    description: event.description,
+    totalLatencyMs,
+    totalCostUsd: 0,
+    errorMessage: err instanceof Error ? err.message : String(err),
   });
 }
 
@@ -635,6 +696,27 @@ function capturePosthog(
     config.logger?.info('workflow.posthog.capture-failed', {
       err: err instanceof Error ? err.message : String(err),
       event,
+    });
+  }
+}
+
+/**
+ * Publish a Forge Operations row (PLAN.md §X) — best-effort. If the workspace
+ * hasn't configured an `opsMetrics` adapter, this is a no-op. Publish errors
+ * are swallowed and logged so a misconfigured ops DB never blocks a run.
+ */
+async function safeOpsPublish(
+  config: WorkflowConfig,
+  event: OpsGenerationEvent,
+): Promise<void> {
+  if (config.opsMetrics === undefined) return;
+  try {
+    await config.opsMetrics.publishGenerationEvent(event);
+  } catch (err) {
+    config.logger?.info('workflow.ops-metrics.publish-failed', {
+      err: err instanceof Error ? err.message : String(err),
+      generationId: event.generationId,
+      status: event.status satisfies OpsGenerationStatus,
     });
   }
 }
