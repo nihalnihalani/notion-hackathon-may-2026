@@ -28,6 +28,8 @@ import {
   type SchemaSmithOutput,
   type ShipperInput,
   type ShipperResult,
+  type SubAgentCompleteEvent,
+  type SubAgentConfig,
   type ToolCoderInput,
   type ToolCoderOutput,
   type WorkspaceContext,
@@ -83,19 +85,26 @@ export async function runSchemaSmith(
     },
   });
 
+  const trace = createSubAgentTrace(config, 'schema_smith');
   const subInput: SchemaSmithInput = {
     description,
     workspaceContext,
-    config: config.subAgent,
+    config: trace.subAgentConfig,
   };
 
   try {
     const output: SchemaSmithOutput = await schemaSmith(subInput);
     const latencyMs = Math.round(performance.now() - startedAt);
+    const usage = trace.complete();
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'succeeded',
+      promptTokens: usage?.promptTokens ?? null,
+      completionTokens: usage?.completionTokens ?? null,
+      cacheReadTokens: usage?.cacheReadTokens ?? null,
+      cacheWriteTokens: usage?.cacheWriteTokens ?? null,
+      costUsd: usage?.costUsd ?? null,
       outputJson: output,
       latencyMs,
       completedAt: new Date(),
@@ -113,7 +122,7 @@ export async function runSchemaSmith(
       output,
       attempt,
       latencyMs,
-      costUsd: 0, // sub-agent emits cost via logger; aggregation is the orchestrator's job
+      costUsd: usage?.costUsd ?? 0,
       stepRowId: stepRow.id,
     };
   } catch (error) {
@@ -182,20 +191,27 @@ export async function runToolCoder(
     },
   });
 
+  const trace = createSubAgentTrace(config, 'tool_coder');
   const subInput: ToolCoderInput = {
     description,
     schema,
-    config: config.subAgent,
+    config: trace.subAgentConfig,
     ...(prevErrors !== undefined && { prevErrors }),
   };
 
   try {
     const output: ToolCoderOutput = await toolCoder(subInput);
     const latencyMs = Math.round(performance.now() - startedAt);
+    const usage = trace.complete();
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'succeeded',
+      promptTokens: usage?.promptTokens ?? null,
+      completionTokens: usage?.completionTokens ?? null,
+      cacheReadTokens: usage?.cacheReadTokens ?? null,
+      cacheWriteTokens: usage?.cacheWriteTokens ?? null,
+      costUsd: usage?.costUsd ?? null,
       outputJson: {
         sourceLines: output.sourceLines,
         workerName: output.workerName,
@@ -214,7 +230,7 @@ export async function runToolCoder(
       output,
       attempt,
       latencyMs,
-      costUsd: 0,
+      costUsd: usage?.costUsd ?? 0,
       stepRowId: stepRow.id,
     };
   } catch (error) {
@@ -549,6 +565,65 @@ function resolveModelUsed(config: WorkflowConfig): string {
     config.subAgent.primaryModel ??
     defaultPrimaryModelForProvider(resolvePrimaryProvider(config.subAgent.primaryProvider))
   );
+}
+
+interface CapturedSubAgentUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+}
+
+function createSubAgentTrace(
+  config: WorkflowConfig,
+  agent: SubAgentCompleteEvent['agent'],
+): {
+  subAgentConfig: SubAgentConfig;
+  complete: () => CapturedSubAgentUsage | null;
+} {
+  const downstreamLogger = config.subAgent.logger ?? config.logger;
+  let completeEvent: CapturedSubAgentUsage | null = null;
+
+  return {
+    subAgentConfig: {
+      ...config.subAgent,
+      logger: {
+        info(msg, meta) {
+          const captured = captureCompleteEvent(agent, msg, meta);
+          if (captured !== null) completeEvent = captured;
+          downstreamLogger?.info(msg, meta);
+        },
+        error(msg, meta) {
+          downstreamLogger?.error(msg, meta);
+        },
+      },
+    },
+    complete: () => completeEvent,
+  };
+}
+
+function captureCompleteEvent(
+  expectedAgent: SubAgentCompleteEvent['agent'],
+  msg: string,
+  meta: Record<string, unknown> | undefined,
+): CapturedSubAgentUsage | null {
+  if (meta === undefined) return null;
+  if (meta['agent'] !== expectedAgent) return null;
+  if (msg !== `${expectedAgent.replaceAll('_', '-')}.complete`) return null;
+
+  return {
+    promptTokens: readFiniteNumber(meta, 'inputTokens'),
+    completionTokens: readFiniteNumber(meta, 'outputTokens'),
+    cacheReadTokens: readFiniteNumber(meta, 'cacheReadTokens'),
+    cacheWriteTokens: readFiniteNumber(meta, 'cacheWriteTokens'),
+    costUsd: readFiniteNumber(meta, 'costUsd'),
+  };
+}
+
+function readFiniteNumber(meta: Record<string, unknown>, key: string): number {
+  const value = meta[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 /**

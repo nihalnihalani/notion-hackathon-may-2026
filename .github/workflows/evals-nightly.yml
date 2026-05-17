@@ -3,7 +3,7 @@
 #
 # Runs every night at 03:00 UTC. Executes the full Promptfoo eval suite for
 # all four sub-agents (Schema Smith, Tool Coder, Inspector, Shipper) against
-# the real Anthropic + OpenAI APIs, compares each agent's pass-rate to the
+# the real OpenAI API, compares each agent's pass-rate to the
 # checked-in baseline, fails the run if any agent regresses by more than 5
 # percentage points, publishes the HTML report to GitHub Pages, and posts a
 # Slack alert on regression.
@@ -12,8 +12,7 @@
 # latency. PR CI runs the *dry* (config-validation) eval only.
 #
 # Real-API evals run when these GitHub secrets exist:
-#   ANTHROPIC_API_KEY   Production Anthropic key (Opus 4.7 access)
-#   OPENAI_API_KEY      Production OpenAI key (GPT-5 + embeddings)
+#   OPENAI_API_KEY      Production OpenAI key (GPT-5.5 + embeddings)
 #   OPENAI_ORG_ID       OpenAI org id (optional but recommended)
 # Optional GitHub secret:
 #   SLACK_WEBHOOK_URL   Slack #forge-evals channel
@@ -22,8 +21,8 @@ name: Evals (nightly)
 
 on:
   schedule:
-    # 03:00 UTC = quiet for both EU + US engineers; matches Anthropic cache
-    # off-peak window so prompt-cache reads cost less.
+    # 03:00 UTC = quiet for both EU + US engineers and usually quieter for
+    # model-provider latency.
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
@@ -67,7 +66,7 @@ jobs:
           set -euo pipefail
 
           missing=()
-          for name in ANTHROPIC_API_KEY OPENAI_API_KEY; do
+          for name in OPENAI_API_KEY; do
             if [ -z "${!name:-}" ]; then
               missing+=("${name}")
             fi

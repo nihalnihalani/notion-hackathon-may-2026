@@ -54,7 +54,7 @@ const installedWorkspace = {
   ownerUserId: 'clerk_1',
   notionWorkspaceId: 'nws_1',
   forgeBuildLogBlockId: 'block_1',
-  defaultModel: 'auto',
+  defaultModel: 'gpt-5.5',
 };
 
 beforeEach(async () => {
@@ -108,6 +108,7 @@ describe('POST /api/agents/[id]/redeploy', () => {
         generationId: 'gen_new',
         workspaceId: 'ws_1',
         force: true,
+        defaultModel: 'gpt-5.5',
       }),
     );
 
@@ -146,9 +147,7 @@ describe('POST /api/agents/[id]/redeploy', () => {
 
   it('returns 502 when the workflow publisher throws', async () => {
     const wf = await import('@forge/workflows');
-    vi.mocked(wf.publishGenerationRequested).mockRejectedValue(
-      new Error('queue down'),
-    );
+    vi.mocked(wf.publishGenerationRequested).mockRejectedValue(new Error('queue down'));
     const { POST } = await import('@/app/api/agents/[id]/redeploy/route');
     const res = await POST(
       makeRequest('http://localhost/api/agents/a1/redeploy', {

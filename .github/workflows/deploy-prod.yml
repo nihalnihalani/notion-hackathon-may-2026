@@ -339,11 +339,65 @@ jobs:
           exit 1
 
   # ---------------------------------------------------------------------------
+  # 6b. Optional live E2E — runs the real trigger/poll flow when the protected
+  #     branch has a Clerk test session secret configured.
+  # ---------------------------------------------------------------------------
+  live-e2e:
+    name: Production live E2E
+    needs: [preflight, vercel-prod, smoke]
+    if: ${{ needs.preflight.outputs.deploy_enabled == 'true' && needs.vercel-prod.result == 'success' && needs.smoke.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROD_URL: ${{ needs.vercel-prod.outputs.prod_url }}
+      FORGE_E2E_CLERK_SESSION: ${{ secrets.FORGE_E2E_CLERK_SESSION }}
+      FORGE_E2E_DESCRIPTION: ${{ secrets.FORGE_E2E_DESCRIPTION }}
+      FORGE_E2E_TIMEOUT_MS: ${{ secrets.FORGE_E2E_TIMEOUT_MS }}
+    steps:
+      - id: preflight
+        name: Check live E2E secrets
+        run: |
+          set -euo pipefail
+          if [ -z "${FORGE_E2E_CLERK_SESSION:-}" ]; then
+            {
+              echo "enabled=false"
+              echo "### Production live E2E skipped"
+              echo
+              echo "\`FORGE_E2E_CLERK_SESSION\` is not configured."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        if: steps.preflight.outputs.enabled == 'true'
+      - uses: pnpm/action-setup@v6
+        if: steps.preflight.outputs.enabled == 'true'
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        if: steps.preflight.outputs.enabled == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - if: steps.preflight.outputs.enabled == 'true'
+        run: bash scripts/ci/install.sh
+      - name: Install Playwright browser
+        if: steps.preflight.outputs.enabled == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run live happy-path E2E
+        if: steps.preflight.outputs.enabled == 'true'
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.PROD_URL }}
+          FORGE_E2E_LIVE: 'true'
+          CI: 'true'
+        run: pnpm exec playwright test e2e/forge-happy-path.spec.ts --grep "live install"
+
+  # ---------------------------------------------------------------------------
   # 7. Notify Slack — always runs, branches on success vs failure.
   # ---------------------------------------------------------------------------
   notify:
     name: Slack notify
-    needs: [verify, build, preflight, migrate, vercel-prod, sentry-release, smoke]
+    needs: [verify, build, preflight, migrate, vercel-prod, sentry-release, smoke, live-e2e]
     if: always() && needs.preflight.outputs.deploy_enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -358,7 +412,8 @@ jobs:
              && { [ "${{ needs.migrate.result }}" = "success" ] || [ "${{ needs.migrate.result }}" = "skipped" ]; } \
              && [ "${{ needs.vercel-prod.result }}" = "success" ] \
              && [ "${{ needs.sentry-release.result }}" = "success" ] \
-             && [ "${{ needs.smoke.result }}" = "success" ]; then
+             && [ "${{ needs.smoke.result }}" = "success" ] \
+             && [ "${{ needs.live-e2e.result }}" = "success" ]; then
             {
               echo "outcome=success"
               echo "emoji=:rocket:"
@@ -412,7 +467,7 @@ jobs:
   # ---------------------------------------------------------------------------
   open-failure-issue:
     name: Open issue on failure
-    needs: [verify, build, preflight, migrate, vercel-prod, sentry-release, smoke]
+    needs: [verify, build, preflight, migrate, vercel-prod, sentry-release, smoke, live-e2e]
     if: always() && contains(needs.*.result, 'failure') && (needs.preflight.result != 'failure' || needs.preflight.outputs.deploy_enabled == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -430,6 +485,7 @@ jobs:
               ['vercel-prod', '${{ needs.vercel-prod.result }}'],
               ['sentry-release', '${{ needs.sentry-release.result }}'],
               ['smoke', '${{ needs.smoke.result }}'],
+              ['live-e2e', '${{ needs.live-e2e.result }}'],
             ].filter(([, r]) => r !== 'success').map(([j, r]) => `- \`${j}\`: ${r}`).join('\n');
             try {
               await github.rest.issues.create({

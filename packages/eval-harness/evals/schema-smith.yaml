@@ -21,13 +21,12 @@ prompts:
   - file://../prompts/schema-smith.txt
 
 providers:
-  - id: anthropic:messages:claude-opus-4-7
+  - id: openai:chat:gpt-5.5
     config:
       max_tokens: 1500
       temperature: 0.1
-      # Prompt cache the (large) system prompt across the whole sweep.
-      headers:
-        anthropic-beta: 'prompt-caching-2024-07-31'
+      response_format:
+        type: json_object
 
 defaultTest:
   assert:

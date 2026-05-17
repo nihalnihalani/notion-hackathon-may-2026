@@ -143,7 +143,7 @@ export default async function SettingsPage() {
             <Coins className="h-4 w-4" /> Billing
           </CardTitle>
           <CardDescription>
-            Current month usage. Free during the hackathon — paid plans coming soon.
+            Current month usage across generations, deploys, invocations, and LLM cost.
           </CardDescription>
         </CardHeader>
         <CardContent>

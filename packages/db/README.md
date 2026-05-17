@@ -14,29 +14,35 @@ Importing the Node entry from an Edge bundle will fail at build time. That's int
 ## Public API surface
 
 ### Runtime clients
+
 - `prisma` — Node singleton, hot-reload-safe.
 - `disconnect()` — graceful pool shutdown for scripts and workers.
 - `createEdgePrisma({ connectionString? })` (from `@forge/db/edge`) — per-request Edge client factory.
 
 ### Pure helpers
+
 - `normalize(description)` — trim → lowercase → collapse whitespace.
 - `descriptionHash(workspaceId, description)` — SHA-256 over `workspaceId || normalize(description)`. Edge-safe (Web Crypto). Returns 64-char lowercase hex.
 
 ### Audit (append-only)
+
 - `recordAuditEvent(event)` — single insert; never returns the row. See `src/audit.ts` for PII rules.
 
 ### Usage meter
+
 - `recordUsage(workspaceId, fields, at?)` — upsert + atomic increment on today's UTC row.
 - `getUsageSince(workspaceId, since)` — summed aggregate.
 
 ### Repositories (typed, no raw SQL)
+
 - `workspaces`: `upsertWorkspace`, `findWorkspaceByNotionId`, `getForgePageIds`
 - `generations`: `createGeneration`, `updateGenerationStatus`, `findRecentByHash` (idempotency lookup), `getGenerationWithSteps`
 - `generation-steps`: `recordStep` (start | finish), `listStepsForGeneration`
 - `generated-agents`: `createGeneratedAgent`, `findActiveAgentsByWorkspace`, `markAgentStatus`, `softDeleteAgent`
-- `prompt-cache`: `lookupByHash`, `lookupByEmbedding` (typed stub — throws until pgvector is wired)
+- `prompt-cache`: `lookupByHash`, `lookupByEmbedding` (bounded in-process cosine scan over Float32-encoded cache embeddings)
 
 ### Types
+
 Re-exports of every Prisma model + enum, plus `AuditEvent`, `AuditEventInput`, `AuditEventBase`, `UsageMeterFields`, `UsageMeterAggregate`.
 
 ## Scripts

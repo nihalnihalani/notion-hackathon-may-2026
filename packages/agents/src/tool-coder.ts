@@ -556,6 +556,11 @@ The Notion client is constructed as:
   - sync-source: one \`worker.sync()\` polling a connector and upserting
     into Notion. Honor the \`ctx.cursor\` argument.
   - multi-step: one \`worker.tool()\` chaining 2-3 sub-operations.
+    Each step body must be specific to USER_DESCRIPTION and must perform a
+    real Notion/connector action. Never emit placeholder pass-throughs, fake
+    pages, canned "multi-step result" text, or TODO comments. If required
+    identifiers/env vars are missing, fail closed with a precise returned
+    error before writing anything.
 
 # Few-shot examples
 

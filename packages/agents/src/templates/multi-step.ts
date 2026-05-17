@@ -7,8 +7,9 @@
  * failed without reaching into provider logs.
  *
  * The template imports Notion + every provider listed in `requiredOAuth`
- * so the body has all the clients on hand. The step bodies are placeholders
- * the deployed Worker tailors to the user's actual chain.
+ * so the body has all the clients on hand. It fails closed until Tool Coder
+ * replaces the scaffold with a task-specific chain; it never writes canned
+ * demo output to a user's workspace.
  */
 
 import type { JSchemaSpec, ProviderName } from '../types.js';
@@ -83,31 +84,19 @@ worker.tool({
     const steps: Array<{ name: string; ok: boolean; durationMs: number; error?: string }> = [];
     const t0 = Date.now();
     try {
-      const step1 = await runStep('read-context', async () => {
-        return { input };
+      const validation = await runStep('validate-chain', async () => {
+        void input;
+        void notion;
+        throw new Error(
+          'Multi-step chain is not configured. Regenerate this worker with concrete step bodies derived from the agent description.',
+        );
       });
-      steps.push(step1.trace);
-
-      const step2 = await runStep('enrich', async () => {
-        return { enriched: step1.result };
-      });
-      steps.push(step2.trace);
-
-      const step3 = await runStep('write-notion', async () => {
-        const dbId = process.env['NOTION_DATABASE_ID'] ?? '';
-        if (dbId.length === 0) throw new Error('NOTION_DATABASE_ID missing');
-        await notion.pages.create({
-          parent: { database_id: dbId },
-          properties: { Name: { title: [{ text: { content: 'multi-step result' } }] } } as never,
-        });
-        return { wrote: true };
-      });
-      steps.push(step3.trace);
+      steps.push(validation.trace);
 
       return {
-        ok: true as const,
+        ok: false as const,
         steps,
-        result: step3.result,
+        error: 'Multi-step chain is not configured.',
         totalMs: Date.now() - t0,
       };
     } catch (err) {

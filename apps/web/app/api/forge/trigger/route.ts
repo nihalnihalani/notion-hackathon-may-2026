@@ -132,6 +132,7 @@ export const POST = withSentry(
         description,
         descriptionHash: hash,
         force,
+        defaultModel: workspace.defaultModel ?? 'auto',
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: notionRowId,
       });

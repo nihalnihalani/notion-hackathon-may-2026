@@ -3,7 +3,7 @@
 Promptfoo-based eval harness. Houses Promptfoo configs + golden inputs for each
 sub-agent (Schema Smith, Tool Coder, Inspector, Shipper). Per-PR CI runs the
 dry-run validator only (no API spend). The nightly workflow runs the full sweep
-against real Anthropic + OpenAI APIs and compares pass-rates to the baseline.
+against the real OpenAI API and compares pass-rates to the baseline.
 
 ## Layout
 
@@ -30,13 +30,13 @@ src/
 
 ## Commands
 
-| Command                                                                 | What                                                                  | Where                              |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------- |
-| `pnpm --filter @forge/eval-harness eval:dry-run`                        | Parse YAMLs + verify prompt files (no API calls).                     | `ci.yml: evals-dry-run`            |
-| `pnpm --filter @forge/eval-harness eval -- --output evals-output/`      | Run the full sweep against real APIs.                                 | `evals-nightly.yml: evals`         |
-| `pnpm --filter @forge/eval-harness baseline:check -- --threshold 5`    | Compare last run to baseline; exit 1 on regression.                   | `evals-nightly.yml: evals`         |
-| `pnpm --filter @forge/eval-harness baseline:update`                    | Seed/overwrite `evals/baselines.json` from latest run.                | manual (after accepting changes)   |
-| `pnpm --filter @forge/eval-harness eval:report --input evals-output/`  | Generate HTML report.                                                 | `evals-nightly.yml: publish`       |
+| Command                                                               | What                                                   | Where                            |
+| --------------------------------------------------------------------- | ------------------------------------------------------ | -------------------------------- |
+| `pnpm --filter @forge/eval-harness eval:dry-run`                      | Parse YAMLs + verify prompt files (no API calls).      | `ci.yml: evals-dry-run`          |
+| `pnpm --filter @forge/eval-harness eval -- --output evals-output/`    | Run the full sweep against real APIs.                  | `evals-nightly.yml: evals`       |
+| `pnpm --filter @forge/eval-harness baseline:check -- --threshold 5`   | Compare last run to baseline; exit 1 on regression.    | `evals-nightly.yml: evals`       |
+| `pnpm --filter @forge/eval-harness baseline:update`                   | Seed/overwrite `evals/baselines.json` from latest run. | manual (after accepting changes) |
+| `pnpm --filter @forge/eval-harness eval:report --input evals-output/` | Generate HTML report.                                  | `evals-nightly.yml: publish`     |
 
 ## Adding a sub-agent
 

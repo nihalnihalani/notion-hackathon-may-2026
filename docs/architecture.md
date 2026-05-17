@@ -64,12 +64,12 @@ The headline path: **button click → workflow → deploy**, end-to-end.
    - Computes `descriptionHash = sha256(workspaceId || normalize(description))`.
    - Idempotency check: looks up `Generation` rows with the same hash in the last hour. If found, returns the cached `GeneratedAgent` and skips the pipeline.
    - Otherwise inserts a `Generation` row (`status: queued`) and triggers the `forgeGeneration` Workflow DevKit run.
-4. **Workflow step 1 — Schema Smith** (Claude Opus 4.7, extended thinking off):
+4. **Workflow step 1 — Schema Smith** (GPT-5.5 by default; Claude Opus 4.7 opt-in):
    - Calls `ntn datasources query` to discover the workspace's DBs.
    - Returns `{pattern, inputSchema, outputSchema, requiredScopes, requiredOAuth, rationale}`.
    - Output is Zod-validated; failure to round-trip through the `j` builder triggers a retry with the error in-prompt.
    - On `pattern: null` (ambiguous), the pipeline halts and posts a clarifying Notion comment.
-5. **Workflow step 2 — Tool Coder** (Claude Opus 4.7, extended thinking on, 4096-token budget):
+5. **Workflow step 2 — Tool Coder** (GPT-5.5 by default; GPT-5.4 mini fallback):
    - Prompt prefix is cached (`cache_control: { type: 'ephemeral' }`) — Worker template + `j` reference + 8 few-shot examples (~12K tokens).
    - Emits raw TS for `src/index.ts` using `worker.tool` / `worker.sync` / `worker.webhook` and an optional `package.json` patch (deps restricted to the allowlist in `@forge/safety`).
    - Self-eval: AST parse with `@typescript-eslint/parser`. On parse failure, regenerate once.

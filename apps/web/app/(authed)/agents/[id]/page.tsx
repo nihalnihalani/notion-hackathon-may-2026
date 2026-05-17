@@ -26,7 +26,7 @@ export const dynamic = 'force-dynamic';
  *
  * Hero: avatar + name + status + actions.
  * Below: deploy/webhook URLs with copy buttons.
- * Tabs:  Runs (live fetch) · Source · Logs (placeholder until logs endpoint).
+ * Tabs:  Runs (live fetch + logs) · Source.
  */
 export default async function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -118,7 +118,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
         <TabsList>
           <TabsTrigger value="runs">Runs</TabsTrigger>
           <TabsTrigger value="source">Source</TabsTrigger>
-          <TabsTrigger value="logs">Logs</TabsTrigger>
         </TabsList>
 
         <TabsContent value="runs">
@@ -147,23 +146,6 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
               <Suspense fallback={<SourceSkeleton />}>
                 <AgentSource sourceBlobUrl={agent.sourceBlobUrl} />
               </Suspense>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="logs">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent logs</CardTitle>
-              <CardDescription>
-                Stream of structured log lines from the deployed Worker.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-                Live log streaming lands with the logs endpoint. Use the Vercel dashboard for raw
-                Worker logs in the meantime.
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

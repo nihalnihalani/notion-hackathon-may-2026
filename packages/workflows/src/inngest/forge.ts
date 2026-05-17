@@ -44,6 +44,7 @@ import {
 } from '../forge.js';
 import { costExceedsBudget, sumGenerationCost } from '../cost-accounting.js';
 import { checkExistingGeneration, DEFAULT_IDEMPOTENCY_WINDOW_MS } from '../idempotency.js';
+import { applyQueuedDefaultModel } from '../model-selection.js';
 import {
   discoverContext,
   runInspector,
@@ -207,12 +208,15 @@ async function runForgeOnInngest(args: {
   ctx: InngestHandlerContext;
   config: WorkflowConfig;
 }): Promise<WorkflowSuccess> {
-  const { event, ctx, config } = args;
+  const { event, ctx } = args;
+  const config = applyQueuedDefaultModel(args.config, event);
   const logger = config.logger ?? noopLogger;
   const startedAt = Date.now();
   let sandbox: SandboxRunner | undefined;
 
   try {
+    let totalCostUsd = 0;
+
     // ── 0. Idempotency ────────────────────────────────────────────────────
     const idempotency = await ctx.step.run('idempotency-check', async () =>
       checkExistingGeneration(config.db, {
@@ -296,7 +300,8 @@ async function runForgeOnInngest(args: {
       throw new NeedsClarificationError(schemaResult.output.rationale);
     }
 
-    checkBudget(config);
+    totalCostUsd = roundCost(totalCostUsd + schemaResult.costUsd);
+    checkBudget(config, totalCostUsd);
 
     // ── 3+4. Sandbox + Tool Coder ↔ Inspector ──────────────────────────────
     sandbox = await ctx.step.run('sandbox-create', async () =>
@@ -324,7 +329,8 @@ async function runForgeOnInngest(args: {
         }),
       );
       currentCode = toolResult.output;
-      checkBudget(config);
+      totalCostUsd = roundCost(totalCostUsd + toolResult.costUsd);
+      checkBudget(config, totalCostUsd);
 
       const inspectorResult = await ctx.step.run(`inspector-${toolCoderAttempt}`, async () => {
         if (sandbox === undefined) {
@@ -386,7 +392,6 @@ async function runForgeOnInngest(args: {
     // ── 6. Finalize ────────────────────────────────────────────────────────
     return await ctx.step.run('finalize', async () => {
       const totalLatencyMs = Date.now() - startedAt;
-      const totalCostUsd = 0;
       await config.db.updateGenerationStatus(event.generationId, {
         status: 'succeeded',
         pattern: schemaResult.output.pattern,
@@ -481,13 +486,16 @@ async function runForgeOnInngest(args: {
 // Helpers (mirror forge.ts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function checkBudget(config: WorkflowConfig): void {
+function checkBudget(config: WorkflowConfig, current: number): void {
   const budget = config.totalCostBudgetUsd;
   if (budget === undefined || budget <= 0) return;
-  const current = sumGenerationCost([]);
   if (costExceedsBudget(current, budget)) {
     throw new CostBudgetExceededError(current, budget);
   }
+}
+
+function roundCost(n: number): number {
+  return sumGenerationCost([{ costUsd: n } as never]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

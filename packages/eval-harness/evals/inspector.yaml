@@ -15,10 +15,12 @@ prompts:
   - file://../prompts/inspector.txt
 
 providers:
-  - id: anthropic:messages:claude-opus-4-7
+  - id: openai:chat:gpt-5.5
     config:
       max_tokens: 1500
       temperature: 0.2
+      response_format:
+        type: json_object
 
 defaultTest:
   assert:

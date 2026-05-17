@@ -1,17 +1,13 @@
 'use client';
 
 /**
- * Client-side run history fetch for the agent detail page.
+ * Client-side run history and log fetch for the agent detail page.
  *
- * The runs endpoint (`GET /api/agents/[id]/runs`) is owned by the Backend
- * Engineer and may not exist yet — we treat a 404 as a "not implemented"
- * empty state rather than an error so the rest of the page stays useful.
- *
- * We poll once on mount and on tab-focus; no streaming yet because the
- * underlying ntn-wrapper `listRuns` call doesn't support change streams.
+ * We poll once on mount and let the user refresh manually. NTN's listRuns
+ * call does not expose change streams, so there is no live subscription here.
  */
 import * as React from 'react';
-import { History, RefreshCw } from 'lucide-react';
+import { FileText, History, Loader2, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -28,24 +24,43 @@ import { formatDuration, formatRelativeDate } from '@/lib/formatters';
 
 interface AgentRun {
   id: string;
-  startedAt: string;
+  runId: string;
+  startedAt: string | null;
   durationMs: number | null;
-  status: 'succeeded' | 'failed' | 'running';
+  status: string | null;
+  exitCode: number | null;
   trigger: string;
 }
 
 interface AgentRunsResponse {
   runs: readonly AgentRun[];
+  nextCursor: string | null;
+}
+
+interface AgentRunLogResponse {
+  runId: string;
+  logs: string;
+  lines: readonly string[];
+  exitCode: number | null;
+  startedAt: string | null;
+  durationMs: number | null;
+  status: string | null;
 }
 
 type LoadState =
   | { kind: 'loading' }
-  | { kind: 'ready'; runs: readonly AgentRun[] }
-  | { kind: 'unsupported' }
+  | { kind: 'ready'; runs: readonly AgentRun[]; nextCursor: string | null }
   | { kind: 'error'; message: string };
+
+type LogState =
+  | { kind: 'idle' }
+  | { kind: 'loading'; runId: string }
+  | { kind: 'ready'; runId: string; logs: string }
+  | { kind: 'error'; runId: string; message: string };
 
 export function AgentRuns({ agentId }: { agentId: string }) {
   const [state, setState] = React.useState<LoadState>({ kind: 'loading' });
+  const [logState, setLogState] = React.useState<LogState>({ kind: 'idle' });
 
   const load = React.useCallback(async () => {
     setState({ kind: 'loading' });
@@ -53,15 +68,11 @@ export function AgentRuns({ agentId }: { agentId: string }) {
       const res = await fetch(`/api/agents/${agentId}/runs`, {
         cache: 'no-store',
       });
-      if (res.status === 404) {
-        setState({ kind: 'unsupported' });
-        return;
-      }
       if (!res.ok) {
         throw new Error(`Failed to load runs (HTTP ${res.status})`);
       }
       const body = (await res.json()) as AgentRunsResponse;
-      setState({ kind: 'ready', runs: body.runs });
+      setState({ kind: 'ready', runs: body.runs, nextCursor: body.nextCursor });
     } catch (error) {
       setState({
         kind: 'error',
@@ -74,6 +85,29 @@ export function AgentRuns({ agentId }: { agentId: string }) {
     void load();
   }, [load]);
 
+  const loadLogs = React.useCallback(
+    async (runId: string) => {
+      setLogState({ kind: 'loading', runId });
+      try {
+        const res = await fetch(`/api/agents/${agentId}/runs/${runId}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to load logs (HTTP ${res.status})`);
+        }
+        const body = (await res.json()) as AgentRunLogResponse;
+        setLogState({ kind: 'ready', runId, logs: body.logs });
+      } catch (error) {
+        setLogState({
+          kind: 'error',
+          runId,
+          message: error instanceof Error ? error.message : 'Failed to load logs',
+        });
+      }
+    },
+    [agentId],
+  );
+
   if (state.kind === 'loading') {
     return (
       <div className="space-y-2">
@@ -81,16 +115,6 @@ export function AgentRuns({ agentId }: { agentId: string }) {
           <Skeleton key={i} className="h-10 w-full" />
         ))}
       </div>
-    );
-  }
-
-  if (state.kind === 'unsupported') {
-    return (
-      <EmptyState
-        icon={History}
-        title="Run history coming soon"
-        description="Once the runs endpoint ships, the last invocations of this agent will appear here in real time."
-      />
     );
   }
 
@@ -131,8 +155,10 @@ export function AgentRuns({ agentId }: { agentId: string }) {
           <TableRow>
             <TableHead>Started</TableHead>
             <TableHead>Trigger</TableHead>
+            <TableHead>Exit</TableHead>
             <TableHead className="text-right">Duration</TableHead>
             <TableHead className="text-right">Status</TableHead>
+            <TableHead className="text-right">Logs</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -140,6 +166,9 @@ export function AgentRuns({ agentId }: { agentId: string }) {
             <TableRow key={r.id}>
               <TableCell>{formatRelativeDate(r.startedAt)}</TableCell>
               <TableCell className="text-muted-foreground">{r.trigger}</TableCell>
+              <TableCell className="tabular-nums text-muted-foreground">
+                {r.exitCode ?? '—'}
+              </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatDuration(r.durationMs)}
               </TableCell>
@@ -153,13 +182,56 @@ export function AgentRuns({ agentId }: { agentId: string }) {
                         : 'text-muted-foreground'
                   }
                 >
-                  {r.status}
+                  {r.status ?? 'unknown'}
                 </span>
+              </TableCell>
+              <TableCell className="text-right">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void loadLogs(r.runId)}
+                  aria-label={`View logs for run ${r.runId}`}
+                >
+                  {logState.kind === 'loading' && logState.runId === r.runId ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5" />
+                  )}
+                  Logs
+                </Button>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      {logState.kind === 'ready' ? (
+        <div className="rounded-md border bg-muted/30 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <FileText className="h-3.5 w-3.5" /> {logState.runId}
+          </div>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5">
+            {logState.logs || 'No logs returned for this run.'}
+          </pre>
+        </div>
+      ) : null}
+      {logState.kind === 'error' ? (
+        <EmptyState
+          icon={FileText}
+          title="Couldn't load run logs"
+          description={logState.message}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadLogs(logState.runId)}
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Retry
+            </Button>
+          }
+        />
+      ) : null}
     </div>
   );
 }

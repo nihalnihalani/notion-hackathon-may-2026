@@ -81,6 +81,7 @@ beforeEach(async () => {
     ownerUserId: 'clerk_owner',
     notionWorkspaceId: 'nws_1',
     forgeBuildLogBlockId: 'blk_log_1',
+    defaultModel: 'gpt-5.5',
   } as never);
   vi.mocked(db.prisma.user.findFirst).mockResolvedValue({
     id: 'user_1',
@@ -124,6 +125,10 @@ describe('POST /api/webhooks/notion-button', () => {
     const body = await readJson<{ status: string; generationId: string }>(res);
     expect(body.status).toBe('queued');
     expect(body.generationId).toBe('gen_new');
+    const wf = await import('@forge/workflows');
+    expect(wf.publishGenerationRequested).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModel: 'gpt-5.5' }),
+    );
   });
 
   it('returns 401 on signature mismatch', async () => {

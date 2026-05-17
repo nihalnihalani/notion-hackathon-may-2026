@@ -1,8 +1,8 @@
 /**
  * PATCH /api/settings/default-model — persist the workspace's default model.
  *
- * The dashboard `/settings` page lets the user pick which model Tool Coder
- * should default to. Value is stored on `Workspace.defaultModel` (TEXT,
+ * The dashboard `/settings` page lets the user pick which model paid
+ * sub-agents should default to. Value is stored on `Workspace.defaultModel` (TEXT,
  * default "auto"). Accepted values today are `auto`, `gpt-5.5`,
  * `gpt-5.4-mini`, and `claude-opus-4-7`; new entries can land by extending the union
  * below without a migration.

@@ -4,4 +4,15 @@ The code-gen safety net. AST-walks every generated TypeScript file against a for
 
 ## Public API surface
 
-- TBD
+- `scan(source, opts)` — scan an in-memory TypeScript worker source string.
+- `scanFile(path, opts)` — read and scan a TypeScript file.
+- `scanPackageJson(obj, opts)` — enforce dependency allowlists on generated
+  package metadata.
+- `DEFAULT_NETWORK_ALLOWLIST` and `DEFAULT_DEP_ALLOWLIST` — production
+  allowlist defaults shared by Inspector and tests.
+- `ALL_RULES` — registry of scanner rules for introspection.
+- Individual rules: `noChildProcess`, `noFsOutsideTmp`, `noEval`,
+  `noNonAllowlistedNetwork`, `noProcessEnvWrite`, `noUnboundedLoops`,
+  `depAllowlist`, and `checkPackageJson`.
+- Types: `ScanOptions`, `ScanResult`, `Violation`, `Rule`, `Severity`, and
+  `ScannerParseError`.

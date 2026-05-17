@@ -13,10 +13,12 @@ prompts:
   - file://../prompts/shipper.txt
 
 providers:
-  - id: anthropic:messages:claude-opus-4-7
+  - id: openai:chat:gpt-5.5
     config:
       max_tokens: 800
       temperature: 0.4
+      response_format:
+        type: json_object
 
 defaultTest:
   assert:

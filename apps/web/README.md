@@ -10,4 +10,9 @@ Next.js 16 application that hosts the Forge marketing landing page, the Clerk-au
 
 ## Public API surface
 
-- TBD
+- Dashboard REST routes live under `apps/web/app/api/**`; the canonical route
+  inventory is [docs/api.md](../../docs/api.md).
+- Server-only DB imports go through `apps/web/lib/db.ts`.
+- Auth and ownership gates are centralized in `apps/web/lib/auth.ts`.
+- Notion token resolution and pacing live in `apps/web/lib/notion.ts`.
+- API route tests live in `apps/web/__tests__/api`.

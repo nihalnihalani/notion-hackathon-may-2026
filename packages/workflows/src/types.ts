@@ -78,6 +78,13 @@ export interface GenerationRequestedEvent {
   /** Bypass idempotency cache. Defaults to `false`. */
   force?: boolean;
   /**
+   * Snapshot of `Workspace.defaultModel` when the run was queued. `auto`
+   * means "use the deployed provider/model defaults"; concrete model ids
+   * are threaded into the sub-agent config so Schema Smith + Tool Coder run
+   * on the user's selected primary model.
+   */
+  defaultModel?: string;
+  /**
    * `BlockId` of the Build Log container in the user's Forge page. Each step
    * appends a paragraph block to this container.
    */

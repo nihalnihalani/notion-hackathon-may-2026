@@ -9,8 +9,8 @@
  *      hit by `/api/forge/trigger` when the same workspace asks for the same
  *      description twice.
  *
- *   2. `lookupByEmbedding(embedding, topK)` — semantic KNN over the
- *      pgvector-encoded `PromptCache.embedding` column. This is the path that
+ *   2. `lookupByEmbedding(embedding, options)` — semantic KNN over the
+ *      Float32-encoded `PromptCache.embedding` column. This is the path that
  *      lets a *different* description ("triage Linear issues" vs "manage
  *      Linear bug queue") still hit the cache.
  *
@@ -21,6 +21,11 @@
 
 import { prisma } from '../client.js';
 import type { PromptCache } from '../types.js';
+
+const DEFAULT_TOP_K = 5;
+const MAX_TOP_K = 25;
+const DEFAULT_MIN_SIMILARITY = 0.82;
+const MAX_CANDIDATES = 1000;
 
 /**
  * Exact-hash lookup against `PromptCache.descriptionHash`. Honors
@@ -40,31 +45,81 @@ export async function lookupByHash(descriptionHash: string): Promise<PromptCache
 }
 
 /**
- * Semantic KNN over the pgvector-encoded `embedding` column.
+ * Semantic KNN over live PromptCache rows.
  *
- * STATUS: stub. The Prisma schema declares `embedding` as `Bytes` because
- * Prisma does not (as of 5.22) have first-class pgvector support in its
- * query API. To do real KNN we either:
- *
- *   (a) wire pgvector via a Prisma generator + raw SQL helper, or
- *   (b) do the KNN out-of-band (e.g. via a Vercel KV-backed ANN index).
- *
- * Neither is in scope for this PR — the brief explicitly asks for a typed
- * stub that throws. When PromptCache writes start landing real vectors, we
- * lift the throw and implement option (a) using `prisma.$queryRaw` confined
- * to this single function (the "no raw SQL in repos" rule has one documented
- * exception: pgvector ops, which Prisma has no typed surface for).
- *
- * @throws Always — until pgvector is wired up.
+ * Prisma does not expose first-class pgvector operators here, so production
+ * stores embeddings as little-endian Float32 bytes and this read path computes
+ * cosine similarity in-process over the newest live cache rows. That keeps the
+ * feature working without raw SQL. If cache volume grows beyond this bounded
+ * scan, the implementation can move behind the same function to a native ANN
+ * index without changing callers.
  */
-export function lookupByEmbedding(
-  _embedding: Float32Array,
-  _options?: { topK?: number; minSimilarity?: number },
+export async function lookupByEmbedding(
+  embedding: Float32Array,
+  options?: { topK?: number; minSimilarity?: number },
 ): Promise<readonly PromptCache[]> {
-  return Promise.reject(
-    new Error(
-      '[@forge/db] lookupByEmbedding: pgvector not configured. ' +
-        'See packages/db/src/repositories/prompt-cache.ts for the implementation plan.',
-    ),
-  );
+  if (embedding.length === 0) return [];
+
+  const topK = clampInt(options?.topK ?? DEFAULT_TOP_K, 1, MAX_TOP_K);
+  const minSimilarity = clampNumber(options?.minSimilarity ?? DEFAULT_MIN_SIMILARITY, -1, 1);
+
+  const rows = await prisma.promptCache.findMany({
+    where: {
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: MAX_CANDIDATES,
+  });
+
+  return rows
+    .map((row) => {
+      const candidate = decodeFloat32Embedding(row.embedding);
+      if (candidate === null || candidate.length !== embedding.length) return null;
+      const similarity = cosineSimilarity(embedding, candidate);
+      return similarity >= minSimilarity ? { row, similarity } : null;
+    })
+    .filter((hit): hit is { row: PromptCache; similarity: number } => hit !== null)
+    .sort((a, b) => {
+      const bySimilarity = b.similarity - a.similarity;
+      if (bySimilarity !== 0) return bySimilarity;
+      return b.row.createdAt.getTime() - a.row.createdAt.getTime();
+    })
+    .slice(0, topK)
+    .map((hit) => hit.row);
+}
+
+function decodeFloat32Embedding(bytes: Uint8Array): Float32Array | null {
+  if (bytes.byteLength === 0 || bytes.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0) {
+    return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const out = new Float32Array(bytes.byteLength / Float32Array.BYTES_PER_ELEMENT);
+  for (const index of out.keys()) {
+    out[index] = view.getFloat32(index * Float32Array.BYTES_PER_ELEMENT, true);
+  }
+  return out;
+}
+
+function cosineSimilarity(a: Float32Array, b: Float32Array): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (const [index, av] of a.entries()) {
+    const bv = b[index] ?? 0;
+    dot += av * bv;
+    normA += av * av;
+    normB += bv * bv;
+  }
+  if (normA === 0 || normB === 0) return -1;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
 }

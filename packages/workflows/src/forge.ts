@@ -54,6 +54,7 @@ import type {
 
 import { costExceedsBudget, sumGenerationCost } from './cost-accounting.js';
 import { checkExistingGeneration, DEFAULT_IDEMPOTENCY_WINDOW_MS } from './idempotency.js';
+import { applyQueuedDefaultModel } from './model-selection.js';
 import type { OpsGenerationEvent, OpsGenerationStatus } from './ops-metrics.js';
 import {
   discoverContext,
@@ -174,8 +175,9 @@ export class GenerationCancelledError extends Error {
  */
 export async function runForgeGeneration(
   event: GenerationRequestedEvent,
-  config: WorkflowConfig,
+  baseConfig: WorkflowConfig,
 ): Promise<WorkflowSuccess> {
+  const config = applyQueuedDefaultModel(baseConfig, event);
   const logger = config.logger ?? noopLogger;
   const startedAt = Date.now();
   let sandbox: SandboxRunner | undefined;
@@ -188,6 +190,8 @@ export async function runForgeGeneration(
   });
 
   try {
+    let totalCostUsd = 0;
+
     // ── 0. Idempotency ────────────────────────────────────────────────────
     const idempotency = await checkExistingGeneration(config.db, {
       workspaceId: event.workspaceId,
@@ -259,7 +263,7 @@ export async function runForgeGeneration(
       config,
     });
     checkCancelled(config);
-    checkBudget(config);
+    checkBudget(config, totalCostUsd);
 
     // ── 2. Schema Smith ────────────────────────────────────────────────────
     const schemaResult = await runSchemaSmith({
@@ -286,8 +290,9 @@ export async function runForgeGeneration(
       }
       throw new NeedsClarificationError(schemaResult.output.rationale);
     }
+    totalCostUsd = roundCost(totalCostUsd + schemaResult.costUsd);
     checkCancelled(config);
-    checkBudget(config);
+    checkBudget(config, totalCostUsd);
 
     // ── 3+4. Tool Coder ↔ Inspector loop ───────────────────────────────────
     sandbox = await config.sandbox.create({
@@ -314,8 +319,9 @@ export async function runForgeGeneration(
         config,
       });
       currentCode = toolResult.output;
+      totalCostUsd = roundCost(totalCostUsd + toolResult.costUsd);
       checkCancelled(config);
-      checkBudget(config);
+      checkBudget(config, totalCostUsd);
 
       const inspectorResult = await runInspector({
         generationId: event.generationId,
@@ -358,7 +364,7 @@ export async function runForgeGeneration(
       // Defensive — we always set this before exiting the loop on pass=true.
       throw new Error('orchestrator invariant: currentCode missing after Inspector pass');
     }
-    checkBudget(config);
+    checkBudget(config, totalCostUsd);
 
     // ── 5. Shipper ─────────────────────────────────────────────────────────
     const shipResult = await runShipper({
@@ -382,6 +388,7 @@ export async function runForgeGeneration(
       schema: schemaResult.output,
       shipResult: shipResult.output,
       startedAt,
+      totalCostUsd,
     });
   } catch (error) {
     await handleFailure(error, event, config, startedAt);
@@ -410,8 +417,9 @@ async function finalize(args: {
   schema: SchemaSmithOutput;
   shipResult: ShipperResult;
   startedAt: number;
+  totalCostUsd: number;
 }): Promise<WorkflowSuccess> {
-  const { event, config, schema, shipResult, startedAt } = args;
+  const { event, config, schema, shipResult, startedAt, totalCostUsd } = args;
   // The previous workflow-level email send used a `logger` here; that
   // send was removed (the Shipper now handles deploy-success emails
   // atomically — see `packages/agents/src/shipper.ts` Step 12). Keep this
@@ -419,13 +427,8 @@ async function finalize(args: {
   // logging again.
 
   // We don't have a `listStepsForGeneration` helper on the structural db
-  // interface (kept narrow), so we sum costs from the live timestamps we have
-  // here. This is an upper-bound: total wall time.
+  // interface (kept narrow), so latency remains the live wall-clock span.
   const totalLatencyMs = Date.now() - startedAt;
-  // Sub-agent cost emission goes through the logger.info('<agent>.complete')
-  // event; the orchestrator does not aggregate inline. We default to 0 and
-  // let the deferred cost-accounting job (out of scope here) reconcile.
-  const totalCostUsd = 0;
 
   await config.db.updateGenerationStatus(event.generationId, {
     status: 'succeeded',
@@ -629,22 +632,23 @@ function checkCancelled(config: WorkflowConfig): void {
 /**
  * Check the cost budget after every paid step (Schema Smith + Tool Coder).
  *
- * We use a soft check at workflow-level: the in-flight per-step cost isn't
- * stored on the structural step result (each sub-agent emits its own cost
- * event via `logger.info('<agent>.complete')`), so this guard is best-effort
- * at the orchestration layer. The deferred cost-accounting job (out of scope
- * here) provides the canonical reconciliation.
+ * We use a soft check at workflow-level: successful paid sub-agent calls
+ * surface cost via the captured `logger.info('<agent>.complete')` event, so
+ * the budget is enforced between durable step boundaries.
  *
  * Exposed via `sumGenerationCost` + `costExceedsBudget` so the call site
  * stays readable.
  */
-function checkBudget(config: WorkflowConfig): void {
+function checkBudget(config: WorkflowConfig, current: number): void {
   const budget = config.totalCostBudgetUsd;
   if (budget === undefined || budget <= 0) return;
-  const current = sumGenerationCost([]);
   if (costExceedsBudget(current, budget)) {
     throw new CostBudgetExceededError(current, budget);
   }
+}
+
+function roundCost(n: number): number {
+  return sumGenerationCost([{ costUsd: n } as never]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

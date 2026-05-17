@@ -84,6 +84,7 @@ export const POST = withSentry<{ id: string }>(
         descriptionHash: hash,
         // The whole point of redeploy — bypass the 1h idempotency cache.
         force: true,
+        defaultModel: workspace.defaultModel ?? 'auto',
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: '',
       });

@@ -1,8 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Forge Playwright config (stub — full suite lands once the sandbox-mode
- * Notion workspace + Clerk test user are wired up in CI).
+ * Forge Playwright config.
  *
  * `baseURL` defaults to the local dev server but can be overridden with
  * `PLAYWRIGHT_BASE_URL` so the same specs run against preview deployments.

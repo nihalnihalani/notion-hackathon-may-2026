@@ -54,6 +54,7 @@ const fakeUser = {
     id: 'ws_1',
     notionWorkspaceId: 'nws_1',
     forgeBuildLogBlockId: 'blk_log_1',
+    defaultModel: 'gpt-5.4-mini',
   },
 };
 
@@ -87,6 +88,10 @@ describe('POST /api/forge/trigger', () => {
     expect(res.status).toBe(202);
     const body = await readJson<{ generationId: string; status: string }>(res);
     expect(body).toEqual({ generationId: 'gen_1', status: 'queued' });
+    const wf = await import('@forge/workflows');
+    expect(wf.publishGenerationRequested).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModel: 'gpt-5.4-mini' }),
+    );
   });
 
   it('returns cached hit when an existing generation matches', async () => {

@@ -8,12 +8,12 @@ description ─▶ Schema Smith ─▶ Tool Coder ─▶ Inspector ─▶ Shippe
 
 ## Sub-agents
 
-| Agent        | Entry point                                  | Job                                                                                                                                            | Status          |
-| ------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| Schema Smith | `@forge/agents/schema-smith` → `schemaSmith` | English + workspace context → `{pattern, inputSchema, outputSchema, requiredScopes, requiredOAuth, rationale}` ([PLAN.md §4.1](../../PLAN.md)) | ✅ shipped      |
-| Tool Coder   | `@forge/agents/tool-coder` (TBD)             | Schema Smith output + description → `src/index.ts` using `worker.tool/sync/webhook` ([PLAN.md §4.2](../../PLAN.md))                            | 🚧 sibling owns |
-| Inspector    | `@forge/agents/inspector` (TBD)              | AST safety + `tsc --noEmit` + `ntn workers exec` against synthetic input; feeds failures back to Tool Coder ([PLAN.md §4.3](../../PLAN.md))    | 🚧 sibling owns |
-| Shipper      | `@forge/agents/shipper` (TBD)                | `ntn workers deploy` → discover capabilities → wire Custom Agent → archive source → email user ([PLAN.md §4.4](../../PLAN.md))                 | 🚧 sibling owns |
+| Agent        | Entry point                                  | Job                                                                                                                                            | Status     |
+| ------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Schema Smith | `@forge/agents/schema-smith` → `schemaSmith` | English + workspace context → `{pattern, inputSchema, outputSchema, requiredScopes, requiredOAuth, rationale}` ([PLAN.md §4.1](../../PLAN.md)) | ✅ shipped |
+| Tool Coder   | `@forge/agents/tool-coder` → `toolCoder`     | Schema Smith output + description → `src/index.ts` using `worker.tool/sync/webhook` ([PLAN.md §4.2](../../PLAN.md))                            | ✅ shipped |
+| Inspector    | `@forge/agents/inspector` → `inspector`      | AST safety + `tsc --noEmit` + `ntn workers exec` against synthetic input; feeds failures back to Tool Coder ([PLAN.md §4.3](../../PLAN.md))    | ✅ shipped |
+| Shipper      | `@forge/agents/shipper` → `shipper`          | `ntn workers deploy` → discover capabilities → wire Custom Agent → archive source → email user ([PLAN.md §4.4](../../PLAN.md))                 | ✅ shipped |
 
 The orchestrator (`@forge/workflows`) sequences all four with durable retries.
 
@@ -40,7 +40,9 @@ Defaults:
 
 - Primary model: **`gpt-5.5`** via OpenAI direct or Vercel AI Gateway.
 - Fallback: **`gpt-5.4-mini`** via OpenAI, triggered on primary-provider 5xx / rate-limit.
-- Prompt caching: the Schema Smith system prompt is marked `cache_control: { type: 'ephemeral' }` so repeated calls within 5min hit the cache.
+- Prompt caching: Anthropic override mode uses provider prompt caching; the
+  database prompt cache can also short-circuit repeated or semantically similar
+  descriptions through `@forge/db`.
 
 ## Error hierarchy
 

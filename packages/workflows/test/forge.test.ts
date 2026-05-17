@@ -131,7 +131,13 @@ interface MockHarness {
   recordedSteps: Array<{
     kind: 'start' | 'finish';
     agent?: string;
+    modelUsed?: string | null;
     status?: string;
+    promptTokens?: number | null;
+    completionTokens?: number | null;
+    cacheReadTokens?: number | null;
+    cacheWriteTokens?: number | null;
+    costUsd?: number | null;
     inputJson?: unknown;
     outputJson?: unknown;
   }>;
@@ -145,7 +151,13 @@ function makeHarness(opts: { force?: boolean; cacheHit?: boolean } = {}): MockHa
     const i = input as {
       kind: 'start' | 'finish';
       agent?: string;
+      modelUsed?: string | null;
       status?: string;
+      promptTokens?: number | null;
+      completionTokens?: number | null;
+      cacheReadTokens?: number | null;
+      cacheWriteTokens?: number | null;
+      costUsd?: number | null;
       inputJson?: unknown;
       outputJson?: unknown;
     };
@@ -155,6 +167,7 @@ function makeHarness(opts: { force?: boolean; cacheHit?: boolean } = {}): MockHa
       recordedSteps.push({
         kind: 'start',
         ...(i.agent !== undefined && { agent: i.agent }),
+        ...(i.modelUsed !== undefined && { modelUsed: i.modelUsed }),
         ...(i.inputJson !== undefined && { inputJson: i.inputJson }),
       });
       return { id };
@@ -162,6 +175,11 @@ function makeHarness(opts: { force?: boolean; cacheHit?: boolean } = {}): MockHa
     recordedSteps.push({
       kind: 'finish',
       ...(i.status !== undefined && { status: i.status }),
+      ...(i.promptTokens !== undefined && { promptTokens: i.promptTokens }),
+      ...(i.completionTokens !== undefined && { completionTokens: i.completionTokens }),
+      ...(i.cacheReadTokens !== undefined && { cacheReadTokens: i.cacheReadTokens }),
+      ...(i.cacheWriteTokens !== undefined && { cacheWriteTokens: i.cacheWriteTokens }),
+      ...(i.costUsd !== undefined && { costUsd: i.costUsd }),
       ...(i.outputJson !== undefined && { outputJson: i.outputJson }),
     });
     return { id: 'whatever' };
@@ -302,6 +320,83 @@ describe('runForgeGeneration — happy path', () => {
     // Sandbox lifecycle: created + closed.
     expect(harness.sandbox.create).toHaveBeenCalledTimes(1);
     expect(harness.sandbox.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('captures sub-agent token/cost events into steps and generation totals', async () => {
+    const harness = makeHarness();
+    vi.mocked(schemaSmith).mockImplementation(async (input) => {
+      input.config.logger?.info('schema-smith.complete', {
+        agent: 'schema_smith',
+        model: 'gpt-5.5',
+        attempt: 1,
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 10,
+        cacheWriteTokens: 0,
+        costUsd: 0.002,
+        latencyMs: 12,
+      });
+      return makeSchemaSmithOutput();
+    });
+    vi.mocked(toolCoder).mockImplementation(async (input) => {
+      input.config.logger?.info('tool-coder.complete', {
+        agent: 'tool_coder',
+        model: 'gpt-5.5',
+        attempt: 1,
+        inputTokens: 200,
+        outputTokens: 80,
+        costUsd: 0.003,
+        latencyMs: 30,
+      });
+      return makeToolCoderOutput();
+    });
+    vi.mocked(inspector).mockResolvedValue(makePassingInspection());
+    vi.mocked(shipper).mockResolvedValue(makeShipperResult());
+
+    const result = await runForgeGeneration(makeEvent(), harness.config);
+
+    expect(result.totalCostUsd).toBe(0.005);
+    expect(harness.recordedSteps).toContainEqual(
+      expect.objectContaining({
+        kind: 'finish',
+        promptTokens: 100,
+        completionTokens: 50,
+        cacheReadTokens: 10,
+        costUsd: 0.002,
+      }),
+    );
+    expect(harness.recordedSteps).toContainEqual(
+      expect.objectContaining({
+        kind: 'finish',
+        promptTokens: 200,
+        completionTokens: 80,
+        costUsd: 0.003,
+      }),
+    );
+    const finalUpdate = harness.db.updateGenerationStatus.mock.calls.at(-1)?.[1];
+    expect(finalUpdate?.totalCostUsd).toBe(0.005);
+  });
+
+  it('threads the queued workspace default model into sub-agent config and step metadata', async () => {
+    const harness = makeHarness();
+    vi.mocked(schemaSmith).mockResolvedValue(makeSchemaSmithOutput());
+    vi.mocked(toolCoder).mockResolvedValue(makeToolCoderOutput());
+    vi.mocked(inspector).mockResolvedValue(makePassingInspection());
+    vi.mocked(shipper).mockResolvedValue(makeShipperResult());
+
+    await runForgeGeneration(makeEvent({ defaultModel: 'gpt-5.4-mini' }), harness.config);
+
+    expect(vi.mocked(schemaSmith).mock.calls[0]?.[0].config).toMatchObject({
+      primaryProvider: 'openai',
+      primaryModel: 'gpt-5.4-mini',
+    });
+    expect(vi.mocked(toolCoder).mock.calls[0]?.[0].config).toMatchObject({
+      primaryProvider: 'openai',
+      primaryModel: 'gpt-5.4-mini',
+    });
+    const started = harness.recordedSteps.filter((s) => s.kind === 'start');
+    expect(started[0]).toEqual(expect.objectContaining({ modelUsed: 'gpt-5.4-mini' }));
+    expect(started[1]).toEqual(expect.objectContaining({ modelUsed: 'gpt-5.4-mini' }));
   });
 });
 

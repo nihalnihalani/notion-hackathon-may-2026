@@ -197,7 +197,7 @@ async function workflowTrigger(input: WorkflowTriggerInput): Promise<WorkflowTri
   // Workspace row — we read it once here per request.
   const workspaceRow = await prisma.workspace.findUnique({
     where: { id: input.workspaceId },
-    select: { forgeBuildLogBlockId: true },
+    select: { forgeBuildLogBlockId: true, defaultModel: true },
   });
   if (!workspaceRow?.forgeBuildLogBlockId) {
     throw new Error('workspace install incomplete');
@@ -223,6 +223,7 @@ async function workflowTrigger(input: WorkflowTriggerInput): Promise<WorkflowTri
     description: input.description,
     descriptionHash: hash,
     force: input.force,
+    defaultModel: workspaceRow.defaultModel ?? 'auto',
     buildLogBlockId: asBlockId(workspaceRow.forgeBuildLogBlockId),
     notionRequestRowId: '',
   });

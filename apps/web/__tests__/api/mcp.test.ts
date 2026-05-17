@@ -31,6 +31,7 @@ vi.mock('@forge/db', () => ({
       findUnique: vi.fn().mockResolvedValue({
         notionWorkspaceId: 'nws_test',
         forgeBuildLogBlockId: 'blk_log',
+        defaultModel: 'auto',
       }),
     },
   },
@@ -83,6 +84,7 @@ beforeEach(async () => {
   vi.mocked(db.prisma.workspace.findUnique).mockResolvedValue({
     notionWorkspaceId: 'nws_test',
     forgeBuildLogBlockId: 'blk_log',
+    defaultModel: 'auto',
   } as never);
   vi.mocked(db.createGeneration).mockResolvedValue({ id: 'gen_mcp' } as never);
   vi.mocked(db.descriptionHash).mockResolvedValue('hash');
@@ -105,10 +107,7 @@ describe('GET /api/mcp', () => {
   it('returns 401 without bearer', async () => {
     validateApiKeyMock.mockResolvedValue(null);
     const { GET } = await import('@/app/api/mcp/route');
-    const res = await GET(
-      makeRequest('http://localhost/api/mcp') as never,
-      makeCtx({}),
-    );
+    const res = await GET(makeRequest('http://localhost/api/mcp') as never, makeCtx({}));
     expect(res.status).toBe(401);
   });
 

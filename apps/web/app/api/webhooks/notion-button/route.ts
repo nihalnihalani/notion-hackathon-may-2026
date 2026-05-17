@@ -403,6 +403,7 @@ export const POST = withSentry(
         userEmail: `${workspace.ownerUserId}@noemail.local`,
         description,
         descriptionHash: hash,
+        defaultModel: workspace.defaultModel ?? 'auto',
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: pageId,
       });
