@@ -54,7 +54,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: pnpm audit
         run: |
           echo "::group::pnpm audit (high)"

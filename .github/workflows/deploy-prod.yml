@@ -84,7 +84,7 @@ jobs:
           key: turbo-${{ runner.os }}-prod-verify-${{ github.sha }}
           restore-keys: |
             turbo-${{ runner.os }}-prod-verify-
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Lint / typecheck / test / prisma validate
         run: |
           echo "::group::lint"
@@ -124,7 +124,7 @@ jobs:
           key: turbo-${{ runner.os }}-prod-${{ github.sha }}
           restore-keys: |
             turbo-${{ runner.os }}-prod-
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Turbo build
         run: pnpm build
 
@@ -150,7 +150,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Apply migrations
         run: |
           echo "::group::prisma migrate deploy"
@@ -182,7 +182,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Install Vercel CLI
         run: pnpm add -g vercel@latest
       - name: Pull Vercel env (production)
@@ -221,7 +221,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Rebuild for source maps
         # Sentry needs the build artifact present (with .map files) — `next
         # build` runs alongside the SENTRY_AUTH_TOKEN env which is what

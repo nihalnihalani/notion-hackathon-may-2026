@@ -38,6 +38,8 @@ Set in **Repository Settings → Secrets and variables → Actions**.
 
 Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered runs.
 
+All Node-based jobs install through `scripts/ci/install.sh`, which runs `pnpm install --frozen-lockfile` and then generates the Prisma Client for `@forge/db`. Use that script instead of a raw `pnpm install` step in new workflows so fresh GitHub runners match local builds.
+
 The repository is currently private, so `security.yml` skips CodeQL unless the repo is made public or GitHub Advanced Security/code scanning is enabled. `ci.yml` intentionally checks Prettier only on changed files because the current tree still has historical formatting drift outside this branch; use a dedicated repo-wide formatting PR when you want to flip `pnpm format:check` back on globally.
 
 ## How to add a new sub-agent eval

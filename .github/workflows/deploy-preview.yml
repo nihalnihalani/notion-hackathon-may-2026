@@ -111,7 +111,7 @@ jobs:
           key: turbo-${{ runner.os }}-preview-${{ github.sha }}
           restore-keys: |
             turbo-${{ runner.os }}-preview-
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Lint / format / typecheck / test / build / verify-env
         run: |
           echo "::group::lint"
@@ -200,7 +200,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Install Vercel CLI
         run: pnpm add -g vercel@latest
       - name: Pull Vercel env (preview)
@@ -265,7 +265,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
       - name: Run E2E

@@ -52,7 +52,7 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci/install.sh
 
   lint:
     name: Lint
@@ -68,7 +68,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       # `--max-warnings=0` upgrades any ESLint warning into a build-breaking
       # failure. Kept on the CLI (rather than in eslint config) so engineers
       # see *why* lint failed in the CI log without diffing config.
@@ -93,7 +93,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm format:check:changed -- "${BASE_SHA}" "${HEAD_SHA}"
 
   typecheck:
@@ -110,7 +110,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm typecheck
 
   verify-env:
@@ -169,7 +169,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm verify:env
 
   prisma-check:
@@ -194,7 +194,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm --filter @forge/db exec prisma format --check
       - run: pnpm --filter @forge/db exec prisma validate
 
@@ -212,7 +212,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm test
 
   coverage:
@@ -233,7 +233,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: Run tests with coverage
         run: pnpm --filter @forge/safety test:coverage
       - name: Upload coverage to Codecov
@@ -261,7 +261,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm --filter @forge/eval-harness eval:dry-run
 
   build:
@@ -278,5 +278,5 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - run: pnpm build
