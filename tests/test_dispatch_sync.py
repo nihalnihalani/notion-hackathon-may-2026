@@ -126,6 +126,46 @@ def test_new_pending_task_appends_handoff_and_marks_dispatched(store):
     assert "Inspect War Room health" in snapshot
 
 
+def test_blank_next_action_uses_task_context_instead_of_generic_fallback(store):
+    page = _notion_page(
+        "page_context",
+        title="Build submit flow",
+        context="Add a Notion Submit button gate before dispatching agents.",
+    )
+    client = _make_client([page])
+
+    sync_dispatch(client, "ds_xyz", store=store)
+
+    handoffs_md = store.render_handoffs_md()
+    assert "Complete the submitted Notion request for Build submit flow." in handoffs_md
+    assert "Add a Notion Submit button gate before dispatching agents" in handoffs_md
+    assert "Review this Notion-sourced request" not in handoffs_md
+    assert "Full context: redis://" not in handoffs_md
+
+
+def test_redis_rendered_handoff_contains_bridge_key_once(store):
+    page = _notion_page("page_single_key")
+    client = _make_client([page])
+    expected_key = handoff_key_for_page("page_single_key")
+
+    sync_dispatch(client, "ds_xyz", store=store)
+
+    handoffs_md = store.render_handoffs_md()
+    assert handoffs_md.count(f"[{expected_key}]") == 1
+
+
+def test_handoff_next_action_uses_passed_warroom_path_for_local_context(store, tmp_path):
+    page = _notion_page("page_custom_warroom")
+    client = _make_client([page])
+    expected_key = handoff_key_for_page("page_custom_warroom")
+
+    sync_dispatch(client, "ds_xyz", tmp_path, store=store)
+
+    handoffs_md = store.render_handoffs_md()
+    assert f"Context: {tmp_path}/NotionInbox/{expected_key}.md" in handoffs_md
+    assert "redis://wr:notion_inbox" not in handoffs_md
+
+
 def test_unsubmitted_pending_task_does_not_touch_storage_or_notion(store):
     page = _notion_page("page_draft", submitted=False)
     client = _make_client([page])

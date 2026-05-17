@@ -85,7 +85,9 @@ def _one_cycle(notion, config, store: RedisStore) -> None:
             "no Notion data source id available; skipping dispatch/result sync"
         )
     else:
-        dispatched = sync_dispatch(notion, data_source_id, store=store)
+        dispatched = sync_dispatch(
+            notion, data_source_id, config.warroom_path, store=store
+        )
         if dispatched:
             log.info("dispatched %d task(s) to Redis handoff store", dispatched)
 

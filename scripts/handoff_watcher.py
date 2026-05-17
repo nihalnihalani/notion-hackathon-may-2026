@@ -150,9 +150,11 @@ def _claude_handler(title: str, context_path: Path, fields: dict) -> list[str]:
 
 
 def _agent_prompt(title: str, context_path: Path, fields: dict) -> str:
+    next_action = (fields.get("Next Action") or "").strip()
     return (
         f"Read the handoff context at {context_path} and act on the task. "
         f"Task title: {title}. Files Touched: {fields.get('Files Touched', '')}. "
+        f"Next Action from HANDOFFS.md: {next_action or '(none)'}. "
         "Update HANDOFFS.md with Status COMPLETED or FAILED when done."
     )
 

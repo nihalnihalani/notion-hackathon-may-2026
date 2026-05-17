@@ -53,7 +53,11 @@ def test_legacy_orchestrator_delegates_to_handoff_watcher():
 
 def test_hermes_handler_emits_argv_list(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
-    cmd = mod._hermes_handler("inspect health", tmp_path / "ctx.md", {})
+    cmd = mod._hermes_handler(
+        "inspect health",
+        tmp_path / "ctx.md",
+        {"Next Action": "Check the live bridge status."},
+    )
     assert cmd[0] == "hermes"
     assert cmd[1] == "chat"
     assert "-Q" in cmd
@@ -61,6 +65,7 @@ def test_hermes_handler_emits_argv_list(monkeypatch, tmp_path):
     prompt = cmd[cmd.index("-q") + 1]
     assert "inspect health" in prompt
     assert str(tmp_path / "ctx.md") in prompt
+    assert "Check the live bridge status." in prompt
 
 
 def test_openclaw_handler_emits_argv_list(monkeypatch, tmp_path):

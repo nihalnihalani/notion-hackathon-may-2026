@@ -231,12 +231,22 @@ class RedisStore:
         Format mirrors the on-disk protocol from plan.md §2 so existing
         parsers (and the local-file mirror) can still consume it.
         """
+        import re as _re
+
         handoffs = self.list_handoffs()
         if not handoffs:
             return ""
+        # If the stored `task` already carries one or more `[wrb_*]`
+        # tokens (because earlier dispatch code embedded the key into
+        # the title string, or because we round-tripped a previously
+        # rendered HANDOFFS.md), strip them all before re-appending the
+        # canonical key. Prevents the double-/triple-key issue visible
+        # in pre-fix renders like `Task: foo [wrb_abc] [wrb_abc]`.
+        _key_strip = _re.compile(r"\s*\[wrb_[0-9a-f]{12}\]")
         lines: list[str] = []
         for entry in handoffs:
-            title = entry.get("task") or "(untitled)"
+            raw_title = entry.get("task") or "(untitled)"
+            title = _key_strip.sub("", raw_title).strip() or "(untitled)"
             key = entry["_key"]
             lines.append(f"\n- Task: {title} [{key}]")
             lines.append(f"  Owner: {entry.get('owner') or ''}")

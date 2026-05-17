@@ -10,7 +10,7 @@ def update_handoff_block(handoffs_path: Path, handoff_key: str, store: StateStor
     with store.locked():
         text = handoffs_path.read_text()
         
-        pattern = re.compile(r"^(- Task:.*?" + re.escape(f"[{handoff_key}]") + r".*?(?=\n- Task:|\Z))", re.MULTILINE | re.DOTALL)
+        pattern = re.compile(r"^(- Task:(?:(?!\n- Task:).)*?" + re.escape(f"[{handoff_key}]") + r".*?(?=\n- Task:|\Z))", re.MULTILINE | re.DOTALL)
         match = pattern.search(text)
         if not match:
             return False

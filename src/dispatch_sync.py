@@ -19,9 +19,9 @@ storage migration). The previous file-based implementation appended to
 Public signature is preserved: callers still call
 ``sync_dispatch(client, data_source_id, warroom_path, store=redis_store)``
 so the daemon and any helper scripts continue to work after passing a
-``RedisStore`` instead of the legacy ``StateStore``. The ``warroom_path``
-argument is kept for compatibility but is no longer consulted — Redis owns
-the storage now.
+``RedisStore`` instead of the legacy ``StateStore``. Redis owns the storage,
+while ``warroom_path`` is used only to render the local NotionInbox path
+that the file mirror materializes for CLI agents.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from src.notion_http import NotionHTTPClient
@@ -39,6 +40,7 @@ from src.redis_store import RedisStore
 from src.state_store import handoff_key_for_page
 from src.warroom_format import (
     ALLOWED_OWNERS,
+    MAX_TITLE_LEN,
     PLANNING_FILES_DEFAULT,
     make_handoff_block,
     sanitize_multiline,
@@ -187,6 +189,23 @@ def _build_context_snapshot(
     )
 
 
+def _effective_next_action(title: str, context: str, next_action: str) -> str:
+    """Return the operator-facing instruction stored in HANDOFFS.md.
+
+    Notion's `Next Action` is optional. If it is blank, avoid the old generic
+    "Review this Notion-sourced request..." text and synthesize a useful
+    instruction from the task title plus the first bit of context.
+    """
+    explicit = sanitize_text_field(next_action)
+    if explicit:
+        return explicit
+    title_text = sanitize_text_field(title, MAX_TITLE_LEN) or "Untitled task"
+    context_text = sanitize_text_field(context, 700)
+    if context_text:
+        return f"Complete the submitted Notion request for {title_text}. Context summary: {context_text}"
+    return f"Complete the submitted Notion request for {title_text}."
+
+
 def _props_dispatched(handoff_key: str, when: str, sync_hash: str) -> dict[str, Any]:
     return {
         "Status": {"status": {"name": "Dispatched"}},
@@ -328,6 +347,7 @@ def sync_dispatch(
         context = _rich_text(props.get("Context"))
         work_dir = _rich_text(props.get("Working Directory"))
         next_action = _rich_text(props.get("Next Action"))
+        effective_next_action = _effective_next_action(title, context, next_action)
 
         handoff_key = handoff_key_for_page(page_id)
         when = _now_iso()
@@ -409,7 +429,7 @@ def sync_dispatch(
                 files_touched=effective_files,
                 context=context,
                 work_dir=work_dir,
-                next_action=next_action,
+                next_action=effective_next_action,
             )
             store.set_notion_inbox(handoff_key, snapshot_body)
 
@@ -418,18 +438,34 @@ def sync_dispatch(
             # we can derive the same sanitized text for `Task` / `Files
             # Touched` / `Next Action` fields — then split it into the
             # structured fields the Redis store expects.
+            #
+            # The context_path must be a real filesystem path so the
+            # agent reading HANDOFFS.md can `cat` it directly. The
+            # local-file mirror (`scripts/redis_file_mirror.py`) writes
+            # the snapshot to <WARROOM_PATH>/NotionInbox/<key>.md, so we
+            # render that path here. WARROOM_PATH defaults to ~/WarRoom
+            # which matches the mirror's default.
+            warroom_root = Path(
+                warroom_path or os.environ.get("WARROOM_PATH", "~/WarRoom")
+            ).expanduser()
+            local_context_path = warroom_root / "NotionInbox" / f"{handoff_key}.md"
             entry_text = make_handoff_block(
                 handoff_key=handoff_key,
                 title=title,
                 owner=owner,
                 files_touched=effective_files,
-                next_action=next_action,
-                context_path=f"redis://wr:notion_inbox:{handoff_key}",
+                next_action=effective_next_action,
+                context_path=str(local_context_path),
             )
             fields = _split_handoff_entry(entry_text)
+            task_text = re.sub(
+                rf"\s*\[{re.escape(handoff_key)}\]\s*$",
+                "",
+                fields.get("Task", title),
+            )
             store.upsert_handoff(
                 handoff_key,
-                task=fields.get("Task", f"{title} [{handoff_key}]"),
+                task=task_text,
                 owner=fields.get("Owner", owner),
                 files_touched=fields.get("Files Touched", effective_files),
                 status="PENDING",
