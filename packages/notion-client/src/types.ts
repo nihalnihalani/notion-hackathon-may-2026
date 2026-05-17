@@ -18,10 +18,7 @@
 
 // ── Fetch + Logger ───────────────────────────────────────────────────────────
 
-export type FetchLike = (
-  url: string | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 export interface Logger {
   debug?: (msg: string, meta?: Record<string, unknown>) => void;
@@ -299,12 +296,14 @@ export type NotionPropertyValue =
   | {
       id: string;
       type: 'files';
-      files: (| { name: string; type: 'external'; external: { url: string } }
+      files: (
+        | { name: string; type: 'external'; external: { url: string } }
         | {
             name: string;
             type: 'file';
             file: { url: string; expiry_time: string };
-          })[];
+          }
+      )[];
     }
   | {
       id: string;
@@ -428,9 +427,7 @@ export type NotionUser =
 export interface NotionComment {
   object: 'comment';
   id: CommentId;
-  parent:
-    | { type: 'page_id'; page_id: string }
-    | { type: 'block_id'; block_id: string };
+  parent: { type: 'page_id'; page_id: string } | { type: 'block_id'; block_id: string };
   discussion_id: string;
   created_time: string;
   last_edited_time: string;

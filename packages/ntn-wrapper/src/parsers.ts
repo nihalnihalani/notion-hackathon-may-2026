@@ -130,9 +130,7 @@ export function extractDeployUrl(stdout: string): string | undefined {
  * prints lines like `Worker ID: wk_abc123` or `id=wk_abc123`. We try both.
  */
 export function extractWorkerId(stdout: string): string | undefined {
-  const labeled = /(?:Worker\s*ID|worker[_ ]?id)\s*[:=]\s*([A-Za-z0-9_-]+)/iu.exec(
-    stdout,
-  );
+  const labeled = /(?:Worker\s*ID|worker[_ ]?id)\s*[:=]\s*([A-Za-z0-9_-]+)/iu.exec(stdout);
   if (labeled?.[1]) {
     return labeled[1];
   }

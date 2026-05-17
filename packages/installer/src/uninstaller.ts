@@ -45,9 +45,7 @@ export async function uninstallForgePage(
     token: opts.notionToken,
     ...(opts.notion?.fetch ? { fetch: opts.notion.fetch } : {}),
     ...(opts.notion?.baseUrl ? { baseUrl: opts.notion.baseUrl } : {}),
-    ...(opts.notion?.notionVersion
-      ? { notionVersion: opts.notion.notionVersion }
-      : {}),
+    ...(opts.notion?.notionVersion ? { notionVersion: opts.notion.notionVersion } : {}),
     ...(opts.notion?.pacer ? { pacer: opts.notion.pacer } : {}),
   };
 

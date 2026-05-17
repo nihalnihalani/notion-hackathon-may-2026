@@ -182,7 +182,7 @@ function warnUnverifiedOpenaiPrice(model: string): void {
   OPENAI_UNVERIFIED_WARNED.add(model);
   // Single warning per model id per process — chatter-free in tests, loud
   // enough to notice in CI logs and production stdout.
-   
+
   console.warn(
     `[forge/agents/cost] OpenAI model '${model}' is priced from a placeholder. ` +
       `Verify against openai.com/api/pricing and update OPENAI_PRICES_USD_PER_MTOK.`,

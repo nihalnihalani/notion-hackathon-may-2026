@@ -34,8 +34,7 @@ function base64UrlEncode(input: string): string {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
-  const alphabet =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   let out = '';
   for (let i = 0; i < bytes.length; i += 3) {
     const a = bytes[i] ?? 0;
@@ -44,8 +43,8 @@ function bytesToBase64(bytes: Uint8Array): string {
     const triplet = (a << 16) | (b << 8) | c;
     out += alphabet[(triplet >> 18) & 63] ?? '';
     out += alphabet[(triplet >> 12) & 63] ?? '';
-    out += i + 1 < bytes.length ? alphabet[(triplet >> 6) & 63] ?? '' : '=';
-    out += i + 2 < bytes.length ? alphabet[triplet & 63] ?? '' : '=';
+    out += i + 1 < bytes.length ? (alphabet[(triplet >> 6) & 63] ?? '') : '=';
+    out += i + 2 < bytes.length ? (alphabet[triplet & 63] ?? '') : '=';
   }
   return out;
 }

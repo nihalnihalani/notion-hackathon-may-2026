@@ -124,13 +124,7 @@ export interface WebhookEndpoint {
 }
 
 /** Names of supported OAuth providers per the integrations catalog (Part XI). */
-export type OAuthProvider =
-  | 'github'
-  | 'linear'
-  | 'stripe'
-  | 'slack'
-  | 'google'
-  | (string & {});
+export type OAuthProvider = 'github' | 'linear' | 'stripe' | 'slack' | 'google' | (string & {});
 
 /** Newtype-flavoured aliases — same runtime shape, clearer call sites. */
 export type PageId = string;

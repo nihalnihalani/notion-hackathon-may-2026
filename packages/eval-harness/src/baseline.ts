@@ -124,7 +124,8 @@ export function compareToBaseline(
     .map((a) => {
       const baseStr = a.baseline === null ? 'n/a' : `${(a.baseline * 100).toFixed(1)}%`;
       const curStr = a.current === null ? 'n/a' : `${(a.current * 100).toFixed(1)}%`;
-      const deltaStr = a.deltaPct === null ? '' : ` (${a.deltaPct > 0 ? '+' : ''}${a.deltaPct.toFixed(1)}pp)`;
+      const deltaStr =
+        a.deltaPct === null ? '' : ` (${a.deltaPct > 0 ? '+' : ''}${a.deltaPct.toFixed(1)}pp)`;
       const flag = a.regressed ? ' REGRESSED' : '';
       return `${a.agent}: ${curStr} vs baseline ${baseStr}${deltaStr}${flag}`;
     })

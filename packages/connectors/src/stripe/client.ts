@@ -64,16 +64,9 @@ function encodeForm(body: Record<string, unknown>): URLSearchParams {
 export interface StripeClient {
   listRecentCharges(limit?: number, opts?: RequestOptions): Promise<StripeCharge[]>;
   getCharge(id: string, opts?: RequestOptions): Promise<StripeCharge>;
-  refundCharge(
-    id: string,
-    amount?: number,
-    opts?: RequestOptions,
-  ): Promise<StripeRefund>;
+  refundCharge(id: string, amount?: number, opts?: RequestOptions): Promise<StripeRefund>;
   getCustomer(id: string, opts?: RequestOptions): Promise<StripeCustomer>;
-  listSubscriptions(
-    customer?: string,
-    opts?: RequestOptions,
-  ): Promise<StripeSubscription[]>;
+  listSubscriptions(customer?: string, opts?: RequestOptions): Promise<StripeSubscription[]>;
   getSubscription(id: string, opts?: RequestOptions): Promise<StripeSubscription>;
 }
 
@@ -107,11 +100,7 @@ export function createStripeClient(config: ConnectorConfig): StripeClient {
         ctx,
         opts?.retry,
       );
-      const parsed = maybeValidate(
-        stripeListSchema(stripeChargeSchema),
-        data,
-        opts?.validate,
-      );
+      const parsed = maybeValidate(stripeListSchema(stripeChargeSchema), data, opts?.validate);
       return parsed.data;
     },
 

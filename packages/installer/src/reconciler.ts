@@ -42,11 +42,7 @@ import type { Logger, NotionClientConfig } from '@forge/notion-client';
 
 import { buildForgeButtonBookmark } from './block-builders.js';
 import { InstallerError } from './errors.js';
-import type {
-  InstallOptions,
-  InstallerDbClient,
-  ReconcileResult,
-} from './types.js';
+import type { InstallOptions, InstallerDbClient, ReconcileResult } from './types.js';
 import { generateWorkspaceWebhookSecret } from './webhook-secret.js';
 
 /** True if a getBlock/getPage 404 means "block is gone". */
@@ -63,9 +59,7 @@ export async function reconcileForgePage(
     token: opts.notionToken,
     ...(opts.notion?.fetch ? { fetch: opts.notion.fetch } : {}),
     ...(opts.notion?.baseUrl ? { baseUrl: opts.notion.baseUrl } : {}),
-    ...(opts.notion?.notionVersion
-      ? { notionVersion: opts.notion.notionVersion }
-      : {}),
+    ...(opts.notion?.notionVersion ? { notionVersion: opts.notion.notionVersion } : {}),
     ...(opts.notion?.pacer ? { pacer: opts.notion.pacer } : {}),
   };
   const changes: string[] = [];
@@ -73,10 +67,10 @@ export async function reconcileForgePage(
   const row = await db.getWorkspaceForgeRecord(opts.workspaceId);
   if (!row) {
     // First-ever login — caller should have run `installForgePage` first.
-    throw new InstallerError(
-      'reconcile called before install: no Workspace row found',
-      { step: 'reconcile', workspaceId: opts.workspaceId },
-    );
+    throw new InstallerError('reconcile called before install: no Workspace row found', {
+      step: 'reconcile',
+      workspaceId: opts.workspaceId,
+    });
   }
 
   // ── 0. mint a webhook secret if missing (older installs) ───────────────
@@ -92,11 +86,7 @@ export async function reconcileForgePage(
   }
 
   // ── 1. workspace row completeness ──────────────────────────────────────
-  if (
-    !row.forgePageId ||
-    !row.forgeDbId ||
-    !row.forgeAgentsDbId
-  ) {
+  if (!row.forgePageId || !row.forgeDbId || !row.forgeAgentsDbId) {
     // Hard precondition for the rest of reconcile. Caller path: route to
     // the full installer (the orchestrator's auth-callback already does
     // this; reconcile is the cheap-path).
@@ -110,17 +100,18 @@ export async function reconcileForgePage(
   try {
     const page = await getPage(notionConfig, asPageId(row.forgePageId));
     if (page.archived || page.in_trash) {
-      throw new InstallerError(
-        'forge page is archived; full re-install required',
-        { step: 'reconcile', workspaceId: opts.workspaceId },
-      );
+      throw new InstallerError('forge page is archived; full re-install required', {
+        step: 'reconcile',
+        workspaceId: opts.workspaceId,
+      });
     }
   } catch (error) {
     if (isGone(error)) {
-      throw new InstallerError(
-        'forge page returned 404; full re-install required',
-        { step: 'reconcile', workspaceId: opts.workspaceId, cause: error },
-      );
+      throw new InstallerError('forge page returned 404; full re-install required', {
+        step: 'reconcile',
+        workspaceId: opts.workspaceId,
+        cause: error,
+      });
     }
     throw error;
   }
@@ -156,10 +147,7 @@ export async function reconcileForgePage(
   let buildLogOk = false;
   if (row.forgeBuildLogBlockId) {
     try {
-      const blk = await getBlock(
-        notionConfig,
-        asBlockId(row.forgeBuildLogBlockId),
-      );
+      const blk = await getBlock(notionConfig, asBlockId(row.forgeBuildLogBlockId));
       if (!blk.archived && !blk.in_trash) buildLogOk = true;
     } catch (error) {
       if (!isGone(error)) throw error;
@@ -170,10 +158,10 @@ export async function reconcileForgePage(
     // orchestrator's append target ID changes. We defer to a full
     // install rerun by throwing — the caller (auth callback) will
     // catch + dispatch to `installForgePage`.
-    throw new InstallerError(
-      'build log container missing; full re-install required',
-      { step: 'reconcile', workspaceId: opts.workspaceId },
-    );
+    throw new InstallerError('build log container missing; full re-install required', {
+      step: 'reconcile',
+      workspaceId: opts.workspaceId,
+    });
   }
 
   return { changes };

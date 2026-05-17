@@ -110,7 +110,7 @@ describe('scanner.scan', () => {
 });
 
 describe('scanner.scan — performance', () => {
-  it('scans a 500-line Worker file in <50ms (best-of-5 to absorb GC jitter)', () => {
+  it('scans a 500-line Worker file within budget (best-of-5 to absorb GC jitter)', () => {
     // Generate ~500 lines of plausible Worker code
     const repeat: string[] = [
       `import { Client } from '@notionhq/client';`,
@@ -145,9 +145,11 @@ describe('scanner.scan — performance', () => {
     }
 
     expect(r.pass).toBe(true);
-    // 50ms budget on the BEST run — catches a real regression while
-    // tolerating GC pauses and coverage instrumentation cold starts.
-    expect(best, `best-of-5 ${best.toFixed(2)}ms`).toBeLessThan(50);
+    // Coverage instrumentation slows AST traversal enough on GitHub runners
+    // that the normal perf budget becomes noisy; keep the strict budget for
+    // the regular test job and use coverage only as a broad regression guard.
+    const budgetMs = process.env.npm_lifecycle_event === 'test:coverage' ? 150 : 50;
+    expect(best, `best-of-5 ${best.toFixed(2)}ms`).toBeLessThan(budgetMs);
   });
 });
 
@@ -165,18 +167,15 @@ describe('scanner.scanFile', () => {
   });
 
   it('propagates fs errors (not ScannerParseError) when file is missing', async () => {
-    await expect(
-      scanFile('/nonexistent/path/worker.ts', TEST_OPTS),
-    ).rejects.toThrow(/ENOENT|no such file/i);
+    await expect(scanFile('/nonexistent/path/worker.ts', TEST_OPTS)).rejects.toThrow(
+      /ENOENT|no such file/i,
+    );
   });
 });
 
 describe('scanner.scanPackageJson', () => {
   it('blocks disallowed deps', () => {
-    const v = scanPackageJson(
-      { dependencies: { lodash: '*' } },
-      TEST_OPTS,
-    );
+    const v = scanPackageJson({ dependencies: { lodash: '*' } }, TEST_OPTS);
     expect(v).toHaveLength(1);
     expect(v[0]?.severity).toBe('block');
   });

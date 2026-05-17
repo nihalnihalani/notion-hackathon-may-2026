@@ -46,9 +46,7 @@ export async function callNotionApi<T = unknown>(
   opts: CallNotionApiOptions = {},
 ): Promise<T | string> {
   if (!ENDPOINT_REGEX.test(endpoint)) {
-    throw new NtnInvalidArgumentError(
-      `Invalid Notion API endpoint: "${endpoint}".`,
-    );
+    throw new NtnInvalidArgumentError(`Invalid Notion API endpoint: "${endpoint}".`);
   }
   const args: string[] = ['api', endpoint];
   if (opts.method !== undefined) {
@@ -62,12 +60,7 @@ export async function callNotionApi<T = unknown>(
     args.push('--json');
   }
 
-  const {
-    method: _method,
-    data: _data,
-    parseJson: _parseJson,
-    ...runOpts
-  } = opts;
+  const { method: _method, data: _data, parseJson: _parseJson, ...runOpts } = opts;
 
   if (parseJson) {
     const { data } = await runNtnJson<T>(args, runOpts);

@@ -52,10 +52,7 @@ export interface OpenaiEmbedParams {
 }
 
 export interface OpenaiClient {
-  complete(
-    params: OpenaiCompleteParams,
-    opts?: RequestOptions,
-  ): Promise<OpenaiChatResponse>;
+  complete(params: OpenaiCompleteParams, opts?: RequestOptions): Promise<OpenaiChatResponse>;
   embed(params: OpenaiEmbedParams, opts?: RequestOptions): Promise<number[][]>;
 }
 
@@ -123,9 +120,7 @@ export function createOpenaiClient(config: OpenaiConfig): OpenaiClient {
       );
       // Sort by index defensively — most providers return in order but the
       // OpenAI spec does not strictly guarantee it.
-      return [...parsed.data]
-        .sort((a, b) => a.index - b.index)
-        .map((d) => d.embedding);
+      return [...parsed.data].sort((a, b) => a.index - b.index).map((d) => d.embedding);
     },
   };
 }

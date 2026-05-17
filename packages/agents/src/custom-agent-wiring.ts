@@ -150,7 +150,9 @@ function buildFallbackUrl(workspaceId: string): string {
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => { resolve(null); }, ms);
+    timer = setTimeout(() => {
+      resolve(null);
+    }, ms);
   });
   try {
     const result = await Promise.race([p, timeout]);
@@ -194,9 +196,7 @@ export async function wireCustomAgent(args: WireCustomAgentArgs): Promise<WireCu
   // signature is wider than what we need and assigning the global into our
   // narrower contract would require a cast at every call site. The
   // declaration below is the intersection of all impls we accept.
-  const fetchImpl:
-    | ((input: string | URL, init?: RequestInit) => Promise<Response>)
-    | undefined =
+  const fetchImpl: ((input: string | URL, init?: RequestInit) => Promise<Response>) | undefined =
     args.fetch ??
     args.notionConfig.fetch ??
     (typeof globalThis.fetch === 'function'

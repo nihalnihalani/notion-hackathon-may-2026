@@ -17,7 +17,11 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { FORGE_AGENTS_RESOURCE_METADATA, FORGE_AGENTS_URI, readForgeAgentsResource } from './resources.js';
+import {
+  FORGE_AGENTS_RESOURCE_METADATA,
+  FORGE_AGENTS_URI,
+  readForgeAgentsResource,
+} from './resources.js';
 import { PROMPT_CATALOG } from './prompts.js';
 import { forgeAgent, getGenerationStatus, listMyAgents } from './tools.js';
 import {
@@ -57,10 +61,7 @@ export const FORGE_MCP_SERVER_NAME = 'forge';
  * them as untrusted unless they come from a trusted server. They drive the
  * client's confirmation UX, nothing more.
  */
-export function createForgeMcpServer(
-  context: ForgeMcpContext,
-  config: ForgeMcpConfig,
-): McpServer {
+export function createForgeMcpServer(context: ForgeMcpContext, config: ForgeMcpConfig): McpServer {
   const server = new McpServer(
     {
       name: FORGE_MCP_SERVER_NAME,

@@ -29,7 +29,7 @@ export type {
   UsageMeter,
   User,
   Workspace,
-} from "@prisma/client";
+} from '@prisma/client';
 
 // -----------------------------------------------------------------------------
 // Audit log
@@ -69,7 +69,7 @@ export interface AuditEventBase {
  */
 export type AuditEventInput =
   | {
-      action: "agent.deployed";
+      action: 'agent.deployed';
       metadata: {
         ntnWorkerName: string;
         pattern: string;
@@ -77,47 +77,43 @@ export type AuditEventInput =
       };
     }
   | {
-      action: "agent.paused";
+      action: 'agent.paused';
       metadata: {
         workerName: string;
       };
     }
   | {
-      action: "agent.resumed";
+      action: 'agent.resumed';
       metadata: {
         workerName: string;
       };
     }
   | {
-      action: "agent.deleted";
+      action: 'agent.deleted';
       metadata: {
         // `workerName` for new call sites; `ntnWorkerName` for the
         // legacy /api/agents DELETE handler. Either is allowed for
         // backward compatibility — both refer to the same value.
         workerName?: string;
         ntnWorkerName?: string;
-        reason?:
-          | "user"
-          | "user_request"
-          | "system_retraction"
-          | "policy_violation";
+        reason?: 'user' | 'user_request' | 'system_retraction' | 'policy_violation';
       };
     }
   | {
-      action: "oauth.granted";
+      action: 'oauth.granted';
       metadata: {
         provider: string; // "notion" | "github" | "linear" | ...
         scopes?: readonly string[];
       };
     }
   | {
-      action: "oauth.revoked";
+      action: 'oauth.revoked';
       metadata: {
         provider: string;
       };
     }
   | {
-      action: "agent.invoked";
+      action: 'agent.invoked';
       metadata: {
         ntnWorkerName: string;
         latencyMs: number;
@@ -125,20 +121,20 @@ export type AuditEventInput =
       };
     }
   | {
-      action: "workspace.installed";
+      action: 'workspace.installed';
       metadata: {
         forgePageId: string;
         forgeDbId: string;
       };
     }
   | {
-      action: "generation.cancelled";
+      action: 'generation.cancelled';
       metadata: {
-        reason: "user" | "timeout" | "admin";
+        reason: 'user' | 'timeout' | 'admin';
       };
     }
   | {
-      action: "generation.failed";
+      action: 'generation.failed';
       metadata:
         | {
             generationId: string;
@@ -151,27 +147,27 @@ export type AuditEventInput =
           };
     }
   | {
-      action: "webhook.signature_failure";
+      action: 'webhook.signature_failure';
       metadata: {
         endpoint: string;
       };
     }
   | {
-      action: "workspace.default_model_changed";
+      action: 'workspace.default_model_changed';
       metadata: {
         previousModel: string;
         newModel: string;
       };
     }
   | {
-      action: "workspace.uninstalled";
+      action: 'workspace.uninstalled';
       // Empty metadata object: the workspace id + actor is already on the
       // base columns. Kept as a closed shape so reviewers see — and reject —
       // any attempt to add PII fields here later.
       metadata: Record<string, never>;
     }
   | {
-      action: "api_key.created";
+      action: 'api_key.created';
       metadata: {
         keyId: string;
         prefix: string;
@@ -179,13 +175,13 @@ export type AuditEventInput =
       };
     }
   | {
-      action: "api_key.revoked";
+      action: 'api_key.revoked';
       metadata: {
         keyId: string;
       };
     }
   | {
-      action: "agent.redeployed";
+      action: 'agent.redeployed';
       metadata: {
         agentId: string;
         workerName: string;

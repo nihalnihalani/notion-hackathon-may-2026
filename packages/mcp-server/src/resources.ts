@@ -14,12 +14,7 @@
  */
 
 import { toMcpErrorContent } from './errors.js';
-import type {
-  ForgeMcpConfig,
-  ForgeMcpContext,
-  GeneratedAgentView,
-  Logger,
-} from './types.js';
+import type { ForgeMcpConfig, ForgeMcpContext, GeneratedAgentView, Logger } from './types.js';
 import { noopLogger } from './types.js';
 
 /** The single URI we register. Kept as a const so server.ts can re-use it. */
@@ -27,9 +22,8 @@ export const FORGE_AGENTS_URI = 'forge://agents';
 
 /** Stable metadata used when registering the resource. */
 export const FORGE_AGENTS_RESOURCE_METADATA = Object.freeze({
-  title: "Workspace agents",
-  description:
-    "All deployed Forge agents (active + paused) for the requesting workspace, as JSON.",
+  title: 'Workspace agents',
+  description: 'All deployed Forge agents (active + paused) for the requesting workspace, as JSON.',
   mimeType: 'application/json',
 });
 

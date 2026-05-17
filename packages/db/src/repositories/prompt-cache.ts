@@ -19,8 +19,8 @@
  * blur the boundary between read-cache and source-of-truth.
  */
 
-import { prisma } from "../client.js";
-import type { PromptCache } from "../types.js";
+import { prisma } from '../client.js';
+import type { PromptCache } from '../types.js';
 
 /**
  * Exact-hash lookup against `PromptCache.descriptionHash`. Honors
@@ -29,15 +29,13 @@ import type { PromptCache } from "../types.js";
  * Returns the most-recently-created live entry on collision (collisions are
  * astronomically unlikely for SHA-256 but we sort defensively).
  */
-export async function lookupByHash(
-  descriptionHash: string,
-): Promise<PromptCache | null> {
+export async function lookupByHash(descriptionHash: string): Promise<PromptCache | null> {
   return prisma.promptCache.findFirst({
     where: {
       descriptionHash,
       expiresAt: { gt: new Date() },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 }
 
@@ -65,8 +63,8 @@ export function lookupByEmbedding(
 ): Promise<readonly PromptCache[]> {
   return Promise.reject(
     new Error(
-    "[@forge/db] lookupByEmbedding: pgvector not configured. " +
-      "See packages/db/src/repositories/prompt-cache.ts for the implementation plan.",
+      '[@forge/db] lookupByEmbedding: pgvector not configured. ' +
+        'See packages/db/src/repositories/prompt-cache.ts for the implementation plan.',
     ),
   );
 }

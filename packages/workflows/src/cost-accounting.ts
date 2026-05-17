@@ -22,9 +22,7 @@ import type { GenerationStep } from '@forge/db';
  *
  * Returns 0 for an empty array.
  */
-export function sumGenerationCost(
-  steps: readonly Pick<GenerationStep, 'costUsd'>[],
-): number {
+export function sumGenerationCost(steps: readonly Pick<GenerationStep, 'costUsd'>[]): number {
   let total = 0;
   for (const step of steps) {
     const n = toNumberSafe(step.costUsd);
@@ -41,9 +39,7 @@ export function sumGenerationCost(
  *
  * Nulls are treated as 0. Returns 0 for an empty array.
  */
-export function sumGenerationLatency(
-  steps: readonly Pick<GenerationStep, 'latencyMs'>[],
-): number {
+export function sumGenerationLatency(steps: readonly Pick<GenerationStep, 'latencyMs'>[]): number {
   let total = 0;
   for (const step of steps) {
     total += step.latencyMs ?? 0;
@@ -61,10 +57,7 @@ export function sumGenerationLatency(
  *
  * A `budgetUsd <= 0` is treated as "no budget" and always returns `false`.
  */
-export function costExceedsBudget(
-  currentUsd: number,
-  budgetUsd: number,
-): boolean {
+export function costExceedsBudget(currentUsd: number, budgetUsd: number): boolean {
   if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) return false;
   if (!Number.isFinite(currentUsd) || currentUsd < 0) return false;
   return currentUsd >= budgetUsd;

@@ -27,12 +27,7 @@
 
 import { appendBlocks, getBlockChildren, deleteBlock } from './blocks.js';
 import { asBlockId } from './types.js';
-import type {
-  BlockId,
-  NotionBlock,
-  NotionClientConfig,
-  NotionRichText,
-} from './types.js';
+import type { BlockId, NotionBlock, NotionClientConfig, NotionRichText } from './types.js';
 
 export type BuildLogStatus = 'running' | 'succeeded' | 'failed' | 'info';
 
@@ -184,9 +179,10 @@ export async function clearBuildLog(
  * Default empty Build Log container — a collapsed toggle titled "Build Log".
  * Matches the shape the installer creates on first install.
  */
-function buildContainerBlock(
-  override?: { type: 'toggle' | 'synced_block' | 'paragraph'; payload: Record<string, unknown> },
-): { object: 'block'; type: string; [k: string]: unknown } {
+function buildContainerBlock(override?: {
+  type: 'toggle' | 'synced_block' | 'paragraph';
+  payload: Record<string, unknown>;
+}): { object: 'block'; type: string; [k: string]: unknown } {
   if (override) {
     return { object: 'block', type: override.type, [override.type]: override.payload };
   }
@@ -223,9 +219,7 @@ export async function keepRecentBuildLogEntries(
   keepLast: number,
 ): Promise<void> {
   if (keepLast < 0) {
-    throw new Error(
-      `keepRecentBuildLogEntries: keepLast must be >= 0, got ${String(keepLast)}`,
-    );
+    throw new Error(`keepRecentBuildLogEntries: keepLast must be >= 0, got ${String(keepLast)}`);
   }
 
   // Collect all children first to avoid mutating during pagination.

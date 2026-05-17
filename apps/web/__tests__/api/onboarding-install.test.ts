@@ -40,14 +40,8 @@ const { StubInstallerError, NotionNotFoundError } = vi.hoisted(() => {
   class StubInstallerError extends Error {
     step: string;
     workspaceId: string;
-    constructor(
-      message: string,
-      init: { step: string; workspaceId: string; cause?: unknown },
-    ) {
-      super(
-        message,
-        init.cause === undefined ? undefined : { cause: init.cause },
-      );
+    constructor(message: string, init: { step: string; workspaceId: string; cause?: unknown }) {
+      super(message, init.cause === undefined ? undefined : { cause: init.cause });
       this.name = 'InstallerError';
       this.step = init.step;
       this.workspaceId = init.workspaceId;
@@ -189,9 +183,7 @@ describe('POST /api/onboarding/install', () => {
 
   it('returns 400 when Notion 404s on the picked page (no integration access)', async () => {
     const nc = await import('@forge/notion-client');
-    vi.mocked(nc.getPage).mockRejectedValue(
-      new NotionNotFoundError('object_not_found'),
-    );
+    vi.mocked(nc.getPage).mockRejectedValue(new NotionNotFoundError('object_not_found'));
     const { POST } = await import('@/app/api/onboarding/install/route');
     const res = await POST(
       makeRequest('http://localhost/api/onboarding/install', {
@@ -332,9 +324,7 @@ describe('POST /api/onboarding/install', () => {
       makeCtx({}),
     );
     expect(first.status).toBe(200);
-    const firstBody = await readJson<{ pageId: string; requestsDbId: string }>(
-      first,
-    );
+    const firstBody = await readJson<{ pageId: string; requestsDbId: string }>(first);
 
     const second = await POST(
       makeRequest('http://localhost/api/onboarding/install', {

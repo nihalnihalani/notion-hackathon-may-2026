@@ -22,9 +22,7 @@ export function resolveAppUrl(): string {
   }
   const vercel = process.env['VERCEL_URL'];
   if (vercel && vercel.length > 0) {
-    return stripTrailingSlash(
-      vercel.startsWith('http') ? vercel : `https://${vercel}`,
-    );
+    return stripTrailingSlash(vercel.startsWith('http') ? vercel : `https://${vercel}`);
   }
   return FALLBACK_ORIGIN;
 }

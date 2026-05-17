@@ -8,13 +8,8 @@
  * referred to) and keeps `Generation.agentId` FKs stable.
  */
 
-import { prisma } from "../client.js";
-import type {
-  AgentPattern,
-  AgentStatus,
-  GeneratedAgent,
-  Prisma,
-} from "../types.js";
+import { prisma } from '../client.js';
+import type { AgentPattern, AgentStatus, GeneratedAgent, Prisma } from '../types.js';
 
 /**
  * Create a freshly deployed agent. Called by Shipper after `ntn workers
@@ -48,7 +43,7 @@ export async function createGeneratedAgent(input: {
       capabilities: input.capabilities,
       oauthProviders: [...input.oauthProviders],
       webhookUrl: input.webhookUrl ?? null,
-      status: "active",
+      status: 'active',
     },
   });
 }
@@ -64,11 +59,9 @@ export async function findActiveAgentsByWorkspace(
   return prisma.generatedAgent.findMany({
     where: {
       workspaceId,
-      ...(options?.includeRetracted
-        ? {}
-        : { status: { in: ["active", "paused"] } }),
+      ...(options?.includeRetracted ? {} : { status: { in: ['active', 'paused'] } }),
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 }
 
@@ -79,7 +72,7 @@ export async function findActiveAgentsByWorkspace(
  */
 export async function markAgentStatus(
   id: string,
-  status: Exclude<AgentStatus, "retracted">,
+  status: Exclude<AgentStatus, 'retracted'>,
 ): Promise<GeneratedAgent> {
   return prisma.generatedAgent.update({
     where: { id },
@@ -96,6 +89,6 @@ export async function markAgentStatus(
 export async function softDeleteAgent(id: string): Promise<GeneratedAgent> {
   return prisma.generatedAgent.update({
     where: { id },
-    data: { status: "retracted" },
+    data: { status: 'retracted' },
   });
 }

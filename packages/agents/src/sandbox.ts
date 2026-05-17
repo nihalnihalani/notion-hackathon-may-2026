@@ -165,15 +165,13 @@ export interface VercelSandboxConfig {
  */
 interface VercelSandboxInstance {
   writeFiles(files: { path: string; content: Buffer; mode?: number }[]): Promise<void>;
-  runCommand(
-    params: {
-      cmd: string;
-      args?: string[];
-      cwd?: string;
-      env?: Record<string, string>;
-      signal?: AbortSignal;
-    },
-  ): Promise<{
+  runCommand(params: {
+    cmd: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    signal?: AbortSignal;
+  }): Promise<{
     exitCode: number;
     stdout(): Promise<string>;
     stderr(): Promise<string>;
@@ -208,14 +206,20 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   // supplied `token`.
   if (config.token !== undefined) {
     if (config.teamId === undefined || config.teamId.length === 0) {
-      throw new InspectorError('createVercelSandbox: teamId is required when using access-token auth', {
-        detail: { hasToken: true },
-      });
+      throw new InspectorError(
+        'createVercelSandbox: teamId is required when using access-token auth',
+        {
+          detail: { hasToken: true },
+        },
+      );
     }
     if (config.projectId === undefined || config.projectId.length === 0) {
-      throw new InspectorError('createVercelSandbox: projectId is required when using access-token auth', {
-        detail: { hasToken: true, teamId: config.teamId },
-      });
+      throw new InspectorError(
+        'createVercelSandbox: projectId is required when using access-token auth',
+        {
+          detail: { hasToken: true, teamId: config.teamId },
+        },
+      );
     }
   }
 
@@ -337,9 +341,7 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
 async function loadVercelSandboxSdk(): Promise<unknown> {
   const specifier = ['@vercel', 'sandbox'].join('/');
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const importer = new Function('s', 'return import(s);') as (
-    s: string,
-  ) => Promise<unknown>;
+  const importer = new Function('s', 'return import(s);') as (s: string) => Promise<unknown>;
   return importer(specifier);
 }
 
@@ -382,9 +384,7 @@ export async function createInProcessSandbox(
     // (e.g. `/forge`, `/vercel/sandbox`). In the in-process runner we have
     // no real chroot, so we *remap* absolute paths under the sandbox root.
     // Relative paths resolve against the root as usual.
-    const target = isAbsolute(path)
-      ? resolve(root, `.${path}`)
-      : resolve(root, path);
+    const target = isAbsolute(path) ? resolve(root, `.${path}`) : resolve(root, path);
     // Defence in depth: reject any path that would escape the sandbox root
     // via `..` segments after remapping.
     if (!target.startsWith(root)) {
@@ -422,7 +422,8 @@ export async function createInProcessSandbox(
         try {
           // Pass-through env merge: `undefined` means inherit; we explicitly
           // merge the runner's env to keep PATH (so `node`, `npx`, etc. resolve).
-          const env: NodeJS.ProcessEnv = opts.env === undefined ? { ...process.env } : { ...process.env, ...opts.env };
+          const env: NodeJS.ProcessEnv =
+            opts.env === undefined ? { ...process.env } : { ...process.env, ...opts.env };
           child = spawn(opts.cmd, opts.args, {
             cwd,
             env,
@@ -491,7 +492,7 @@ export async function createInProcessSandbox(
             const durationMs = performance.now() - started;
             // Conventional: timeout → exit code 124 (`/usr/bin/timeout` convention).
             // Tests can branch on this without re-implementing the timeout check.
-            const exitCode = timedOut ? 124 : code ?? -1;
+            const exitCode = timedOut ? 124 : (code ?? -1);
             if (timedOut) {
               stderrBuf += `\n[in-process sandbox: timed out after ${String(timeoutMs)}ms]`;
             }

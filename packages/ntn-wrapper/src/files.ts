@@ -33,18 +33,12 @@ export async function createFile<T = unknown>(
   opts: NtnRunOptions = {},
 ): Promise<T> {
   const json = safeStringify(payload, 'createFile');
-  const { data } = await runNtnJson<T>(
-    ['files', 'create', '--data', json, '--json'],
-    opts,
-  );
+  const { data } = await runNtnJson<T>(['files', 'create', '--data', json, '--json'], opts);
   return data;
 }
 
 /** Get a single file's metadata: `ntn files get <id> --json`. */
-export async function getFile<T = unknown>(
-  id: FileId,
-  opts: NtnRunOptions = {},
-): Promise<T> {
+export async function getFile<T = unknown>(id: FileId, opts: NtnRunOptions = {}): Promise<T> {
   if (!FILE_ID_REGEX.test(id)) {
     throw new NtnInvalidArgumentError(`Invalid file id: "${id}".`);
   }
@@ -53,9 +47,7 @@ export async function getFile<T = unknown>(
 }
 
 /** List uploaded files: `ntn files list --json`. */
-export async function listFiles<T = unknown>(
-  opts: NtnRunOptions = {},
-): Promise<T[]> {
+export async function listFiles<T = unknown>(opts: NtnRunOptions = {}): Promise<T[]> {
   const { data } = await runNtnJson<T[]>(['files', 'list', '--json'], opts);
   return data;
 }

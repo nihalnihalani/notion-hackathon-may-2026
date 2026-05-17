@@ -12,11 +12,7 @@ import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs';
 import { Menu, Plus, Sparkles } from 'lucide-react';
 
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { SidebarNav } from '@/components/nav/sidebar-nav';
 
@@ -45,15 +41,9 @@ export function Topbar({ workspaceName, forgePageUrl }: TopbarProps) {
         </SheetContent>
       </Sheet>
 
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-2 md:hidden"
-      >
+      <Link href="/dashboard" className="flex items-center gap-2 md:hidden">
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-forge-gradient">
-          <Sparkles
-            className="h-3.5 w-3.5 text-primary-foreground"
-            aria-hidden="true"
-          />
+          <Sparkles className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />
         </div>
         <span className="text-sm font-semibold">Forge</span>
       </Link>
@@ -70,12 +60,7 @@ export function Topbar({ workspaceName, forgePageUrl }: TopbarProps) {
           </Link>
         </Button>
         {forgePageUrl ? (
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="hidden sm:inline-flex"
-          >
+          <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
             <a href={forgePageUrl} target="_blank" rel="noreferrer noopener">
               Open in Notion
             </a>

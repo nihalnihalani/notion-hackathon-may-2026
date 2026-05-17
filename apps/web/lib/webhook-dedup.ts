@@ -53,7 +53,10 @@ function getRedis(): Redis {
 export type WebhookDedupeResult =
   | { ok: true; duplicate: false }
   | { ok: true; duplicate: true; eventId: string }
-  | { ok: false; reason: 'missing_id' | 'missing_timestamp' | 'malformed_timestamp' | 'stale' | 'future_skew' };
+  | {
+      ok: false;
+      reason: 'missing_id' | 'missing_timestamp' | 'malformed_timestamp' | 'stale' | 'future_skew';
+    };
 
 export interface WebhookEnvelope {
   id?: unknown;
@@ -71,7 +74,10 @@ export function validateWebhookEnvelope(
   now: number = Date.now(),
 ):
   | { ok: true; eventId: string; timestampMs: number }
-  | { ok: false; reason: 'missing_id' | 'missing_timestamp' | 'malformed_timestamp' | 'stale' | 'future_skew' } {
+  | {
+      ok: false;
+      reason: 'missing_id' | 'missing_timestamp' | 'malformed_timestamp' | 'stale' | 'future_skew';
+    } {
   if (typeof envelope.id !== 'string' || envelope.id.length === 0) {
     return { ok: false, reason: 'missing_id' };
   }

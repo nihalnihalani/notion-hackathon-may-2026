@@ -25,12 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
-import {
-  compareToBaseline,
-  readBaseline,
-  writeBaseline,
-  type Baseline,
-} from './baseline.js';
+import { compareToBaseline, readBaseline, writeBaseline, type Baseline } from './baseline.js';
 import { runEvals, validateEvalConfigs, type EvalRunResult } from './runner.js';
 
 interface ParsedArgs {
@@ -160,7 +155,7 @@ function ensureDir(p: string): void {
 }
 
 main().catch((error: unknown) => {
-  const msg = error instanceof Error ? error.stack ?? error.message : String(error);
+  const msg = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`eval-harness CLI failed: ${msg}\n`);
   process.exit(1);
 });

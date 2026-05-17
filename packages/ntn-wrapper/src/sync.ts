@@ -27,10 +27,7 @@ export async function triggerSync(
 }
 
 /** Pause a sync source (idempotent): `ntn workers sync pause <name>`. */
-export async function pauseSync(
-  name: WorkerName,
-  opts: NtnRunOptions = {},
-): Promise<NtnRunResult> {
+export async function pauseSync(name: WorkerName, opts: NtnRunOptions = {}): Promise<NtnRunResult> {
   assertWorkerName(name);
   return runNtn(['workers', 'sync', 'pause', name], opts);
 }
@@ -50,10 +47,7 @@ export async function resumeSync(
  * Returns the cursor + last-run metadata. Used by the recovery UI when
  * cursor corruption is suspected (PLAN.md sharp-edges §III).
  */
-export async function getSyncState(
-  name: WorkerName,
-  opts: NtnRunOptions = {},
-): Promise<SyncState> {
+export async function getSyncState(name: WorkerName, opts: NtnRunOptions = {}): Promise<SyncState> {
   assertWorkerName(name);
   const { data } = await runNtnJson<SyncState>(
     ['workers', 'sync', 'state', 'get', name, '--json'],

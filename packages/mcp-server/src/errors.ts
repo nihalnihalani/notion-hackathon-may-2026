@@ -108,7 +108,9 @@ export function toMcpErrorContent(err: unknown): {
   [key: string]: unknown;
   isError: true;
   content: { type: 'text'; text: string }[];
-  structuredContent: { error: { code: ForgeMcpErrorCode; message: string; metadata: Record<string, unknown> } };
+  structuredContent: {
+    error: { code: ForgeMcpErrorCode; message: string; metadata: Record<string, unknown> };
+  };
 } {
   const wrapped = err instanceof ForgeMcpError ? err : toGenericForgeError(err);
   return {
@@ -135,11 +137,11 @@ export function toMcpErrorContent(err: unknown): {
  * or null.
  */
 function toGenericForgeError(err: unknown): ForgeMcpError {
-  const message =
-    err instanceof Error
-      ? err.message
-      : (typeof err === 'string'
-        ? err
-        : 'Unknown internal error');
+  let message = 'Unknown internal error';
+  if (err instanceof Error) {
+    message = err.message;
+  } else if (typeof err === 'string') {
+    message = err;
+  }
   return new ForgeMcpError('internal_error', message, { cause: err });
 }

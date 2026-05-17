@@ -66,13 +66,16 @@ export async function handleMcpHttpRequest(
   // GET → standalone SSE channel for server-initiated messages. We don't
   // emit any in stateless mode, so 405 is the spec-compliant answer.
   if (method === 'GET') {
-    return new Response('Method Not Allowed: stateless MCP endpoint does not offer a standalone SSE stream', {
-      status: 405,
-      headers: {
-        Allow: 'POST, DELETE',
-        'Content-Type': 'text/plain',
+    return new Response(
+      'Method Not Allowed: stateless MCP endpoint does not offer a standalone SSE stream',
+      {
+        status: 405,
+        headers: {
+          Allow: 'POST, DELETE',
+          'Content-Type': 'text/plain',
+        },
       },
-    });
+    );
   }
 
   // DELETE → session termination. Stateless = no session; respond 405 per spec.
@@ -133,8 +136,8 @@ export async function handleMcpHttpRequest(
   });
 
   // `isRequest` narrows the JSON-RPC union, but the SDK's discriminated union
-   // types don't propagate that narrowing here — re-extract via `extractId`
-   // which already knows how to read the id off any shape.
+  // types don't propagate that narrowing here — re-extract via `extractId`
+  // which already knows how to read the id off any shape.
   const targetId = isRequest ? extractId(body) : null;
 
   // InMemoryTransport exposes callback properties, not EventTarget methods.
@@ -195,15 +198,13 @@ export async function handleMcpHttpRequest(
   const matchId = targetId;
   const response = collected.find((m) => isJsonRpcResponseMatching(m, matchId));
   if (!response) {
-    return jsonRpcInternalError(
-      matchId,
-      'Server completed without producing a JSON-RPC response',
-    );
+    return jsonRpcInternalError(matchId, 'Server completed without producing a JSON-RPC response');
   }
 
   // ── Negotiate response framing: JSON vs SSE ─────────────────────────────
   const accept = (req.headers.get('accept') ?? '').toLowerCase();
-  const acceptsJson = accept.includes('application/json') || accept === '' || accept.includes('*/*');
+  const acceptsJson =
+    accept.includes('application/json') || accept === '' || accept.includes('*/*');
   const acceptsSse = accept.includes('text/event-stream');
 
   if (!acceptsJson && acceptsSse) {
@@ -266,12 +267,19 @@ function jsonRpcInternalError(id: string | number | null, message: string): Resp
 
 function isJsonRpcMessage(value: unknown): value is JSONRPCMessage {
   if (typeof value !== 'object' || value === null) return false;
-  const v = value as { jsonrpc?: unknown; method?: unknown; id?: unknown; result?: unknown; error?: unknown };
+  const v = value as {
+    jsonrpc?: unknown;
+    method?: unknown;
+    id?: unknown;
+    result?: unknown;
+    error?: unknown;
+  };
   if (v.jsonrpc !== '2.0') return false;
   // Either a request (method + id), a notification (method, no id), a
   // response (id + result), or an error response (id + error).
   if (typeof v.method === 'string') return true;
-  if ((typeof v.id === 'string' || typeof v.id === 'number') && ('result' in v || 'error' in v)) return true;
+  if ((typeof v.id === 'string' || typeof v.id === 'number') && ('result' in v || 'error' in v))
+    return true;
   return false;
 }
 

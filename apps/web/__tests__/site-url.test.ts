@@ -11,9 +11,10 @@ import { appUrlBase, resolveAppUrl } from '../lib/site-url';
 const ENV_KEYS = ['NEXT_PUBLIC_APP_URL', 'VERCEL_URL'] as const;
 
 function snapshotEnv() {
-  return Object.fromEntries(
-    ENV_KEYS.map((k) => [k, process.env[k]]),
-  ) as Record<(typeof ENV_KEYS)[number], string | undefined>;
+  return Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]])) as Record<
+    (typeof ENV_KEYS)[number],
+    string | undefined
+  >;
 }
 
 function restoreEnv(snap: Record<string, string | undefined>) {

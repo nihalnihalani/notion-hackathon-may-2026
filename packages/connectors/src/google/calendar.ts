@@ -37,11 +37,7 @@ export interface CalendarClient {
     maxResults?: number,
     opts?: RequestOptions,
   ): Promise<CalendarEvent[]>;
-  getEvent(
-    calendarId: string,
-    id: string,
-    opts?: RequestOptions,
-  ): Promise<CalendarEvent>;
+  getEvent(calendarId: string, id: string, opts?: RequestOptions): Promise<CalendarEvent>;
   createEvent(
     calendarId: string,
     params: CreateCalendarEventParams,

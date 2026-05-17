@@ -57,25 +57,11 @@ export interface CreateLinearIssueParams {
 }
 
 export interface LinearClient {
-  listMyIssues(
-    state?: string,
-    opts?: RequestOptions,
-  ): Promise<LinearIssue[]>;
+  listMyIssues(state?: string, opts?: RequestOptions): Promise<LinearIssue[]>;
   getIssue(id: string, opts?: RequestOptions): Promise<LinearIssue>;
-  createIssue(
-    params: CreateLinearIssueParams,
-    opts?: RequestOptions,
-  ): Promise<LinearIssue>;
-  addIssueComment(
-    id: string,
-    body: string,
-    opts?: RequestOptions,
-  ): Promise<LinearComment>;
-  setIssueStatus(
-    id: string,
-    statusId: string,
-    opts?: RequestOptions,
-  ): Promise<LinearIssue>;
+  createIssue(params: CreateLinearIssueParams, opts?: RequestOptions): Promise<LinearIssue>;
+  addIssueComment(id: string, body: string, opts?: RequestOptions): Promise<LinearComment>;
+  setIssueStatus(id: string, statusId: string, opts?: RequestOptions): Promise<LinearIssue>;
   listProjects(teamId: string, opts?: RequestOptions): Promise<LinearProject[]>;
   getProject(id: string, opts?: RequestOptions): Promise<LinearProject>;
 }
@@ -136,11 +122,7 @@ export function createLinearClient(config: ConnectorConfig): LinearClient {
       const query = `query($filter: IssueFilter) {
         issues(filter: $filter, first: 50) { nodes { ${ISSUE_FIELDS} } }
       }`;
-      const data = await gql<{ issues: { nodes: unknown[] } }>(
-        query,
-        { filter },
-        opts,
-      );
+      const data = await gql<{ issues: { nodes: unknown[] } }>(query, { filter }, opts);
       return maybeValidate(z.array(linearIssueSchema), data.issues.nodes, opts?.validate);
     },
 
@@ -220,11 +202,7 @@ export function createLinearClient(config: ConnectorConfig): LinearClient {
       const query = `query($teamId: String!) {
         team(id: $teamId) { projects { nodes { ${PROJECT_FIELDS} } } }
       }`;
-      const data = await gql<{ team: { projects: { nodes: unknown[] } } }>(
-        query,
-        { teamId },
-        opts,
-      );
+      const data = await gql<{ team: { projects: { nodes: unknown[] } } }>(query, { teamId }, opts);
       return maybeValidate(z.array(linearProjectSchema), data.team.projects.nodes, opts?.validate);
     },
 

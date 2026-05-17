@@ -12,11 +12,7 @@
  * Pure function: no module-level state, no env reads.
  */
 
-import {
-  NotionError,
-  NotionRateLimitError,
-  errorFromNotionStatus,
-} from './errors.js';
+import { NotionError, NotionRateLimitError, errorFromNotionStatus } from './errors.js';
 import {
   DEFAULT_BASE_URL,
   DEFAULT_NOTION_VERSION,
@@ -40,17 +36,13 @@ export interface NotionRequestInit {
 function resolveFetch(config: NotionClientConfig): FetchLike {
   if (config.fetch) return config.fetch;
   if (typeof fetch === 'function') return fetch as FetchLike;
-  throw new NotionError(
-    'No fetch implementation available — pass `fetch` in NotionClientConfig',
-    { status: 0, body: null },
-  );
+  throw new NotionError('No fetch implementation available — pass `fetch` in NotionClientConfig', {
+    status: 0,
+    body: null,
+  });
 }
 
-function buildUrl(
-  base: string,
-  path: string,
-  query?: NotionRequestInit['query'],
-): string {
+function buildUrl(base: string, path: string, query?: NotionRequestInit['query']): string {
   const joined = path.startsWith('http')
     ? path
     : `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
@@ -83,11 +75,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function backoffDelay(
-  attempt: number,
-  opts: RetryOptions,
-  retryAfterSec?: number,
-): number {
+function backoffDelay(attempt: number, opts: RetryOptions, retryAfterSec?: number): number {
   if (retryAfterSec !== undefined && Number.isFinite(retryAfterSec)) {
     return Math.min(retryAfterSec * 1000, opts.maxDelayMs);
   }
@@ -191,10 +179,11 @@ export async function notionRequest<T>(
     try {
       res = await fetchImpl(url, requestInit);
     } catch (error) {
-      lastError = new NotionError(
-        `notion network error: ${(error as Error).message}`,
-        { status: 0, body: null, cause: error },
-      );
+      lastError = new NotionError(`notion network error: ${(error as Error).message}`, {
+        status: 0,
+        body: null,
+        cause: error,
+      });
       if (attempt === retry.retries) throw lastError;
       await delay(backoffDelay(attempt, retry), init.signal);
       continue;
@@ -232,8 +221,5 @@ export async function notionRequest<T>(
     await delay(wait, init.signal);
   }
 
-  throw (
-    lastError ??
-    new NotionError('Unknown retry-loop failure', { status: 0, body: null })
-  );
+  throw lastError ?? new NotionError('Unknown retry-loop failure', { status: 0, body: null });
 }

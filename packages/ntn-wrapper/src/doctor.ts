@@ -35,14 +35,9 @@ interface RawDoctorJson {
  * `ok: false`. That matches how the CLI signals "your install is unhealthy"
  * and lets diagnostics surface the failure to the user.
  */
-export async function runDoctor(
-  opts: NtnRunOptions = {},
-): Promise<DoctorReport> {
+export async function runDoctor(opts: NtnRunOptions = {}): Promise<DoctorReport> {
   try {
-    const { data } = await runNtnJson<RawDoctorJson>(
-      ['doctor', '--json'],
-      opts,
-    );
+    const { data } = await runNtnJson<RawDoctorJson>(['doctor', '--json'], opts);
     return normalise(data);
   } catch (error) {
     // Older CLI versions may exit non-zero with `--json` if the install is
@@ -81,9 +76,7 @@ function normalise(raw: RawDoctorJson): DoctorReport {
     };
   });
 
-  const ok =
-    raw.ok ??
-    (checks.length > 0 ? checks.every((c) => c.ok) : false);
+  const ok = raw.ok ?? (checks.length > 0 ? checks.every((c) => c.ok) : false);
 
   const loggedIn = raw.loggedIn ?? raw.logged_in;
   const cliVersion = raw.cliVersion ?? raw.cli_version ?? raw.version;
@@ -101,9 +94,7 @@ function normalise(raw: RawDoctorJson): DoctorReport {
  * Run `ntn doctor` without `--json` (human-readable). Useful when surfacing
  * the doctor output directly to a user.
  */
-export async function runDoctorRaw(
-  opts: NtnRunOptions = {},
-): Promise<string> {
+export async function runDoctorRaw(opts: NtnRunOptions = {}): Promise<string> {
   const result = await runNtn(['doctor'], opts);
   return result.stdout;
 }

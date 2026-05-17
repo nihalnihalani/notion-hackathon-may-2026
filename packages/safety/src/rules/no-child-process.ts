@@ -4,10 +4,7 @@ import { walk, memberPath, makeViolation } from '../ast-utils.js';
 
 const RULE = 'no-child-process';
 
-const FORBIDDEN_MODULES = new Set([
-  'child_process',
-  'node:child_process',
-]);
+const FORBIDDEN_MODULES = new Set(['child_process', 'node:child_process']);
 
 /**
  * Method paths under `process` that spawn subprocesses. `process.kill` is
@@ -38,20 +35,21 @@ export const noChildProcess: Rule = {
 
     walk(ast, (node) => {
       // 1. Static imports
-      if (node.type === 'ImportDeclaration' && 
-          typeof node.source.value === 'string' &&
-          FORBIDDEN_MODULES.has(node.source.value)
-        ) {
-          violations.push(
-            makeViolation({
-              rule: RULE,
-              severity: 'block',
-              message: `Import of forbidden module '${node.source.value}'`,
-              node,
-              source,
-            }),
-          );
-        }
+      if (
+        node.type === 'ImportDeclaration' &&
+        typeof node.source.value === 'string' &&
+        FORBIDDEN_MODULES.has(node.source.value)
+      ) {
+        violations.push(
+          makeViolation({
+            rule: RULE,
+            severity: 'block',
+            message: `Import of forbidden module '${node.source.value}'`,
+            node,
+            source,
+          }),
+        );
+      }
 
       // 2. CJS-style require('child_process') — generated code shouldn't use
       // CJS, but bias strict.

@@ -108,16 +108,10 @@ export const forgeDiagnoseFailureArgsShape = {
   hypothesis: z
     .string()
     .optional()
-    .describe(
-      'Optional starting hypothesis. Example: "The Notion API returned 429s".',
-    ),
+    .describe('Optional starting hypothesis. Example: "The Notion API returned 429s".'),
 } as const;
-export const forgeDiagnoseFailureArgsSchema = z.object(
-  forgeDiagnoseFailureArgsShape,
-);
-export type ForgeDiagnoseFailureArgs = z.infer<
-  typeof forgeDiagnoseFailureArgsSchema
->;
+export const forgeDiagnoseFailureArgsSchema = z.object(forgeDiagnoseFailureArgsShape);
+export type ForgeDiagnoseFailureArgs = z.infer<typeof forgeDiagnoseFailureArgsSchema>;
 
 const DIAGNOSE_PROMPT_DESCRIPTION =
   'Walk through a failed generation step-by-step and surface the likely root cause.';

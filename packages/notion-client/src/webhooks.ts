@@ -45,10 +45,7 @@ export interface VerifyWebhookResult {
 const DEFAULT_HEADER_NAME = 'x-notion-signature';
 const SIG_PREFIX = 'sha256=';
 
-function getHeader(
-  headers: Record<string, string> | Headers,
-  name: string,
-): string | undefined {
+function getHeader(headers: Record<string, string> | Headers, name: string): string | undefined {
   if (headers instanceof Headers) {
     return headers.get(name) ?? undefined;
   }

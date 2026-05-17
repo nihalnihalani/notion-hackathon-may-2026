@@ -53,9 +53,7 @@ interface ToolSuccess<T> {
   structuredContent: T & Record<string, unknown>;
 }
 
-type ToolResult<T> =
-  | ToolSuccess<T>
-  | ReturnType<typeof toMcpErrorContent>;
+type ToolResult<T> = ToolSuccess<T> | ReturnType<typeof toMcpErrorContent>;
 
 function ok<T>(structured: T, summary: string): ToolSuccess<T> {
   return {
@@ -194,9 +192,7 @@ export async function listMyAgents(
   args: ListMyAgentsInput,
   context: ForgeMcpContext,
   config: ForgeMcpConfig,
-): Promise<
-  ToolResult<{ agents: readonly GeneratedAgentView[]; total: number }>
-> {
+): Promise<ToolResult<{ agents: readonly GeneratedAgentView[]; total: number }>> {
   const logger = resolveLogger(config);
   try {
     const rows = await config.listAgents(
@@ -213,8 +209,6 @@ export async function listMyAgents(
       workspaceId: context.workspaceId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return toMcpErrorContent(
-      new AgentListError('Failed to list agents.', { cause: error }),
-    );
+    return toMcpErrorContent(new AgentListError('Failed to list agents.', { cause: error }));
   }
 }

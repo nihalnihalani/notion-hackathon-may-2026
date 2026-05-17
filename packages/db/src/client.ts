@@ -16,14 +16,14 @@
  *   `globalThis.__forge_prisma__` and reuse it across reloads.
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client';
 
 declare global {
   // eslint-disable-next-line no-var
   var __forge_prisma__: PrismaClient | undefined;
 }
 
-const isProd = process.env["NODE_ENV"] === "production";
+const isProd = process.env['NODE_ENV'] === 'production';
 
 /**
  * Build a PrismaClient with PlanetScale-friendly defaults.
@@ -37,17 +37,17 @@ function buildClient(): PrismaClient {
   return new PrismaClient({
     log: isProd
       ? [
-          { emit: "stdout", level: "info" },
-          { emit: "stdout", level: "warn" },
-          { emit: "stdout", level: "error" },
+          { emit: 'stdout', level: 'info' },
+          { emit: 'stdout', level: 'warn' },
+          { emit: 'stdout', level: 'error' },
         ]
       : [
-          { emit: "stdout", level: "query" },
-          { emit: "stdout", level: "info" },
-          { emit: "stdout", level: "warn" },
-          { emit: "stdout", level: "error" },
+          { emit: 'stdout', level: 'query' },
+          { emit: 'stdout', level: 'info' },
+          { emit: 'stdout', level: 'warn' },
+          { emit: 'stdout', level: 'error' },
         ],
-    errorFormat: isProd ? "minimal" : "pretty",
+    errorFormat: isProd ? 'minimal' : 'pretty',
   });
 }
 
@@ -58,8 +58,7 @@ function buildClient(): PrismaClient {
  * serverless invocation gets its own module instance, so the global guard is a
  * harmless no-op there.
  */
-export const prisma: PrismaClient =
-  globalThis.__forge_prisma__ ?? buildClient();
+export const prisma: PrismaClient = globalThis.__forge_prisma__ ?? buildClient();
 
 if (!isProd) {
   globalThis.__forge_prisma__ = prisma;

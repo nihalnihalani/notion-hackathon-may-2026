@@ -53,9 +53,7 @@ export function createPacer(opts: PacerOptions): Pacer {
   const now = opts.now ?? (() => Date.now());
   // Note: globalThis.setTimeout in Edge / browsers returns a numeric id, in
   // Node it returns a Timer. We don't need the return value here.
-  const schedule =
-    opts.setTimeout ??
-    ((cb: () => void, ms: number): unknown => setTimeout(cb, ms));
+  const schedule = opts.setTimeout ?? ((cb: () => void, ms: number): unknown => setTimeout(cb, ms));
 
   const capacity = opts.allowedRequests;
   let tokens = capacity;
@@ -96,9 +94,7 @@ export function createPacer(opts: PacerOptions): Pacer {
       drainWaiters();
       return;
     }
-    const msUntilToken = Math.ceil(
-      (tokensNeeded * opts.intervalMs) / capacity,
-    );
+    const msUntilToken = Math.ceil((tokensNeeded * opts.intervalMs) / capacity);
     schedule(() => {
       refill();
       drainWaiters();

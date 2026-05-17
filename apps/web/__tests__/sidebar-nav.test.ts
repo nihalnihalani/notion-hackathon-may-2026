@@ -32,9 +32,7 @@ describe('isActiveRoute', () => {
 
   it('treats a strict prefix as active when no more-specific item exists', () => {
     expect(isActiveRoute('/agents/abc123', '/agents', ITEMS)).toBe(true);
-    expect(
-      isActiveRoute('/generations/gen_1/runs/1', '/generations', ITEMS),
-    ).toBe(true);
+    expect(isActiveRoute('/generations/gen_1/runs/1', '/generations', ITEMS)).toBe(true);
   });
 
   it('does not highlight a shorter-prefix item when a longer one matches', () => {

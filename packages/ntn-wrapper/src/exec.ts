@@ -21,12 +21,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 
-import {
-  NtnError,
-  NtnExecError,
-  NtnNotInstalledError,
-  NtnTimeoutError,
-} from './errors';
+import { NtnError, NtnExecError, NtnNotInstalledError, NtnTimeoutError } from './errors';
 import { parseNtnJson } from './parsers';
 import type { NtnLogger, NtnRunOptions, NtnRunResult } from './types';
 
@@ -236,9 +231,7 @@ export async function runNtn(
           durationMs,
         });
         if (err.code === 'ENOENT') {
-          reject(
-            new NtnNotInstalledError({ args, binary, cause: err }),
-          );
+          reject(new NtnNotInstalledError({ args, binary, cause: err }));
           return;
         }
         reject(
@@ -321,10 +314,12 @@ function abortReason(
   if (reason instanceof Error) {
     return reason;
   }
-  return new NtnError(
-    `ntn ${args.join(' ')} was aborted via AbortSignal`,
-    { args, stdout, stderr, cause: reason },
-  );
+  return new NtnError(`ntn ${args.join(' ')} was aborted via AbortSignal`, {
+    args,
+    stdout,
+    stderr,
+    cause: reason,
+  });
 }
 
 /**

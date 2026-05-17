@@ -34,10 +34,7 @@ import {
   getPage,
   NotionNotFoundError,
 } from '@forge/notion-client';
-import type {
-  Logger,
-  NotionClientConfig,
-} from '@forge/notion-client';
+import type { Logger, NotionClientConfig } from '@forge/notion-client';
 
 import {
   buildBuildLogHeading,
@@ -50,10 +47,7 @@ import {
   buildSettingsChildren,
   buildSettingsToggle,
 } from './block-builders.js';
-import {
-  buildForgeRequestsDbSchema,
-  forgeAgentsDbSchema,
-} from './db-schemas.js';
+import { buildForgeRequestsDbSchema, forgeAgentsDbSchema } from './db-schemas.js';
 import { InstallerError } from './errors.js';
 import type {
   InstallOptions,
@@ -126,9 +120,7 @@ export async function installForgePage(
     token: opts.notionToken,
     ...(opts.notion?.fetch ? { fetch: opts.notion.fetch } : {}),
     ...(opts.notion?.baseUrl ? { baseUrl: opts.notion.baseUrl } : {}),
-    ...(opts.notion?.notionVersion
-      ? { notionVersion: opts.notion.notionVersion }
-      : {}),
+    ...(opts.notion?.notionVersion ? { notionVersion: opts.notion.notionVersion } : {}),
     ...(opts.notion?.pacer ? { pacer: opts.notion.pacer } : {}),
   };
 
@@ -161,12 +153,7 @@ export async function installForgePage(
     }
 
     if (pageStillThere) {
-      emit(
-        logger,
-        'precheck-existing-install',
-        'skipped',
-        'forge page already installed; no-op',
-      );
+      emit(logger, 'precheck-existing-install', 'skipped', 'forge page already installed; no-op');
       return {
         pageId: existing.forgePageId,
         requestsDbId: existing.forgeDbId,
@@ -200,8 +187,7 @@ export async function installForgePage(
   // before any Notion API calls so it can be embedded in the trigger URL
   // (callers verify it on the inbound webhook via
   // verifyNotionWebhookSignature in `@forge/notion-client`).
-  const webhookSecret =
-    existing?.webhookSecret ?? generateWorkspaceWebhookSecret();
+  const webhookSecret = existing?.webhookSecret ?? generateWorkspaceWebhookSecret();
 
   const webhookUrl =
     `${opts.appUrl.replace(/\/+$/, '')}/api/webhooks/notion-button` +
@@ -222,9 +208,7 @@ export async function installForgePage(
       // `children` shape in the wire payload accepts our create-shape
       // inputs (no `id`/`created_time`); the NotionBlock union on
       // `CreatePageParams` is the read-shape so we cast through unknown.
-      const children = initial as unknown as Parameters<
-        typeof createPage
-      >[1]['children'];
+      const children = initial as unknown as Parameters<typeof createPage>[1]['children'];
       return createPage(notionConfig, {
         parent: { type: 'page_id', page_id: parentPageId },
         properties: {
@@ -259,23 +243,19 @@ export async function installForgePage(
   // a future re-ordering by always building the Requests schema via
   // `buildForgeRequestsDbSchema(agentsDbId)`.
 
-  const agentsDb = await step(
-    ctx,
-    'create-agents-db',
-    'POST /v1/databases — Forge Agents DB',
-    () =>
-      createDatabase(notionConfig, {
-        parent: { type: 'page_id', page_id: pageId },
-        title: [
-          {
-            type: 'text',
-            text: { content: 'Forge Agents', link: null },
-          },
-        ],
-        properties: forgeAgentsDbSchema,
-        icon: { type: 'emoji', emoji: '🤖' },
-        is_inline: true,
-      }),
+  const agentsDb = await step(ctx, 'create-agents-db', 'POST /v1/databases — Forge Agents DB', () =>
+    createDatabase(notionConfig, {
+      parent: { type: 'page_id', page_id: pageId },
+      title: [
+        {
+          type: 'text',
+          text: { content: 'Forge Agents', link: null },
+        },
+      ],
+      properties: forgeAgentsDbSchema,
+      icon: { type: 'emoji', emoji: '🤖' },
+      is_inline: true,
+    }),
   );
 
   const requestsDb = await step(
@@ -318,17 +298,14 @@ export async function installForgePage(
     ctx,
     'create-button-block',
     'PATCH /v1/blocks/{id}/children — append Forge button (bookmark fallback)',
-    () =>
-      appendBlocks(notionConfig, asBlockId(pageId), [
-        buildForgeButtonBookmark(webhookUrl),
-      ]),
+    () => appendBlocks(notionConfig, asBlockId(pageId), [buildForgeButtonBookmark(webhookUrl)]),
   );
   const buttonBlock = buttonResp.results[0];
   if (!buttonBlock) {
-    throw new InstallerError(
-      'Notion returned no blocks for the button append',
-      { step: 'create-button-block', workspaceId: opts.workspaceId },
-    );
+    throw new InstallerError('Notion returned no blocks for the button append', {
+      step: 'create-button-block',
+      workspaceId: opts.workspaceId,
+    });
   }
 
   // ── Step 6: append the Build Log heading + synced block ────────────────
@@ -359,16 +336,12 @@ export async function installForgePage(
   );
   // The last block of the three is the synced_block / toggle — that's our
   // container ID. Notion returns blocks in the order we sent them.
-  const buildLogContainer =
-    buildLogResp.results.at(-1);
+  const buildLogContainer = buildLogResp.results.at(-1);
   if (!buildLogContainer) {
-    throw new InstallerError(
-      'Notion returned no blocks for the Build Log append',
-      {
-        step: 'create-build-log-block',
-        workspaceId: opts.workspaceId,
-      },
-    );
+    throw new InstallerError('Notion returned no blocks for the Build Log append', {
+      step: 'create-build-log-block',
+      workspaceId: opts.workspaceId,
+    });
   }
 
   // ── Step 7: append the Settings toggle with its bulleted children ──────
@@ -384,28 +357,20 @@ export async function installForgePage(
       const toggleBlock = toggleResp.results.at(-1);
       if (!toggleBlock) return;
       // Append children to the toggle block we just created.
-      await appendBlocks(
-        notionConfig,
-        asBlockId(toggleBlock.id),
-        buildSettingsChildren(),
-      );
+      await appendBlocks(notionConfig, asBlockId(toggleBlock.id), buildSettingsChildren());
     },
   );
 
   // ── Step 8: persist everything on the Workspace row ────────────────────
-  await step(
-    ctx,
-    'persist-workspace-row',
-    'UPDATE Workspace set forge*Id columns',
-    () =>
-      db.updateWorkspaceForgeRecord(opts.workspaceId, {
-        forgePageId: pageId,
-        forgeDbId: requestsDb.id,
-        forgeAgentsDbId: agentsDb.id,
-        forgeButtonBlockId: buttonBlock.id,
-        forgeBuildLogBlockId: buildLogContainer.id,
-        webhookSecret,
-      }),
+  await step(ctx, 'persist-workspace-row', 'UPDATE Workspace set forge*Id columns', () =>
+    db.updateWorkspaceForgeRecord(opts.workspaceId, {
+      forgePageId: pageId,
+      forgeDbId: requestsDb.id,
+      forgeAgentsDbId: agentsDb.id,
+      forgeButtonBlockId: buttonBlock.id,
+      forgeBuildLogBlockId: buildLogContainer.id,
+      webhookSecret,
+    }),
   );
 
   return {
