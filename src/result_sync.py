@@ -12,22 +12,18 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Optional
+from typing import Any, Mapping, Optional
 
 from src.notion_http import NotionHTTPClient
 from src.state_store import StateStore
+from src.warroom_format import extract_bridge_key, parse_handoffs
 
 log = logging.getLogger(__name__)
 
 
 HANDOFFS_NAME = "HANDOFFS.md"
-KEY_RE = re.compile(r"\[(wrb_[0-9a-f]{12})\]")
-FIELD_RE = re.compile(
-    r"^\s*(?:-\s+)?(Task|Owner|Files Touched|Status|Result|Next Action)\s*:\s*(.*)$"
-)
 STATUS_MAP = {
     "PENDING": "Dispatched",
     "IN PROGRESS": "In Progress",
@@ -36,43 +32,6 @@ STATUS_MAP = {
     "FAILED": "Failed",
 }
 MAX_RICH_TEXT_LEN = 1900
-
-
-# ---- Parsing ---------------------------------------------------------------
-
-
-def extract_bridge_key(task_field: str) -> Optional[str]:
-    if not task_field:
-        return None
-    m = KEY_RE.search(task_field)
-    return m.group(1) if m else None
-
-
-def parse_handoffs(text: str) -> Iterator[tuple[str, dict[str, str]]]:
-    """Yield (handoff_key, fields) for each well-formed protocol block."""
-    if not text:
-        return
-    blocks = re.split(r"\n\s*\n+", text)
-    for block in blocks:
-        if not block.strip():
-            continue
-        fields: dict[str, str] = {}
-        last_key: Optional[str] = None
-        for raw_line in block.splitlines():
-            m = FIELD_RE.match(raw_line)
-            if m:
-                last_key = m.group(1)
-                fields[last_key] = m.group(2).strip()
-            elif last_key and raw_line.strip():
-                fields[last_key] = (
-                    fields[last_key] + "\n" + raw_line.strip()
-                ).strip()
-        if "Task" not in fields or "Owner" not in fields or "Status" not in fields:
-            continue
-        key = extract_bridge_key(fields["Task"])
-        if not key:
-            continue
-        yield key, fields
 
 
 # ---- Helpers ---------------------------------------------------------------
