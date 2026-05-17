@@ -1,0 +1,337 @@
+# =============================================================================
+# Forge - Deploy preview (external providers)
+#
+# Manual workflow for maintainers after Vercel + PlanetScale secrets are
+# configured. It validates that the requested PR comes from this repository,
+# re-runs the PR gates, creates/reuses a PlanetScale preview branch, deploys a
+# prebuilt Vercel preview, comments on the PR, and can optionally run
+# Playwright against the live preview URL.
+#
+# Required GitHub secrets:
+#   VERCEL_TOKEN
+#   VERCEL_ORG_ID
+#   VERCEL_PROJECT_ID
+#   PLANETSCALE_SERVICE_TOKEN
+#   PLANETSCALE_SERVICE_TOKEN_ID
+#   PLANETSCALE_ORG
+#   PLANETSCALE_DB
+# =============================================================================
+name: Deploy preview (external)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to deploy'
+        required: true
+        type: string
+      run_e2e:
+        description: 'Run Playwright after Vercel deploy'
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-preview-external-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+env:
+  NODE_VERSION: '20'
+  TURBO_TELEMETRY_DISABLED: '1'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  validate:
+    name: Validate preview request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
+      PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
+      PLANETSCALE_ORG: ${{ secrets.PLANETSCALE_ORG }}
+      PLANETSCALE_DB: ${{ secrets.PLANETSCALE_DB }}
+    steps:
+      - id: pr
+        name: Validate PR and secrets
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in \
+            VERCEL_TOKEN \
+            VERCEL_ORG_ID \
+            VERCEL_PROJECT_ID \
+            PLANETSCALE_SERVICE_TOKEN \
+            PLANETSCALE_SERVICE_TOKEN_ID \
+            PLANETSCALE_ORG \
+            PLANETSCALE_DB; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::Missing required preview deploy secrets: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+          PR_JSON=$(gh pr view "${{ inputs.pr_number }}" \
+            --json headRefName,headRefOid,headRepositoryOwner,headRepository)
+          HEAD_OWNER=$(printf '%s' "${PR_JSON}" | jq -r '.headRepositoryOwner.login')
+          HEAD_REPO=$(printf '%s' "${PR_JSON}" | jq -r '.headRepository.name')
+          HEAD_FULL_NAME="${HEAD_OWNER}/${HEAD_REPO}"
+          if [ "${HEAD_FULL_NAME}" != "${GITHUB_REPOSITORY}" ]; then
+            echo "::error::Refusing to deploy forked PR ${HEAD_FULL_NAME} with repository secrets."
+            exit 1
+          fi
+
+          HEAD_SHA=$(printf '%s' "${PR_JSON}" | jq -r '.headRefOid')
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Lint / format / typecheck / test / build / verify-env
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_PUBLIC_APP_URL: https://forge.example.com
+      ANTHROPIC_API_KEY: sk-ant-fake-ci-stub
+      OPENAI_API_KEY: sk-proj-fake-ci-stub-00000000000000000000
+      OPENAI_ORG_ID: org-fake-ci-stub
+      NOTION_OAUTH_CLIENT_ID: notion-fake-ci-stub
+      NOTION_OAUTH_CLIENT_SECRET: notion-secret-fake-ci-stub
+      NOTION_OAUTH_REDIRECT_URI: https://forge.example.com/api/auth/notion/callback
+      NOTION_WEBHOOK_SECRET: notion-webhook-fake-ci-stub
+      NTN_VERSION: 0.1.x
+      CLERK_SECRET_KEY: sk_test_fake_ci_stub
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_fake_ci_stub
+      CLERK_WEBHOOK_SECRET: whsec_fake_ci_stub
+      CLERK_JWT_KEY: clerk-jwt-fake-ci-stub
+      DATABASE_URL: postgres://user:pass@localhost:5432/forge
+      VERCEL_AI_GATEWAY_API_KEY: gateway-fake-ci-stub
+      VERCEL_BLOB_READ_WRITE_TOKEN: vercel_blob_rw_fake_ci_stub
+      VERCEL_EDGE_CONFIG: https://edge-config.vercel.com/fake_ci_stub
+      SENTRY_DSN: https://fake@o0.ingest.sentry.io/0
+      NEXT_PUBLIC_SENTRY_DSN: https://fake@o0.ingest.sentry.io/0
+      SENTRY_AUTH_TOKEN: sntrys_fake_ci_stub
+      SENTRY_ORG: forge-dev
+      SENTRY_PROJECT: forge-web
+      POSTHOG_KEY: phc_fake_ci_stub
+      NEXT_PUBLIC_POSTHOG_KEY: phc_fake_ci_stub
+      RESEND_API_KEY: re_fake_ci_stub
+      RESEND_FROM_EMAIL: forge@example.com
+      UPSTASH_REDIS_REST_URL: https://fake.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: upstash-fake-ci-stub
+      MINIMAX_API_KEY: minimax-fake-ci-stub
+      MINIMAX_GROUP_ID: minimax-group-fake-ci-stub
+      STRIPE_SECRET_KEY: sk_test_stripe_fake_ci_stub
+      STRIPE_WEBHOOK_SECRET: whsec_stripe_fake_ci_stub
+      FORGE_INTERNAL_TOKEN: ci_stub_token_0000000000000000000000000000000000000000000000
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Cache Turbo
+        uses: actions/cache@v5
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-preview-external-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-preview-external-
+      - run: bash scripts/ci/install.sh
+      - name: Lint / typecheck / test / build / verify-env
+        run: |
+          echo "::group::lint"
+          pnpm lint -- --max-warnings=0
+          echo "::endgroup::"
+          echo "::group::typecheck"
+          pnpm typecheck
+          echo "::endgroup::"
+          echo "::group::test"
+          pnpm test
+          echo "::endgroup::"
+          echo "::group::build"
+          pnpm build
+          echo "::endgroup::"
+          echo "::group::verify-env"
+          pnpm verify:env
+          echo "::endgroup::"
+
+  planetscale-branch:
+    name: PlanetScale preview branch
+    needs: [validate, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      branch_name: ${{ steps.branch.outputs.branch_name }}
+      branch_url: ${{ steps.branch.outputs.branch_url }}
+    env:
+      PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
+      PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
+      PSCALE_ORG: ${{ secrets.PLANETSCALE_ORG }}
+      PSCALE_DB: ${{ secrets.PLANETSCALE_DB }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+      - name: Install pscale CLI
+        uses: planetscale/setup-pscale-action@v1
+      - id: branch
+        name: Create or reuse preview branch
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          BRANCH="preview-pr-${PR_NUMBER}"
+          echo "::group::pscale branch create (idempotent)"
+          if pscale branch show "${PSCALE_DB}" "${BRANCH}" --org "${PSCALE_ORG}" >/dev/null 2>&1; then
+            echo "Branch ${BRANCH} already exists; reusing."
+          else
+            pscale branch create "${PSCALE_DB}" "${BRANCH}" \
+              --from main --org "${PSCALE_ORG}" --wait
+          fi
+          echo "::endgroup::"
+          BRANCH_URL="https://app.planetscale.com/${PSCALE_ORG}/${PSCALE_DB}/${BRANCH}"
+          echo "branch_name=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "branch_url=${BRANCH_URL}" >> "$GITHUB_OUTPUT"
+
+  vercel-preview:
+    name: Vercel preview deploy
+    needs: [validate, verify, planetscale-branch]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: bash scripts/ci/install.sh
+      - name: Install Vercel CLI
+        run: pnpm add -g vercel@latest
+      - name: Pull Vercel env (preview)
+        run: vercel pull --yes --environment=preview --token="${VERCEL_TOKEN}"
+      - name: Build
+        run: vercel build --token="${VERCEL_TOKEN}"
+      - id: deploy
+        name: Deploy prebuilt artifact
+        run: |
+          set -euo pipefail
+          echo "::group::vercel deploy"
+          URL=$(vercel deploy --prebuilt --token="${VERCEL_TOKEN}" \
+            --meta githubCommitSha="${{ needs.validate.outputs.head_sha }}" \
+            --meta githubPrNumber="${{ inputs.pr_number }}")
+          echo "::endgroup::"
+          echo "preview_url=${URL}" >> "$GITHUB_OUTPUT"
+
+  pr-comment:
+    name: Upsert PR comment
+    needs: [validate, planetscale-branch, vercel-preview]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Upsert sticky comment
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          PREVIEW_URL: ${{ needs.vercel-preview.outputs.preview_url }}
+          BRANCH_URL: ${{ needs.planetscale-branch.outputs.branch_url }}
+          HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
+        with:
+          script: |
+            const marker = '<!-- forge-preview -->';
+            const prNumber = Number(process.env.PR_NUMBER);
+            const body = [
+              marker,
+              '### Forge preview is up',
+              '',
+              '| What | Where |',
+              '| --- | --- |',
+              `| Preview deploy | ${process.env.PREVIEW_URL} |`,
+              `| DB branch | ${process.env.BRANCH_URL} |`,
+              `| Commit | \`${process.env.HEAD_SHA}\` |`,
+            ].join('\n');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+  e2e:
+    name: Playwright E2E
+    needs: [validate, vercel-preview]
+    if: ${{ inputs.run_e2e }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PLAYWRIGHT_BASE_URL: ${{ needs.vercel-preview.outputs.preview_url }}
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.head_sha }}
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: bash scripts/ci/install.sh
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run E2E
+        run: pnpm exec playwright test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ inputs.pr_number }}
+          path: playwright-report/
+          retention-days: 14

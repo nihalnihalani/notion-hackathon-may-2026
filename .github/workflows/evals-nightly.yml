@@ -58,11 +58,11 @@ jobs:
       OPENAI_ORG_ID: ${{ secrets.OPENAI_ORG_ID }}
       REGRESSION_THRESHOLD_PCT: ${{ inputs.regression_threshold_pct || '5' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evals-html-report
           path: packages/eval-harness/evals-output/html/
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: always()
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: packages/eval-harness/evals-output/html/
 
@@ -131,7 +131,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   notify:
     name: Slack on regression
