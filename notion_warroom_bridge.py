@@ -30,6 +30,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
 from src.config import build_client, load_config
 from src.dispatch_sync import sync_dispatch
 from src.knowledge_base_sync import sync_knowledge_base
@@ -136,6 +138,11 @@ def main() -> int:
 
     base_dir = Path(__file__).parent.resolve()
     env_file = base_dir / ".env"
+    # `load_config` reads .env into its own dataclass; also push the values
+    # into os.environ so RedisStore (and any other process-env consumer)
+    # picks up REDIS_URL transparently.
+    if env_file.exists():
+        load_dotenv(env_file)
     config = load_config(env_file=env_file if env_file.exists() else None)
 
     notion = build_client(config)
