@@ -7,7 +7,7 @@ This document is the source of truth for everything that happens after `git push
 | Workflow                               | Trigger                         | Purpose                                                                                                                             |
 | -------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `.github/workflows/ci.yml`             | PR + push to `main`, manual     | Lint / changed-file format / typecheck / verify-env / prisma-check / test / safety coverage / evals-dry / build.                    |
-| `.github/workflows/deploy-preview.yml` | PR to `main` (incl. labeled)    | CI-equivalent verify → PlanetScale preview branch → Vercel preview deploy → sticky PR comment → opt-in E2E.                         |
+| `.github/workflows/deploy-preview.yml` | PR to `main` (incl. labeled)    | CI-equivalent verify → optional PlanetScale preview branch → optional Vercel preview deploy → sticky PR comment → opt-in E2E.       |
 | `.github/workflows/deploy-prod.yml`    | push to `main`, manual dispatch | Release-candidate verify → build → prisma migrate deploy → Vercel prod → Sentry release → healthz smoke → optional Slack / issue.   |
 | `.github/workflows/evals-nightly.yml`  | cron `0 3 * * *`, manual        | Real-API Promptfoo sweep → baseline diff → HTML report on Pages → Slack on regression.                                              |
 | `.github/workflows/security.yml`       | PR + push + Monday 09:00 UTC    | `pnpm audit` (high+critical), plus CodeQL JS/TS when the repository is public or GitHub Advanced Security/code scanning is enabled. |
@@ -36,9 +36,13 @@ Set in **Repository Settings → Secrets and variables → Actions**.
 | `OPENAI_ORG_ID`                | evals-nightly        | Optional OpenAI org id.                                                          |
 | `CODECOV_TOKEN`                | ci (safety coverage) | Optional Codecov project upload token. Upload failures do not fail CI.           |
 
-Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered runs.
+Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered verification runs.
+
+`deploy-preview.yml` always runs verification. It only runs the external PlanetScale + Vercel preview deploy path when all preview deploy secrets are configured; otherwise the workflow records a skipped-preview summary and stays green after verification. This keeps the PR gate useful while the repository is still missing deploy-provider credentials.
 
 All Node-based jobs install through `scripts/ci/install.sh`, which runs `pnpm install --frozen-lockfile` and then generates the Prisma Client for `@forge/db`. Use that script instead of a raw `pnpm install` step in new workflows so fresh GitHub runners match local builds.
+
+Workflows set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` so GitHub-hosted runners exercise the upcoming Node 24 action runtime now, while the project itself continues to build and test on `NODE_VERSION=20`.
 
 The repository is currently private, so `security.yml` skips CodeQL unless the repo is made public or GitHub Advanced Security/code scanning is enabled. `ci.yml` intentionally checks Prettier only on changed files because the current tree still has historical formatting drift outside this branch; use a dedicated repo-wide formatting PR when you want to flip `pnpm format:check` back on globally.
 

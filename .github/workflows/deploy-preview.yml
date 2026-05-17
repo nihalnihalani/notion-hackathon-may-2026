@@ -1,21 +1,21 @@
 # =============================================================================
 # Forge — Deploy (preview)
 #
-# Runs on every pull request targeting main. This workflow owns the *full*
-# preview path: it lints + checks changed-file formatting + typechecks + tests
-# + verify-envs + builds the PR, then deploys the resulting build to Vercel as
-# a preview, branches the
-# PlanetScale prod schema into a per-PR DB branch, posts the preview URL
-# and DB branch as a sticky comment on the PR, and (when the PR carries the
-# `e2e` label) runs the Playwright happy-path suite against the live
-# preview URL.
+# Runs on every pull request targeting main. This workflow always lints +
+# checks changed-file formatting + typechecks + tests + verify-envs + builds
+# the PR. When preview-provider secrets are configured, it then branches the
+# PlanetScale prod schema into a per-PR DB branch, deploys the resulting build
+# to Vercel as a preview, posts the preview URL and DB branch as a sticky PR
+# comment, and (when the PR carries the `e2e` label) runs the Playwright
+# happy-path suite against the live preview URL.
 #
 # The Vercel GitHub integration can also auto-build previews, but we drive
 # it from CI so the deploy is gated on CI-equivalent checks passing first —
 # no green check, no preview URL.
 #
-# Required GitHub secrets (Repository Settings → Secrets and variables →
-# Actions):
+# Preview deploy GitHub secrets (Repository Settings -> Secrets and variables
+# -> Actions). The verify job always runs; external preview deployment is
+# skipped unless every secret below is configured:
 #   VERCEL_TOKEN              Personal/Service token for the Vercel CLI
 #   VERCEL_ORG_ID             Vercel team / org id (`vercel link` writes it)
 #   VERCEL_PROJECT_ID         Forge project id in Vercel
@@ -44,6 +44,7 @@ permissions:
 env:
   NODE_VERSION: '20'
   TURBO_TELEMETRY_DISABLED: '1'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -134,14 +135,67 @@ jobs:
           echo "::endgroup::"
 
   # ---------------------------------------------------------------------------
-  # 2. Branch PlanetScale prod into a per-PR DB branch so the preview deploy
+  # 2. Detect whether external preview infrastructure is configured. Pull
+  #    request verification must stay green for repos that have not wired
+  #    PlanetScale/Vercel secrets yet, but once those secrets exist the deploy
+  #    path below becomes a real gate.
+  # ---------------------------------------------------------------------------
+  preview-config:
+    name: Preview deploy config
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
+      PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
+      PLANETSCALE_ORG: ${{ secrets.PLANETSCALE_ORG }}
+      PLANETSCALE_DB: ${{ secrets.PLANETSCALE_DB }}
+    steps:
+      - id: check
+        name: Check preview deploy secrets
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            VERCEL_TOKEN \
+            VERCEL_ORG_ID \
+            VERCEL_PROJECT_ID \
+            PLANETSCALE_SERVICE_TOKEN \
+            PLANETSCALE_SERVICE_TOKEN_ID \
+            PLANETSCALE_ORG \
+            PLANETSCALE_DB; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Preview deploy skipped"
+              echo
+              echo "CI verification still ran. Configure these GitHub Actions secrets to enable the external PlanetScale + Vercel preview path:"
+              printf -- "- \`%s\`\n" "${missing[@]}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "Preview deploy is fully configured." >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # 3. Branch PlanetScale prod into a per-PR DB branch so the preview deploy
   #    talks to its own isolated schema. Idempotent: pscale will exit non-zero
   #    if the branch already exists, which we tolerate.
   # ---------------------------------------------------------------------------
   planetscale-branch:
     name: PlanetScale preview branch
-    needs: verify
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: [verify, preview-config]
+    if: github.event.pull_request.head.repo.full_name == github.repository && needs.preview-config.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -176,13 +230,13 @@ jobs:
           echo "branch_url=${BRANCH_URL}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # 3. Deploy preview to Vercel via CLI. We `vercel build` first so the
+  # 4. Deploy preview to Vercel via CLI. We `vercel build` first so the
   #    artifact uploaded to Vercel is identical to what CI just verified.
   # ---------------------------------------------------------------------------
   vercel-preview:
     name: Vercel preview deploy
-    needs: [verify, planetscale-branch]
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: [verify, preview-config, planetscale-branch]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository && needs.verify.result == 'success' && needs.preview-config.outputs.enabled == 'true' && needs.planetscale-branch.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -219,12 +273,12 @@ jobs:
           echo "preview_url=${URL}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # 4. Sticky PR comment with preview + DB branch URLs.
+  # 5. Sticky PR comment with preview + DB branch URLs.
   # ---------------------------------------------------------------------------
   pr-comment:
     name: Sticky PR comment
-    needs: [planetscale-branch, vercel-preview]
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: [verify, preview-config, planetscale-branch, vercel-preview]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository && needs.verify.result == 'success' && needs.preview-config.outputs.enabled == 'true' && needs.planetscale-branch.result == 'success' && needs.vercel-preview.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -244,13 +298,13 @@ jobs:
             Add the **`e2e`** label to this PR to run the Playwright happy-path suite against the preview URL.
 
   # ---------------------------------------------------------------------------
-  # 5. Playwright E2E — opt-in via the `e2e` label so PRs without UI changes
+  # 6. Playwright E2E — opt-in via the `e2e` label so PRs without UI changes
   #    don't pay the cost.
   # ---------------------------------------------------------------------------
   e2e:
     name: Playwright E2E (opt-in via `e2e` label)
-    needs: vercel-preview
-    if: github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'e2e')
+    needs: [preview-config, vercel-preview]
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository && needs.preview-config.outputs.enabled == 'true' && needs.vercel-preview.result == 'success' && contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
