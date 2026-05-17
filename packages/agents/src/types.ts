@@ -352,17 +352,26 @@ export interface OpenaiClientLike {
  *
  * Field semantics:
  *
- *  - `anthropicApiKey`: required; used to build the default Anthropic client
- *    when `anthropicClient` is not supplied.
+ *  - `primaryProvider`: which provider runs the primary attempt. Defaults to
+ *    `'anthropic'` to match PLAN.md, unless the `FORGE_PRIMARY_PROVIDER` env
+ *    var is set to `'openai'`. Set to `'openai'` for deployments that have
+ *    no Anthropic credits — both the primary and fallback paths route
+ *    through `runWithOpenai` with `primaryModel` and `fallbackModel`.
+ *  - `anthropicApiKey`: optional. Required only when the Anthropic path will
+ *    actually run (i.e. `primaryProvider === 'anthropic'` OR — in the OpenAI
+ *    mode — never, since the Anthropic path is skipped entirely).
  *  - `aiGatewayUrl`: optional Vercel AI Gateway base URL; when set,
  *    `createAnthropicClient` routes through it for multi-model failover + cost
  *    tracking (PLAN.md Part II).
- *  - `openaiApiKey`: required only if the fallback path can be triggered.
- *    Schema Smith degrades to "no fallback" when missing.
- *  - `primaryModel` / `fallbackModel`: model ids. Defaults
- *    (`claude-opus-4-7` + `gpt-5-thinking-mini`) match PLAN.md. Note: the
- *    bare `gpt-5` id is NOT a real OpenAI model — only the reasoning-tier
- *    `gpt-5-thinking*` SKUs ship.
+ *  - `openaiApiKey`: required when the fallback path can be triggered OR when
+ *    `primaryProvider === 'openai'`. Schema Smith degrades to "no fallback"
+ *    when missing in Anthropic mode.
+ *  - `primaryModel` / `fallbackModel`: model ids. Defaults depend on
+ *    `primaryProvider`:
+ *      * `'anthropic'` → `claude-opus-4-7` + `gpt-5-thinking-mini`
+ *      * `'openai'`    → `gpt-5-thinking-mini` + `gpt-4o`
+ *    Note: the bare `gpt-5` id is NOT a real OpenAI model — only the
+ *    reasoning-tier `gpt-5-thinking*` SKUs ship.
  *  - `logger`: structured logger; defaults to {@link noopLogger}.
  *  - `abortSignal`: propagated into every HTTP call so the Workflow can cancel
  *    mid-step.
@@ -370,7 +379,8 @@ export interface OpenaiClientLike {
  *    supplied, the API keys are ignored for that provider.
  */
 export interface SubAgentConfig {
-  anthropicApiKey: string;
+  primaryProvider?: 'anthropic' | 'openai';
+  anthropicApiKey?: string;
   aiGatewayUrl?: string;
   openaiApiKey?: string;
   primaryModel?: string;

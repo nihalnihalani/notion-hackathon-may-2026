@@ -113,8 +113,12 @@ const MAX_OUTPUT_TOKENS = 4096;
 export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput> {
   const startedAt = Date.now();
   const logger = input.config.logger ?? noopLogger;
-  const primaryModel = input.config.primaryModel ?? 'claude-opus-4-7';
-  const fallbackModel = input.config.fallbackModel ?? 'gpt-5-thinking-mini';
+  const primaryProvider = resolvePrimaryProvider(input.config.primaryProvider);
+  const primaryModel =
+    input.config.primaryModel ??
+    (primaryProvider === 'openai' ? 'gpt-5-thinking-mini' : 'claude-opus-4-7');
+  const fallbackModel =
+    input.config.fallbackModel ?? (primaryProvider === 'openai' ? 'gpt-4o' : 'gpt-5-thinking-mini');
 
   const workerName = deriveWorkerName(input.description);
 
@@ -126,8 +130,14 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
     prevErrors: input.prevErrors ?? [],
   });
 
+  // In OpenAI-only mode both attempts go through `runWithOpenai`, just with
+  // different models. Anthropic is skipped entirely so `anthropicApiKey`
+  // being absent is non-fatal.
+  const runPrimary = primaryProvider === 'openai' ? runWithOpenai : runWithAnthropic;
+  const runFallback = runWithOpenai;
+
   try {
-    return await runWithAnthropic({
+    return await runPrimary({
       input,
       systemPrompt,
       userPrompt,
@@ -144,7 +154,7 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
         reason: errReason(error),
       });
       try {
-        return await runWithOpenai({
+        return await runFallback({
           input,
           systemPrompt,
           userPrompt,
@@ -172,6 +182,22 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
       detail: { primaryModel },
     });
   }
+}
+
+/**
+ * Resolve which provider runs the primary attempt. Precedence:
+ *   1. Explicit `config.primaryProvider` if set.
+ *   2. `FORGE_PRIMARY_PROVIDER=openai` env var.
+ *   3. Default: `'anthropic'` (matches PLAN.md).
+ */
+function resolvePrimaryProvider(
+  explicit: SubAgentConfig['primaryProvider'],
+): 'anthropic' | 'openai' {
+  if (explicit !== undefined) return explicit;
+  if (typeof process !== 'undefined' && process.env['FORGE_PRIMARY_PROVIDER'] === 'openai') {
+    return 'openai';
+  }
+  return 'anthropic';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -419,6 +445,13 @@ function tryExtractAndParse(raw: string): ExtractResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildAnthropicClient(config: SubAgentConfig): AnthropicClient {
+  if (!config.anthropicApiKey) {
+    throw new ToolCoderError(
+      'Tool Coder primary path requires anthropicApiKey (or pre-built anthropicClient). ' +
+        'Set primaryProvider: "openai" (or FORGE_PRIMARY_PROVIDER=openai) to skip the Anthropic path entirely.',
+      { detail: { primaryProvider: 'anthropic' } },
+    );
+  }
   return createAnthropicClient({
     apiKey: config.anthropicApiKey,
     ...(config.aiGatewayUrl === undefined ? {} : { gatewayUrl: config.aiGatewayUrl }),
