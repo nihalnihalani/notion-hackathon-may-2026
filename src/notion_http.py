@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 
 NOTION_API_BASE = "https://api.notion.com/v1"
-DEFAULT_NOTION_VERSION = "2022-06-28"
+DEFAULT_NOTION_VERSION = "2025-09-03"
 DEFAULT_MIN_INTERVAL_SECONDS = 0.35
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_BACKOFF_BASE = 0.5
@@ -106,6 +106,29 @@ class NotionHTTPClient:
         """
         if not db_id:
             raise ValueError("db_id is required")
+        return self._paginated_query(f"/databases/{db_id}/query", payload)
+
+    def query_data_source(
+        self,
+        data_source_id: str,
+        payload: Optional[Mapping[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """POST /v1/data_sources/{id}/query for the 2025-09-03 API.
+
+        Same pagination contract as `query_database`. Use this when the
+        bridge has a real data source id (preferred for `2025-09-03`).
+        """
+        if not data_source_id:
+            raise ValueError("data_source_id is required")
+        return self._paginated_query(
+            f"/data_sources/{data_source_id}/query", payload
+        )
+
+    def _paginated_query(
+        self,
+        path: str,
+        payload: Optional[Mapping[str, Any]] = None,
+    ) -> dict[str, Any]:
         base_payload: dict[str, Any] = dict(payload or {})
         results: list[Any] = []
         cursor: Optional[str] = base_payload.pop("start_cursor", None)
@@ -113,11 +136,7 @@ class NotionHTTPClient:
             page_payload = dict(base_payload)
             if cursor:
                 page_payload["start_cursor"] = cursor
-            data = self._request(
-                "POST",
-                f"/databases/{db_id}/query",
-                json=page_payload,
-            )
+            data = self._request("POST", path, json=page_payload)
             page_results = data.get("results") or []
             results.extend(page_results)
             if not data.get("has_more"):

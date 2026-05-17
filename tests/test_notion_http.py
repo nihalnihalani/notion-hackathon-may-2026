@@ -90,9 +90,9 @@ def _make_client(
 def test_session_headers_include_version_and_auth():
     client, session, _ = _make_client(responses=[])
     assert client.notion_version == DEFAULT_NOTION_VERSION
-    assert DEFAULT_NOTION_VERSION == "2022-06-28"
+    assert DEFAULT_NOTION_VERSION == "2025-09-03"
     assert session.headers["Authorization"] == "Bearer ntn_test"
-    assert session.headers["Notion-Version"] == "2022-06-28"
+    assert session.headers["Notion-Version"] == "2025-09-03"
     assert session.headers["Content-Type"] == "application/json"
 
 

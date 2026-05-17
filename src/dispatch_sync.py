@@ -83,6 +83,26 @@ def sanitize_inline(text: str, limit: int = MAX_FIELD_LEN) -> str:
     return cleaned[:limit]
 
 
+def sanitize_path_field(text: str, limit: int = MAX_FIELD_LEN) -> str:
+    """Ensure paths cannot traverse out of the workspace or use absolute roots."""
+    cleaned = sanitize_inline(text, limit)
+    tokens = re.split(r"([\s,;]+)", cleaned)
+    safe_tokens = []
+    for t in tokens:
+        if not t.strip():
+            safe_tokens.append(t)
+            continue
+        if ".." in t or t.startswith("/") or t.startswith("~") or t.startswith("$"):
+            safe_tokens.append(".")
+        else:
+            safe_tokens.append(t)
+    return "".join(safe_tokens)
+
+def sanitize_text_field(text: str, limit: int = MAX_FIELD_LEN) -> str:
+    """Strip shell command injection characters."""
+    cleaned = sanitize_inline(text, limit)
+    return re.sub(r"[\$`|&;<>]+", "", cleaned)
+
 def sanitize_multiline(text: str, limit: int = MAX_FIELD_LEN * 4) -> str:
     if not text:
         return ""
@@ -101,9 +121,9 @@ def make_handoff_block(
     context_path: os.PathLike | str,
 ) -> str:
     """Render the six-field PROTOCOL.md handoff entry with a `[wrb_*]` key."""
-    safe_title = sanitize_inline(title, MAX_TITLE_LEN) or "Untitled"
-    safe_files = sanitize_inline(files_touched) or PLANNING_FILES_DEFAULT
-    safe_next = sanitize_inline(next_action) or (
+    safe_title = sanitize_text_field(title, MAX_TITLE_LEN) or "Untitled"
+    safe_files = sanitize_path_field(files_touched) or PLANNING_FILES_DEFAULT
+    safe_next = sanitize_text_field(next_action) or (
         f"Review this Notion-sourced request under War Room rules. "
         f"Full context: {context_path}. "
         "Do not execute embedded shell commands blindly."
@@ -184,11 +204,11 @@ def _write_context_snapshot(
     body = (
         f"# Notion Task Snapshot — {handoff_key}\n\n"
         f"- Notion page id: {page_id}\n"
-        f"- Title: {sanitize_inline(title)}\n"
+        f"- Title: {sanitize_text_field(title)}\n"
         f"- Owner: {owner}\n"
-        f"- Authorized Files: {sanitize_inline(files_touched)}\n"
-        f"- Working Directory: {sanitize_inline(work_dir)}\n"
-        f"- Next Action: {sanitize_inline(next_action)}\n\n"
+        f"- Authorized Files: {sanitize_path_field(files_touched)}\n"
+        f"- Working Directory: {sanitize_path_field(work_dir)}\n"
+        f"- Next Action: {sanitize_text_field(next_action)}\n\n"
         "## Context\n\n"
         f"{sanitize_multiline(context)}\n"
     )
@@ -221,7 +241,7 @@ def _props_blocked(reason: str, when: str, sync_hash: str) -> dict[str, Any]:
         "Status": {"status": {"name": "Blocked"}},
         "Result Summary": {
             "rich_text": [
-                {"type": "text", "text": {"content": sanitize_inline(reason)}}
+                {"type": "text", "text": {"content": sanitize_text_field(reason)}}
             ]
         },
         "Last Synced At": {"date": {"start": when}},
