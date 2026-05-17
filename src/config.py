@@ -124,9 +124,11 @@ def build_client(cfg: Config):
             # Fallback logic for normal DBs or Data Sources
             url = f"{self.base_url}/databases/{db_id}/query"
             res = self.session.post(url, json=payload)
-            if res.status_code == 404:
+            if res.status_code in (404, 400):
                 url = f"{self.base_url}/data_sources/{db_id}/query"
-                res = self.session.post(url, json=payload)
+                res_ds = self.session.post(url, json=payload)
+                if res_ds.status_code == 200:
+                    res = res_ds
             res.raise_for_status()
             return res.json()
             
