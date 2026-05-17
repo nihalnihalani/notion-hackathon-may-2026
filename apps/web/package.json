@@ -16,6 +16,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.3.5",
     "@forge/agents": "workspace:*",
+    "@forge/connectors": "workspace:*",
     "@forge/db": "workspace:*",
     "@forge/installer": "workspace:*",
     "@forge/mcp-server": "workspace:*",

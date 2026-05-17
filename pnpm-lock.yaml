@@ -53,6 +53,9 @@ importers:
       '@forge/agents':
         specifier: workspace:*
         version: link:../../packages/agents
+      '@forge/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@forge/db':
         specifier: workspace:*
         version: link:../../packages/db
