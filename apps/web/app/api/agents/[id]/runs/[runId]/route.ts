@@ -56,26 +56,24 @@ export const GET = withSentry<{ id: string; runId: string }>(
       ]);
       logsResult = logs;
       runMeta = runs.find((r) => r.id === runId);
-    } catch (err) {
-      if (err instanceof NtnNotInstalledError) {
-        Sentry.captureException(err, {
+    } catch (error) {
+      if (error instanceof NtnNotInstalledError) {
+        Sentry.captureException(error, {
           tags: { phase: 'ntn.getRunLogs', ntnWorkerName: agent.ntnWorkerName },
         });
         return apiError('upstream_failure', 'ntn CLI not available.');
       }
-      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
       if (message.includes('not found') || message.includes('404')) {
         return apiError('not_found', `Run ${runId} not found.`);
       }
-      Sentry.captureException(err, {
+      Sentry.captureException(error, {
         tags: { phase: 'ntn.getRunLogs', ntnWorkerName: agent.ntnWorkerName },
       });
       return apiError('upstream_failure', 'ntn getRunLogs failed.');
     }
 
-    const rawExit = runMeta
-      ? (runMeta as { exitCode?: unknown }).exitCode
-      : undefined;
+    const rawExit = runMeta ? (runMeta as { exitCode?: unknown }).exitCode : undefined;
     const exitCode = typeof rawExit === 'number' ? rawExit : null;
 
     return NextResponse.json({
@@ -85,10 +83,7 @@ export const GET = withSentry<{ id: string; runId: string }>(
       exitCode,
       status: runMeta?.status ?? null,
       startedAt: runMeta?.startedAt ?? null,
-      durationMs:
-        runMeta && typeof runMeta.durationMs === 'number'
-          ? runMeta.durationMs
-          : null,
+      durationMs: runMeta && typeof runMeta.durationMs === 'number' ? runMeta.durationMs : null,
     });
   },
   { routeName: 'agents.runs.logs' },

@@ -68,9 +68,9 @@ export function validateWorkerName(name: string): boolean {
 /** Strip diacritics + collapse non-alphanumeric runs into hyphens. */
 function slugify(input: string): string {
   // Remove combining marks left over from NFKD normalization.
-  const stripped = input.replace(/\p{M}+/gu, '');
+  const stripped = input.replaceAll(/\p{M}+/gu, '');
   // Map any non-[a-z0-9] run to a single hyphen.
-  const collapsed = stripped.replace(/[^a-z0-9]+/gu, '-');
+  const collapsed = stripped.replaceAll(/[^a-z0-9]+/gu, '-');
   // Trim leading/trailing hyphens — those would break NAME_PATTERN.
-  return collapsed.replace(/^-+|-+$/gu, '');
+  return collapsed.replaceAll(/^-+|-+$/gu, '');
 }

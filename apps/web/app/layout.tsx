@@ -7,6 +7,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next';
 import { PostHogProvider } from '@/components/posthog-provider';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
+import { appUrlBase, resolveAppUrl } from '@/lib/site-url';
 import './globals.css';
 
 // Sentry's client SDK is loaded automatically by Next.js from
@@ -15,22 +16,51 @@ import './globals.css';
 // comment exists so future contributors know where to look when they want
 // to find the init site.
 
-// Resolve the canonical origin from env. If NEXT_PUBLIC_APP_URL is missing we
-// intentionally leave `metadataBase` undefined so Next.js falls back to relative
-// URLs (rather than baking a wrong "forge.dev" origin into every preview
-// deployment's OpenGraph tags).
-const appUrl = process.env['NEXT_PUBLIC_APP_URL'];
+const SITE_TITLE = 'Forge — Notion Custom Agent Studio';
+const SITE_DESCRIPTION =
+  'Describe an agent in plain English. Forge ships a real, deployed Notion Custom Agent in 90 seconds.';
+const SITE_NAME = 'Forge';
+
+// Canonical origin (NEXT_PUBLIC_APP_URL or fallback). The OG image route is
+// auto-discovered by Next.js as `/opengraph-image` — listing it explicitly
+// keeps the resolved absolute URL deterministic across all platforms.
+const METADATA_BASE = appUrlBase();
+const CANONICAL_URL = resolveAppUrl();
 
 export const metadata: Metadata = {
-  title: 'Forge — Notion Custom Agent Studio',
-  description:
-    'Describe an agent in plain English. Forge ships a real, deployed Notion Custom Agent in 90 seconds.',
-  metadataBase: appUrl ? new URL(appUrl) : undefined,
+  metadataBase: METADATA_BASE,
+  title: {
+    default: SITE_TITLE,
+    template: '%s · Forge',
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  alternates: { canonical: '/' },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+  },
   openGraph: {
-    title: 'Forge — Notion Custom Agent Studio',
-    description:
-      'Describe an agent in plain English. Forge ships a real, deployed Notion Custom Agent in 90 seconds.',
     type: 'website',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: CANONICAL_URL,
+    siteName: SITE_NAME,
+    images: [
+      {
+        url: '/opengraph-image',
+        width: 1200,
+        height: 630,
+        alt: SITE_TITLE,
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ['/twitter-image'],
   },
 };
 

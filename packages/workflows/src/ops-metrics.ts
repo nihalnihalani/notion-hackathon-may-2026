@@ -192,7 +192,7 @@ export function createOpsMetricsAdapterFromEnv(
 
   const notionVersion = env.get('FORGE_OPS_NOTION_VERSION');
 
-  const overrideEntries: Array<[keyof OpsMetricsPropertyNames, string]> = [];
+  const overrideEntries: [keyof OpsMetricsPropertyNames, string][] = [];
   const titleOverride = env.get('FORGE_OPS_PROPERTY_TITLE');
   if (titleOverride !== undefined) overrideEntries.push(['title', titleOverride]);
   const statusOverride = env.get('FORGE_OPS_PROPERTY_STATUS');
@@ -200,15 +200,13 @@ export function createOpsMetricsAdapterFromEnv(
   const patternOverride = env.get('FORGE_OPS_PROPERTY_PATTERN');
   if (patternOverride !== undefined) overrideEntries.push(['pattern', patternOverride]);
   const workspaceOverride = env.get('FORGE_OPS_PROPERTY_WORKSPACE');
-  if (workspaceOverride !== undefined)
-    overrideEntries.push(['workspace', workspaceOverride]);
+  if (workspaceOverride !== undefined) overrideEntries.push(['workspace', workspaceOverride]);
   const latencyOverride = env.get('FORGE_OPS_PROPERTY_LATENCY_MS');
   if (latencyOverride !== undefined) overrideEntries.push(['latencyMs', latencyOverride]);
   const costOverride = env.get('FORGE_OPS_PROPERTY_COST_USD');
   if (costOverride !== undefined) overrideEntries.push(['costUsd', costOverride]);
   const descriptionOverride = env.get('FORGE_OPS_PROPERTY_DESCRIPTION');
-  if (descriptionOverride !== undefined)
-    overrideEntries.push(['description', descriptionOverride]);
+  if (descriptionOverride !== undefined) overrideEntries.push(['description', descriptionOverride]);
   const errorOverride = env.get('FORGE_OPS_PROPERTY_ERROR');
   if (errorOverride !== undefined) overrideEntries.push(['error', errorOverride]);
   const overrides: Partial<OpsMetricsPropertyNames> = Object.fromEntries(
@@ -267,9 +265,7 @@ export function buildOpsRowProperties(
   }
 
   if (event.errorMessage !== undefined && event.errorMessage.length > 0) {
-    properties[names.error] = richText(
-      truncate(event.errorMessage, MAX_RICH_TEXT_LEN),
-    );
+    properties[names.error] = richText(truncate(event.errorMessage, MAX_RICH_TEXT_LEN));
   }
 
   return properties;

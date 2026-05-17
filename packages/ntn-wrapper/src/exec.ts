@@ -21,12 +21,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 
-import {
-  NtnError,
-  NtnExecError,
-  NtnNotInstalledError,
-  NtnTimeoutError,
-} from './errors';
+import { NtnError, NtnExecError, NtnNotInstalledError, NtnTimeoutError } from './errors';
 import { parseNtnJson } from './parsers';
 import type { NtnLogger, NtnRunOptions, NtnRunResult } from './types';
 
@@ -35,14 +30,18 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10 MiB
 const DEFAULT_MAX_STDERR_BYTES = 1 * 1024 * 1024; // 1 MiB
 /** Grace period between SIGTERM and SIGKILL when killing a runaway child. */
-const KILL_GRACE_MS = 1_500;
+const KILL_GRACE_MS = 1500;
+
+function noopLog(): void {
+  // Intentionally empty default logger.
+}
 
 /** No-op logger used when the caller does not supply one. */
 const NOOP_LOGGER: NtnLogger = {
-  debug: () => undefined,
-  info: () => undefined,
-  warn: () => undefined,
-  error: () => undefined,
+  debug: noopLog,
+  info: noopLog,
+  warn: noopLog,
+  error: noopLog,
 };
 
 /**
@@ -85,12 +84,12 @@ export async function runNtn(
         // Detach=false so signals propagate. windowsHide for cleanliness.
         windowsHide: true,
       });
-    } catch (err) {
+    } catch (error) {
       // Synchronous spawn errors (e.g. invalid args) are rare; treat as exec error.
       reject(
         new NtnError('Failed to spawn ntn process', {
           args,
-          cause: err,
+          cause: error,
         }),
       );
       return;
@@ -179,9 +178,9 @@ export async function runNtn(
             /* already dead */
           }
         }, KILL_GRACE_MS);
-        killTimeoutHandle.unref?.();
+        killTimeoutHandle.unref();
       }, timeoutMs);
-      timeoutHandle.unref?.();
+      timeoutHandle.unref();
     }
 
     // ---------------- AbortSignal ----------------
@@ -201,7 +200,7 @@ export async function runNtn(
           /* already dead */
         }
       }, KILL_GRACE_MS);
-      escalate.unref?.();
+      escalate.unref();
     };
 
     if (opts.signal) {
@@ -232,9 +231,7 @@ export async function runNtn(
           durationMs,
         });
         if (err.code === 'ENOENT') {
-          reject(
-            new NtnNotInstalledError({ args, binary, cause: err }),
-          );
+          reject(new NtnNotInstalledError({ args, binary, cause: err }));
           return;
         }
         reject(
@@ -317,10 +314,12 @@ function abortReason(
   if (reason instanceof Error) {
     return reason;
   }
-  return new NtnError(
-    `ntn ${args.join(' ')} was aborted via AbortSignal`,
-    { args, stdout, stderr, cause: reason },
-  );
+  return new NtnError(`ntn ${args.join(' ')} was aborted via AbortSignal`, {
+    args,
+    stdout,
+    stderr,
+    cause: reason,
+  });
 }
 
 /**
@@ -328,6 +327,8 @@ function abortReason(
  * and surface parse failures as `NtnJsonParseError`. Used by `--json`-aware
  * wrappers (workers list, capabilities, runs, doctor, webhooks, ...).
  */
+// Generic T is the typed wrapper contract for callers that validate by command.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export async function runNtnJson<T>(
   args: readonly string[],
   opts: NtnRunOptions = {},

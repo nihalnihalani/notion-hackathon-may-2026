@@ -23,13 +23,12 @@ export default function AuthedError({
   React.useEffect(() => {
     // Sentry capture happens automatically via `@sentry/nextjs`; this is a
     // defensive console line for dev visibility.
-    if (process.env['NODE_ENV'] !== 'production') {
-      // eslint-disable-next-line no-console
-      console.error('[authed/error] ', error);
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[authed/error]', error);
     }
   }, [error]);
 
-  const showDetail = process.env['NODE_ENV'] !== 'production';
+  const showDetail = process.env.NODE_ENV !== 'production';
 
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-4 rounded-xl border border-destructive/30 bg-destructive/5 px-8 py-12 text-center">
@@ -39,8 +38,8 @@ export default function AuthedError({
       <div className="space-y-1">
         <h2 className="text-lg font-semibold">Something broke.</h2>
         <p className="text-sm text-muted-foreground">
-          We&apos;ve been notified. Try again in a moment — if it keeps
-          failing, ping the Forge team.
+          We&apos;ve been notified. Try again in a moment — if it keeps failing, ping the Forge
+          team.
         </p>
         {showDetail ? (
           <pre className="mt-3 max-h-40 overflow-auto rounded border border-border bg-background p-3 text-left font-mono text-xs">

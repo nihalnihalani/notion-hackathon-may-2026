@@ -11,17 +11,8 @@
  * Pure function: no module-level state, no env reads.
  */
 
-import {
-  errorFromStatus,
-  ConnectorError,
-  RateLimitError,
-} from './errors.js';
-import {
-  type ConnectorConfig,
-  type FetchLike,
-  type RetryOptions,
-  DEFAULT_RETRY,
-} from './types.js';
+import { errorFromStatus, ConnectorError, RateLimitError } from './errors.js';
+import { type ConnectorConfig, type FetchLike, type RetryOptions, DEFAULT_RETRY } from './types.js';
 
 export interface MakeRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -55,32 +46,25 @@ export function buildContext(args: {
 }): HttpClientContext {
   const name = args.authHeaderName ?? 'Authorization';
   const value =
-    args.authScheme === 'Raw'
-      ? args.config.apiKey
-      : `${args.authScheme} ${args.config.apiKey}`;
+    args.authScheme === 'Raw' ? args.config.apiKey : `${args.authScheme} ${args.config.apiKey}`;
   return {
     provider: args.provider,
     authHeader: { name, value },
-    ...(args.defaultHeaders === undefined
-      ? {}
-      : { defaultHeaders: args.defaultHeaders }),
+    ...(args.defaultHeaders === undefined ? {} : { defaultHeaders: args.defaultHeaders }),
   };
 }
 
 function resolveFetch(config: ConnectorConfig): FetchLike {
   if (config.fetch) return config.fetch;
   if (typeof fetch === 'function') return fetch as FetchLike;
-  throw new ConnectorError(
-    'No fetch implementation available — pass `fetch` in config',
-    { status: 0, body: null, provider: 'connectors' },
-  );
+  throw new ConnectorError('No fetch implementation available — pass `fetch` in config', {
+    status: 0,
+    body: null,
+    provider: 'connectors',
+  });
 }
 
-function buildUrl(
-  base: string,
-  path: string,
-  query?: MakeRequestOptions['query'],
-): string {
+function buildUrl(base: string, path: string, query?: MakeRequestOptions['query']): string {
   const joined = path.startsWith('http')
     ? path
     : `${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
@@ -113,18 +97,11 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function backoffDelay(
-  attempt: number,
-  opts: RetryOptions,
-  retryAfterSec: number | undefined,
-): number {
+function backoffDelay(attempt: number, opts: RetryOptions, retryAfterSec?: number): number {
   if (retryAfterSec !== undefined && Number.isFinite(retryAfterSec)) {
     return Math.min(retryAfterSec * 1000, opts.maxDelayMs);
   }
-  const base = Math.min(
-    opts.initialDelayMs * 2 ** attempt,
-    opts.maxDelayMs,
-  );
+  const base = Math.min(opts.initialDelayMs * 2 ** attempt, opts.maxDelayMs);
   if (!opts.jitter) return base;
   // Full jitter: random in [0, base]. Avoids retry storms.
   return Math.floor(Math.random() * base);
@@ -183,9 +160,9 @@ export async function makeRequest<T>(
   const retry: RetryOptions = { ...DEFAULT_RETRY, ...retryOverride };
 
   const headers: Record<string, string> = {
-    ...(ctx.defaultHeaders ?? {}),
+    ...ctx.defaultHeaders,
     [ctx.authHeader.name]: ctx.authHeader.value,
-    ...(opts.headers ?? {}),
+    ...opts.headers,
   };
 
   let body: BodyInit | undefined;
@@ -219,14 +196,16 @@ export async function makeRequest<T>(
     let res: Response;
     try {
       res = await fetchImpl(url, init);
-    } catch (cause) {
+    } catch (error) {
       // Network error — treat as retryable up to the limit.
-      lastError = new ConnectorError(
-        `${ctx.provider} network error: ${(cause as Error).message}`,
-        { status: 0, body: null, provider: ctx.provider, cause },
-      );
+      lastError = new ConnectorError(`${ctx.provider} network error: ${(error as Error).message}`, {
+        status: 0,
+        body: null,
+        provider: ctx.provider,
+        cause: error,
+      });
       if (attempt === retry.retries) throw lastError;
-      await delay(backoffDelay(attempt, retry, undefined), opts.signal);
+      await delay(backoffDelay(attempt, retry), opts.signal);
       continue;
     }
 
@@ -253,7 +232,7 @@ export async function makeRequest<T>(
     const wait =
       err instanceof RateLimitError
         ? backoffDelay(attempt, retry, err.retryAfter)
-        : backoffDelay(attempt, retry, undefined);
+        : backoffDelay(attempt, retry);
     await delay(wait, opts.signal);
   }
 

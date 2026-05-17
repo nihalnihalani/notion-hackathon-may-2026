@@ -15,11 +15,7 @@
  * `/api/forge/generations/:id` to see the final state.
  */
 
-import {
-  prisma,
-  recordAuditEvent,
-  updateGenerationStatus,
-} from '@forge/db';
+import { prisma, recordAuditEvent, updateGenerationStatus } from '@forge/db';
 import { cancelInflight } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
@@ -52,8 +48,8 @@ export const POST = withSentry<{ id: string }>(
     // workflow notices on the next step boundary via its abort-signal guard.
     try {
       await cancelInflight(id, 'user');
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'workflow.cancel', generationId: id },
       });
     }
@@ -86,8 +82,8 @@ export const POST = withSentry<{ id: string }>(
         resourceId: id,
         metadata: { reason: 'user' },
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'audit.generation.cancelled' },
       });
     }

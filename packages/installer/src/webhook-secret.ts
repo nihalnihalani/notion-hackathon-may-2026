@@ -23,8 +23,8 @@ const SECRET_BYTES = 32;
 /** Lower-case hex encoder for an arbitrary Uint8Array. */
 function toHex(bytes: Uint8Array): string {
   let out = '';
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i]!.toString(16).padStart(2, '0');
+  for (const byte of bytes) {
+    out += byte.toString(16).padStart(2, '0');
   }
   return out;
 }

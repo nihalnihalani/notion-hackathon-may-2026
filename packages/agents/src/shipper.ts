@@ -83,6 +83,8 @@ import {
   type ToolCoderOutput,
 } from './types.js';
 
+const SANDBOX_CWD = '/forge';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public surface
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,27 +176,25 @@ export interface ShipperResendClient {
  * Returning a single object with `url` + `pathname` matches the documented
  * `PutBlobResult` shape (https://vercel.com/docs/vercel-blob/using-blob-sdk).
  */
-export interface VercelBlobPutFn {
-  (
-    pathname: string,
-    body: string | ArrayBuffer | Uint8Array | Blob | ReadableStream,
-    options: {
-      access: 'public' | 'private';
-      token: string;
-      contentType?: string;
-      addRandomSuffix?: boolean;
-      cacheControlMaxAge?: number;
-      allowOverwrite?: boolean;
-      abortSignal?: AbortSignal;
-    },
-  ): Promise<{
-    url: string;
-    pathname: string;
+export type VercelBlobPutFn = (
+  pathname: string,
+  body: string | ArrayBuffer | Uint8Array | Blob | ReadableStream,
+  options: {
+    access: 'public' | 'private';
+    token: string;
     contentType?: string;
-    contentDisposition?: string;
-    downloadUrl?: string;
-  }>;
-}
+    addRandomSuffix?: boolean;
+    cacheControlMaxAge?: number;
+    allowOverwrite?: boolean;
+    abortSignal?: AbortSignal;
+  },
+) => Promise<{
+  url: string;
+  pathname: string;
+  contentType?: string;
+  contentDisposition?: string;
+  downloadUrl?: string;
+}>;
 
 /**
  * MiniMax client config for avatar generation. Only required when the caller
@@ -340,10 +340,7 @@ interface DbHelpers {
     resourceId: string;
     metadata: { ntnWorkerName: string; pattern: string; generationId: string };
   }) => Promise<void>;
-  recordUsage: (
-    workspaceId: string,
-    fields: { deploysCount?: number },
-  ) => Promise<void>;
+  recordUsage: (workspaceId: string, fields: { deploysCount?: number }) => Promise<void>;
 }
 
 /**
@@ -367,20 +364,20 @@ async function loadDbHelpers(
     return {
       recordAuditEvent:
         override?.recordAuditEvent ??
-        (mod.recordAuditEvent ??
-          (async () => {
-            /* no-op */
-          })),
+        mod.recordAuditEvent ??
+        (async () => {
+          /* no-op */
+        }),
       recordUsage:
         override?.recordUsage ??
-        (mod.recordUsage ??
-          (async () => {
-            /* no-op */
-          })),
+        mod.recordUsage ??
+        (async () => {
+          /* no-op */
+        }),
     };
-  } catch (cause) {
+  } catch (error) {
     logger.error('shipper.db_helpers.load_failed', {
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return {
       recordAuditEvent: async () => {
@@ -411,17 +408,17 @@ async function resolveBlobPut(config: ShipperSubAgentConfig): Promise<VercelBlob
     // installed yet (the brief forbids running pnpm install). The dynamic
     // string + `as any` keeps tsc from following the (potentially missing)
     // module resolution path.
-    const mod = (await import(
-      /* @vite-ignore */ '@vercel/blob' as string
-    )) as { put?: VercelBlobPutFn };
+    const mod = (await import(/* @vite-ignore */ '@vercel/blob' as string)) as {
+      put?: VercelBlobPutFn;
+    };
     if (typeof mod.put !== 'function') {
-      throw new Error('`@vercel/blob` resolved but does not export `put`');
+      throw new TypeError('`@vercel/blob` resolved but does not export `put`');
     }
     return mod.put;
-  } catch (cause) {
+  } catch (error) {
     throw new ShipperError(
       'Shipper could not load @vercel/blob — install the package or pass config.vercelBlob.put explicitly.',
-      { cause, detail: { step: 'blob_resolve' } },
+      { cause: error, detail: { step: 'blob_resolve' } },
     );
   }
 }
@@ -443,10 +440,11 @@ async function resolveMinimaxFactory(
       }) => Promise<{ data?: { image_urls?: string[] } }>;
     };
   };
-  if (typeof mod.createMinimaxClient !== 'function') {
-    throw new Error('@forge/connectors/minimax does not export createMinimaxClient');
+  const { createMinimaxClient } = mod;
+  if (typeof createMinimaxClient !== 'function') {
+    throw new TypeError('@forge/connectors/minimax does not export createMinimaxClient');
   }
-  return (cfg) => mod.createMinimaxClient!({ apiKey: cfg.apiKey });
+  return (cfg) => createMinimaxClient({ apiKey: cfg.apiKey });
 }
 
 /**
@@ -460,9 +458,9 @@ async function bestEffort<T>(
 ): Promise<T | undefined> {
   try {
     return await op();
-  } catch (cause) {
+  } catch (error) {
     logger.error(`shipper.best-effort.failed: ${description}`, {
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return undefined;
   }
@@ -514,6 +512,7 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
   try {
     const deployResult = await deployWorker(workerName, {
       dryRun: false,
+      cwd: SANDBOX_CWD,
       ...(config.abortSignal === undefined ? {} : { signal: config.abortSignal }),
     });
     if (deployResult.deployUrl === undefined || deployResult.deployUrl.length === 0) {
@@ -525,9 +524,9 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
     } else {
       deployUrl = deployResult.deployUrl;
     }
-  } catch (cause) {
+  } catch (error) {
     throw new ShipperError(`Shipper failed at final deploy for worker "${workerName}"`, {
-      cause,
+      cause: error,
       detail: { step: 'final_deploy', workerName },
     });
   }
@@ -539,9 +538,9 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
     capabilities = await listCapabilities(workerName, {
       ...(config.abortSignal === undefined ? {} : { signal: config.abortSignal }),
     });
-  } catch (cause) {
+  } catch (error) {
     throw new ShipperError(`Shipper failed at capability discovery for "${workerName}"`, {
-      cause,
+      cause: error,
       detail: { step: 'discover_capabilities', workerName },
     });
   }
@@ -577,11 +576,11 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
         if (oauthRedirectUrl === undefined && oauth.redirectUrl !== undefined) {
           oauthRedirectUrl = oauth.redirectUrl;
         }
-      } catch (cause) {
-        throw new ShipperError(
-          `Shipper failed at OAuth bootstrap for provider "${provider}"`,
-          { cause, detail: { step: 'oauth_bootstrap', provider } },
-        );
+      } catch (error) {
+        throw new ShipperError(`Shipper failed at OAuth bootstrap for provider "${provider}"`, {
+          cause: error,
+          detail: { step: 'oauth_bootstrap', provider },
+        });
       }
     }
   }
@@ -624,9 +623,9 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
       ...(config.abortSignal === undefined ? {} : { abortSignal: config.abortSignal }),
     });
     artifactBlobUrl = putResult.url;
-  } catch (cause) {
+  } catch (error) {
     throw new ShipperError('Shipper failed at Vercel Blob upload', {
-      cause,
+      cause: error,
       detail: { step: 'archive_source', pathname: blobPathname },
     });
   }
@@ -665,10 +664,10 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
       } else {
         logger.error('shipper.avatar.empty', { workerName });
       }
-    } catch (cause) {
+    } catch (error) {
       logger.error('shipper.avatar.failed', {
         workerName,
-        error: cause instanceof Error ? cause.message : String(cause),
+        error: error instanceof Error ? error.message : String(error),
       });
       // Non-critical: continue without an avatar.
     }
@@ -694,9 +693,9 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
       oauthProviders,
       webhookUrl,
     });
-  } catch (cause) {
+  } catch (error) {
     throw new ShipperError('Shipper failed at GeneratedAgent persistence', {
-      cause,
+      cause: error,
       detail: { step: 'persist', generationId, workspaceId },
     });
   }
@@ -742,8 +741,10 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
   });
 
   // ── Step 12: Email via Resend (optional, best-effort) ───────────────────
-  if (config.resendClient !== undefined) {
-    if (config.emailTo === undefined || config.emailTo.length === 0) {
+  const resendClient = config.resendClient;
+  if (resendClient !== undefined) {
+    const emailTo = config.emailTo;
+    if (emailTo === undefined || emailTo.length === 0) {
       logger.error('shipper.email.skipped_no_recipient', { workerName });
     } else {
       const releaseNotes = formatReleaseNotes({
@@ -755,9 +756,9 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
         sourceLines: input.code.sourceLines,
       });
       await bestEffort('resend_email', logger, () =>
-        config.resendClient!.emails.send({
+        resendClient.emails.send({
           from: config.emailFrom ?? 'Forge <notifications@forge.dev>',
-          to: config.emailTo!,
+          to: emailTo,
           subject: `Your Notion agent "${workerName}" is live`,
           text: releaseNotes,
         }),
@@ -767,6 +768,7 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
 
   // ── Final result ────────────────────────────────────────────────────────
   return {
+    generatedAgentId: persistedAgent.id,
     customAgentId: wireResult.customAgentId,
     deployUrl,
     ntnWorkerName: workerName,
@@ -810,8 +812,8 @@ async function persistGeneratedAgent(args: {
   const capabilitiesJson: unknown = args.capabilities.map((c) => ({
     kind: c.kind,
     key: c.key,
-    ...(c.title !== undefined ? { title: c.title } : {}),
-    ...(c.description !== undefined ? { description: c.description } : {}),
+    ...(c.title === undefined ? {} : { title: c.title }),
+    ...(c.description === undefined ? {} : { description: c.description }),
   }));
 
   // Use the actual `createGeneratedAgent` repository helper for the create

@@ -36,8 +36,8 @@ export const POST = withSentry<{ id: string }>(
 
     try {
       await pauseSync(agent.ntnWorkerName);
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'ntn.pauseSync', ntnWorkerName: agent.ntnWorkerName },
       });
       return apiError('upstream_failure', 'ntn pauseSync failed.');
@@ -54,8 +54,8 @@ export const POST = withSentry<{ id: string }>(
         resourceId: id,
         metadata: { workerName: agent.ntnWorkerName },
       });
-    } catch (err) {
-      Sentry.captureException(err, { tags: { phase: 'audit.agent.paused' } });
+    } catch (error) {
+      Sentry.captureException(error, { tags: { phase: 'audit.agent.paused' } });
     }
 
     await capture({

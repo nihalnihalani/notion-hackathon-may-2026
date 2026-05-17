@@ -8,8 +8,8 @@
  *     is responsible for translating them to HTTP responses.
  */
 
-import { prisma } from "../client.js";
-import type { Workspace } from "../types.js";
+import { prisma } from '../client.js';
+import type { Workspace } from '../types.js';
 
 /**
  * Idempotently create-or-update a Workspace by `notionWorkspaceId`.
@@ -74,6 +74,6 @@ export async function getForgePageIds(
     select: { forgePageId: true, forgeDbId: true },
   });
 
-  if (!w || !w.forgePageId || !w.forgeDbId) return null;
+  if (!w?.forgePageId || !w.forgeDbId) return null;
   return { forgePageId: w.forgePageId, forgeDbId: w.forgeDbId };
 }

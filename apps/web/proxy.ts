@@ -14,6 +14,7 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
  *   - /api/mcp/*                      → API-key auth (per-workspace MCP key)
  *   - /api/billing/usage              → metered-billing webhook signed by Stripe
  *   - /api/monitoring                 → Sentry tunnel (outbound proxy, DSN-validated)
+ *   - /api/cron/*                     → Vercel-signed cron request (CRON_SECRET bearer)
  *
  * Everything else under /api/* and every page route is protected: an
  * unauthenticated request will be redirected to Clerk's sign-in page (pages)
@@ -37,12 +38,23 @@ const isPublicRoute = createRouteMatcher([
   '/api/mcp(.*)',
   '/api/billing/usage(.*)',
   '/api/monitoring(.*)',
+  // Vercel-signed cron invocations. The cron routes themselves enforce the
+  // `Authorization: Bearer $CRON_SECRET` header — Clerk has no session for
+  // these requests because Vercel signs them, not a user.
+  '/api/cron/(.*)',
   // Clerk's own sign-in/sign-up routes also need to be public so unauthenticated
   // users can actually reach them.
   '/sign-in(.*)',
   '/sign-up(.*)',
   // Marketing landing page — must be reachable for logged-out visitors.
   '/',
+  // Crawler + social-preview surfaces. App Router serves these from
+  // /robots.ts, /sitemap.ts, /opengraph-image.tsx, /twitter-image.tsx —
+  // they are public by definition and must not require a Clerk session.
+  '/robots.txt',
+  '/sitemap.xml',
+  '/opengraph-image(.*)',
+  '/twitter-image(.*)',
 ]);
 
 /**
@@ -56,10 +68,7 @@ const isPublicRoute = createRouteMatcher([
  *   - /api/onboarding/pages    → Notion search proxy used by the picker
  *   - /api/onboarding/install  → installer trigger
  */
-const isAuthedOnboardingRoute = createRouteMatcher([
-  '/onboarding/(.*)',
-  '/api/onboarding/(.*)',
-]);
+const isAuthedOnboardingRoute = createRouteMatcher(['/onboarding/(.*)', '/api/onboarding/(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) {
@@ -79,6 +88,7 @@ export default clerkMiddleware(async (auth, req) => {
 export const config = {
   matcher: [
     // Skip Next.js internals and all static files unless found in search params.
+    // eslint-disable-next-line unicorn/prefer-string-raw -- Next.js statically analyzes matcher values and rejects String.raw.
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
     // Always run for API routes.
     '/(api|trpc)(.*)',

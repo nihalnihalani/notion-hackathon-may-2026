@@ -11,10 +11,7 @@
  * implementation (for tests, instrumentation, or alternate runtimes) while
  * still defaulting to the platform's native `fetch`.
  */
-export type FetchLike = (
-  url: string | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 /**
  * Base config every connector accepts.
@@ -47,7 +44,7 @@ export interface RetryOptions {
 export const DEFAULT_RETRY: RetryOptions = {
   retries: 3,
   initialDelayMs: 250,
-  maxDelayMs: 8_000,
+  maxDelayMs: 8000,
   jitter: true,
 };
 

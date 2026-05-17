@@ -49,6 +49,7 @@ export const DEFAULT_NETWORK_ALLOWLIST: readonly string[] = Object.freeze([
 export const DEFAULT_DEP_ALLOWLIST: readonly string[] = Object.freeze([
   '@notionhq/client',
   '@notion/workers-sdk',
+  '@forge/connectors',
   'zod',
   'date-fns',
 ]);

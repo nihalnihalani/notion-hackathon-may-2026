@@ -31,11 +31,7 @@
  */
 
 import { noopLogger } from '@forge/agents';
-import type {
-  SandboxRunner,
-  SchemaSmithOutput,
-  ToolCoderOutput,
-} from '@forge/agents';
+import type { SandboxRunner, ToolCoderOutput } from '@forge/agents';
 
 import {
   CostBudgetExceededError,
@@ -46,14 +42,8 @@ import {
   InspectorRetryExhaustedError,
   NeedsClarificationError,
 } from '../forge.js';
-import {
-  costExceedsBudget,
-  sumGenerationCost,
-} from '../cost-accounting.js';
-import {
-  checkExistingGeneration,
-  DEFAULT_IDEMPOTENCY_WINDOW_MS,
-} from '../idempotency.js';
+import { costExceedsBudget, sumGenerationCost } from '../cost-accounting.js';
+import { checkExistingGeneration, DEFAULT_IDEMPOTENCY_WINDOW_MS } from '../idempotency.js';
 import {
   discoverContext,
   runInspector,
@@ -61,11 +51,7 @@ import {
   runShipper,
   runToolCoder,
 } from '../step-handlers.js';
-import type {
-  GenerationRequestedEvent,
-  WorkflowConfig,
-  WorkflowSuccess,
-} from '../types.js';
+import type { GenerationRequestedEvent, WorkflowConfig, WorkflowSuccess } from '../types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inngest client interface (structural; the real client comes from `inngest`)
@@ -76,11 +62,11 @@ import type {
  * `inngest` into the type system when the feature flag is off.
  */
 export interface InngestClientLike {
-  createFunction<TArgs extends unknown[]>(
+  createFunction(
     options: InngestFunctionOptions,
     trigger: InngestTrigger | InngestTrigger[],
     handler: (ctx: InngestHandlerContext) => Promise<unknown>,
-    ...rest: TArgs
+    ...rest: unknown[]
   ): unknown;
   send(event: { name: string; data: unknown }): Promise<unknown>;
 }
@@ -301,9 +287,9 @@ async function runForgeOnInngest(args: {
             event.notionRequestRowId,
             schemaResult.output.rationale,
           );
-        } catch (err) {
+        } catch (error) {
           logger.error('inngest.clarification.failed', {
-            err: err instanceof Error ? err.message : String(err),
+            err: error instanceof Error ? error.message : String(error),
           });
         }
       });
@@ -323,44 +309,41 @@ async function runForgeOnInngest(args: {
     let toolCoderAttempt = 1;
     let prevErrors: readonly string[] | undefined;
     let currentCode: ToolCoderOutput | undefined;
-    let lastInspector:
-      | Awaited<ReturnType<typeof runInspector>>
-      | undefined;
+    let lastInspector: Awaited<ReturnType<typeof runInspector>> | undefined;
 
     while (toolCoderAttempt <= 2) {
-      const toolResult = await ctx.step.run(
-        `tool-coder-${toolCoderAttempt}`,
-        async () =>
-          runToolCoder({
-            generationId: event.generationId,
-            description: event.description,
-            schema: schemaResult.output as SchemaSmithOutput,
-            prevErrors,
-            buildLogBlockId: event.buildLogBlockId,
-            attempt: toolCoderAttempt,
-            config,
-          }),
+      const toolResult = await ctx.step.run(`tool-coder-${toolCoderAttempt}`, async () =>
+        runToolCoder({
+          generationId: event.generationId,
+          description: event.description,
+          schema: schemaResult.output,
+          prevErrors,
+          buildLogBlockId: event.buildLogBlockId,
+          attempt: toolCoderAttempt,
+          config,
+        }),
       );
       currentCode = toolResult.output;
       checkBudget(config);
 
-      const inspectorResult = await ctx.step.run(
-        `inspector-${toolCoderAttempt}`,
-        async () => {
-          if (sandbox === undefined) {
-            throw new Error('inngest invariant: sandbox missing before Inspector');
-          }
-          return runInspector({
-            generationId: event.generationId,
-            code: currentCode as ToolCoderOutput,
-            schema: schemaResult.output as SchemaSmithOutput,
-            buildLogBlockId: event.buildLogBlockId,
-            attempt: toolCoderAttempt,
-            config,
-            sandbox,
-          });
-        },
-      );
+      const inspectorResult = await ctx.step.run(`inspector-${toolCoderAttempt}`, async () => {
+        if (sandbox === undefined) {
+          throw new Error('inngest invariant: sandbox missing before Inspector');
+        }
+        const code = currentCode;
+        if (code === undefined) {
+          throw new Error('inngest invariant: code missing before Inspector');
+        }
+        return runInspector({
+          generationId: event.generationId,
+          code,
+          schema: schemaResult.output,
+          buildLogBlockId: event.buildLogBlockId,
+          attempt: toolCoderAttempt,
+          config,
+          sandbox,
+        });
+      });
       lastInspector = inspectorResult;
 
       if (inspectorResult.output.pass) break;
@@ -370,7 +353,7 @@ async function runForgeOnInngest(args: {
       toolCoderAttempt++;
     }
 
-    if (lastInspector === undefined || !lastInspector.output.pass) {
+    if (!lastInspector?.output.pass) {
       throw new InspectorRetryExhaustedError(
         `Inspector failed after 2 Tool Coder attempts`,
         lastInspector?.output.errors ?? [],
@@ -391,8 +374,8 @@ async function runForgeOnInngest(args: {
         workspaceId: event.workspaceId,
         notionWorkspaceId: event.notionWorkspaceId,
         description: event.description,
-        schema: schemaResult.output as SchemaSmithOutput,
-        code: currentCode as ToolCoderOutput,
+        schema: schemaResult.output,
+        code: currentCode,
         buildLogBlockId: event.buildLogBlockId,
         attempt: 1,
         config,
@@ -407,7 +390,7 @@ async function runForgeOnInngest(args: {
       await config.db.updateGenerationStatus(event.generationId, {
         status: 'succeeded',
         pattern: schemaResult.output.pattern,
-        agentId: shipResult.output.customAgentId ?? null,
+        agentId: shipResult.output.generatedAgentId,
         completedAt: new Date(),
         totalLatencyMs,
         totalCostUsd,
@@ -421,6 +404,7 @@ async function runForgeOnInngest(args: {
           pattern: schemaResult.output.pattern,
           deployUrl: shipResult.output.deployUrl,
           customAgentId: shipResult.output.customAgentId,
+          generatedAgentId: shipResult.output.generatedAgentId,
           totalLatencyMs,
         },
       });
@@ -433,9 +417,8 @@ async function runForgeOnInngest(args: {
       return {
         generationId: event.generationId,
         status: 'succeeded' as const,
-        ...(shipResult.output.customAgentId !== null && {
-          agentId: shipResult.output.customAgentId,
-        }),
+        agentId: shipResult.output.generatedAgentId,
+        generatedAgentId: shipResult.output.generatedAgentId,
         customAgentId: shipResult.output.customAgentId,
         deployUrl: shipResult.output.deployUrl,
         totalCostUsd,
@@ -443,54 +426,51 @@ async function runForgeOnInngest(args: {
         cacheHit: false,
       };
     });
-  } catch (err) {
+  } catch (error) {
     // Mark terminal status. The on-cancel function handles the cancellation
     // case independently — if we got here with GenerationCancelledError we
     // still mark cancelled for consistency.
     const totalLatencyMs = Date.now() - startedAt;
     try {
-      if (err instanceof GenerationCancelledError) {
-        await config.db.updateGenerationStatus(event.generationId, {
-          status: 'cancelled',
-          completedAt: new Date(),
-          totalLatencyMs,
-        });
-      } else {
-        await config.db.updateGenerationStatus(event.generationId, {
-          status: 'failed',
-          completedAt: new Date(),
-          totalLatencyMs,
-        });
-      }
-    } catch (writeErr) {
+      await (error instanceof GenerationCancelledError
+        ? config.db.updateGenerationStatus(event.generationId, {
+            status: 'cancelled',
+            completedAt: new Date(),
+            totalLatencyMs,
+          })
+        : config.db.updateGenerationStatus(event.generationId, {
+            status: 'failed',
+            completedAt: new Date(),
+            totalLatencyMs,
+          }));
+    } catch (error_) {
       logger.error('inngest.finalize-failure.write-failed', {
-        err: writeErr instanceof Error ? writeErr.message : String(writeErr),
-        originalErr: err instanceof Error ? err.message : String(err),
+        err: error_ instanceof Error ? error_.message : String(error_),
+        originalErr: error instanceof Error ? error.message : String(error),
       });
     }
     // PostHog
+    const posthogEvent =
+      error instanceof NeedsClarificationError
+        ? 'forge.generation.needs_clarification'
+        : 'forge.generation.failed';
     config.posthog?.capture({
       distinctId: event.userId,
-      event:
-        err instanceof NeedsClarificationError
-          ? 'forge.generation.needs_clarification'
-          : err instanceof CostBudgetExceededError
-            ? 'forge.generation.failed'
-            : 'forge.generation.failed',
+      event: posthogEvent,
       properties: {
         generationId: event.generationId,
-        reason: err instanceof Error ? err.name : 'unknown',
-        message: err instanceof Error ? err.message : String(err),
+        reason: error instanceof Error ? error.name : 'unknown',
+        message: error instanceof Error ? error.message : String(error),
       },
     });
-    throw err;
+    throw error;
   } finally {
     if (sandbox !== undefined) {
       try {
         await sandbox.close();
-      } catch (closeErr) {
+      } catch (error) {
         logger.error('inngest.sandbox.close-failed', {
-          err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+          err: error instanceof Error ? error.message : String(error),
         });
       }
     }

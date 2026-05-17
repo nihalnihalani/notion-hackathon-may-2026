@@ -12,16 +12,8 @@
  */
 
 import { runNtn, runNtnJson } from './exec';
-import {
-  NtnAuthError,
-  NtnExecError,
-  NtnInvalidArgumentError,
-} from './errors';
-import {
-  extractDeployUrl,
-  extractWorkerId,
-  looksLikeAuthFailure,
-} from './parsers';
+import { NtnAuthError, NtnExecError, NtnInvalidArgumentError } from './errors';
+import { extractDeployUrl, extractWorkerId, looksLikeAuthFailure } from './parsers';
 import type {
   DeployResult,
   NtnRunOptions,
@@ -47,9 +39,7 @@ function assertWorkerName(name: string): void {
 
 function assertEnvKey(key: string): void {
   if (!/^[A-Z][A-Z0-9_]*$/u.test(key)) {
-    throw new NtnInvalidArgumentError(
-      `Invalid env var key: "${key}". Must be UPPER_SNAKE_CASE.`,
-    );
+    throw new NtnInvalidArgumentError(`Invalid env var key: "${key}". Must be UPPER_SNAKE_CASE.`);
   }
 }
 
@@ -57,42 +47,36 @@ function assertEnvKey(key: string): void {
  * Run an `ntn workers ...` command and convert auth-failure exit codes into
  * `NtnAuthError`. All other typed errors bubble unchanged.
  */
-async function runWorkerCmd(
-  args: readonly string[],
-  opts: NtnRunOptions,
-): Promise<NtnRunResult> {
+async function runWorkerCmd(args: readonly string[], opts: NtnRunOptions): Promise<NtnRunResult> {
   try {
     return await runNtn(args, opts);
-  } catch (err) {
-    if (err instanceof NtnExecError && looksLikeAuthFailure(err.stderr, err.stdout)) {
+  } catch (error) {
+    if (error instanceof NtnExecError && looksLikeAuthFailure(error.stderr, error.stdout)) {
       throw new NtnAuthError({
-        args: err.args,
-        stderr: err.stderr,
-        stdout: err.stdout,
-        exitCode: err.exitCode,
+        args: error.args,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        exitCode: error.exitCode,
       });
     }
-    throw err;
+    throw error;
   }
 }
 
-async function runWorkerJson<T>(
-  args: readonly string[],
-  opts: NtnRunOptions,
-): Promise<T> {
+async function runWorkerJson<T>(args: readonly string[], opts: NtnRunOptions): Promise<T> {
   try {
     const { data } = await runNtnJson<T>(args, opts);
     return data;
-  } catch (err) {
-    if (err instanceof NtnExecError && looksLikeAuthFailure(err.stderr, err.stdout)) {
+  } catch (error) {
+    if (error instanceof NtnExecError && looksLikeAuthFailure(error.stderr, error.stdout)) {
       throw new NtnAuthError({
-        args: err.args,
-        stderr: err.stderr,
-        stdout: err.stdout,
-        exitCode: err.exitCode,
+        args: error.args,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        exitCode: error.exitCode,
       });
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -137,8 +121,8 @@ export async function deployWorker(
   const workerId = extractWorkerId(result.stdout);
   return {
     workerName: name,
-    ...(workerId !== undefined ? { workerId } : {}),
-    ...(deployUrl !== undefined ? { deployUrl } : {}),
+    ...(workerId === undefined ? {} : { workerId }),
+    ...(deployUrl === undefined ? {} : { deployUrl }),
     dryRun: opts.dryRun === true,
     rawStdout: result.stdout,
   };
@@ -152,6 +136,8 @@ export async function deployWorker(
  * as JSON; if the CLI returns non-JSON output the raw stdout is surfaced as
  * the `raw` field of the typed result.
  */
+// Generic TOut lets generated-agent callers type their expected Worker output.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export async function execWorker<TOut = unknown>(
   name: WorkerName,
   input: unknown,
@@ -161,10 +147,10 @@ export async function execWorker<TOut = unknown>(
   let inputJson: string;
   try {
     inputJson = JSON.stringify(input);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `execWorker input is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }
@@ -185,17 +171,12 @@ export async function execWorker<TOut = unknown>(
 }
 
 /** List deployed workers: `ntn workers list --json`. */
-export async function listWorkers(
-  opts: NtnRunOptions = {},
-): Promise<Worker[]> {
+export async function listWorkers(opts: NtnRunOptions = {}): Promise<Worker[]> {
   return runWorkerJson<Worker[]>(['workers', 'list', '--json'], opts);
 }
 
 /** Get a single worker: `ntn workers get <name> --json`. */
-export async function getWorker(
-  name: WorkerName,
-  opts: NtnRunOptions = {},
-): Promise<Worker> {
+export async function getWorker(name: WorkerName, opts: NtnRunOptions = {}): Promise<Worker> {
   assertWorkerName(name);
   return runWorkerJson<Worker>(['workers', 'get', name, '--json'], opts);
 }
@@ -259,10 +240,7 @@ export async function setEnv(
         `setEnv value for ${key} must be a string, got ${typeof value}.`,
       );
     }
-    await runWorkerCmd(
-      ['workers', 'env', 'set', name, `${key}=${value}`],
-      opts,
-    );
+    await runWorkerCmd(['workers', 'env', 'set', name, `${key}=${value}`], opts);
   }
 }
 
@@ -272,10 +250,7 @@ export async function listEnv(
   opts: NtnRunOptions = {},
 ): Promise<Record<string, string>> {
   assertWorkerName(name);
-  return runWorkerJson<Record<string, string>>(
-    ['workers', 'env', 'list', name, '--json'],
-    opts,
-  );
+  return runWorkerJson<Record<string, string>>(['workers', 'env', 'list', name, '--json'], opts);
 }
 
 /** Unset an env key: `ntn workers env unset <name> <KEY>`. */
@@ -290,10 +265,7 @@ export async function unsetEnv(
 }
 
 /** Pull a worker's env to local `.env`: `ntn workers env pull <name>`. */
-export async function pullEnv(
-  name: WorkerName,
-  opts: NtnRunOptions = {},
-): Promise<NtnRunResult> {
+export async function pullEnv(name: WorkerName, opts: NtnRunOptions = {}): Promise<NtnRunResult> {
   assertWorkerName(name);
   return runWorkerCmd(['workers', 'env', 'pull', name], opts);
 }
@@ -313,8 +285,5 @@ export async function pushEnv(
   if (file.trim().length === 0) {
     throw new NtnInvalidArgumentError('pushEnv requires a non-empty file path.');
   }
-  return runWorkerCmd(
-    ['workers', 'env', 'push', name, '--file', file],
-    opts,
-  );
+  return runWorkerCmd(['workers', 'env', 'push', name, '--file', file], opts);
 }

@@ -33,9 +33,7 @@ export function CopyButton({
   size = 'sm',
   variant = 'outline',
 }: CopyButtonProps) {
-  const [state, setState] = React.useState<'idle' | 'copied' | 'error'>(
-    'idle'
-  );
+  const [state, setState] = React.useState<'idle' | 'copied' | 'error'>('idle');
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cancel pending timer on unmount so we don't `setState` after teardown.
@@ -47,30 +45,29 @@ export function CopyButton({
 
   const copy = React.useCallback(async () => {
     try {
-      if (
-        typeof navigator !== 'undefined' &&
-        navigator.clipboard?.writeText
-      ) {
+      if (typeof navigator !== 'undefined' && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(value);
-      } else if (typeof document !== 'undefined') {
+      } else if (typeof document === 'undefined') {
+        throw new TypeError('Clipboard API unavailable.');
+      } else {
         // Fallback for browsers without Async Clipboard API.
         const ta = document.createElement('textarea');
         ta.value = value;
         ta.style.position = 'fixed';
         ta.style.opacity = '0';
-        document.body.appendChild(ta);
+        document.body.append(ta);
         ta.select();
         document.execCommand('copy');
-        document.body.removeChild(ta);
-      } else {
-        throw new Error('Clipboard API unavailable.');
+        ta.remove();
       }
       setState('copied');
     } catch {
       setState('error');
     } finally {
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => setState('idle'), 1500);
+      timer.current = setTimeout(() => {
+        setState('idle');
+      }, 1500);
     }
   }, [value]);
 
@@ -81,11 +78,7 @@ export function CopyButton({
       size={size}
       onClick={copy}
       aria-label={
-        state === 'copied'
-          ? 'Copied to clipboard'
-          : state === 'error'
-            ? 'Copy failed'
-            : label
+        state === 'copied' ? 'Copied to clipboard' : state === 'error' ? 'Copy failed' : label
       }
       className={cn('gap-1.5', className)}
     >

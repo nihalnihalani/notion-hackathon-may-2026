@@ -26,20 +26,17 @@ function assertPageId(id: string): void {
 function safeStringify(payload: unknown, what: string): string {
   try {
     return JSON.stringify(payload);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `${what} payload is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }
 }
 
 /** Get a page by ID: `ntn pages get <id> --json`. */
-export async function getPage<T = unknown>(
-  id: PageId,
-  opts: NtnRunOptions = {},
-): Promise<T> {
+export async function getPage<T = unknown>(id: PageId, opts: NtnRunOptions = {}): Promise<T> {
   assertPageId(id);
   const { data } = await runNtnJson<T>(['pages', 'get', id, '--json'], opts);
   return data;
@@ -54,10 +51,7 @@ export async function createPage<T = unknown>(
   opts: NtnRunOptions = {},
 ): Promise<T> {
   const json = safeStringify(payload, 'createPage');
-  const { data } = await runNtnJson<T>(
-    ['pages', 'create', '--data', json, '--json'],
-    opts,
-  );
+  const { data } = await runNtnJson<T>(['pages', 'create', '--data', json, '--json'], opts);
   return data;
 }
 
@@ -69,18 +63,12 @@ export async function updatePage<T = unknown>(
 ): Promise<T> {
   assertPageId(id);
   const json = safeStringify(payload, 'updatePage');
-  const { data } = await runNtnJson<T>(
-    ['pages', 'update', id, '--data', json, '--json'],
-    opts,
-  );
+  const { data } = await runNtnJson<T>(['pages', 'update', id, '--data', json, '--json'], opts);
   return data;
 }
 
 /** Trash (archive) a page: `ntn pages trash <id>`. */
-export async function trashPage(
-  id: PageId,
-  opts: NtnRunOptions = {},
-): Promise<NtnRunResult> {
+export async function trashPage(id: PageId, opts: NtnRunOptions = {}): Promise<NtnRunResult> {
   assertPageId(id);
   return runNtn(['pages', 'trash', id], opts);
 }

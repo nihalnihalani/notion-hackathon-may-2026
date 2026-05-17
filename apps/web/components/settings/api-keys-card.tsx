@@ -48,7 +48,7 @@ export interface ApiKeyRow {
 }
 
 interface ApiKeysCardProps {
-  keys: ReadonlyArray<ApiKeyRow>;
+  keys: readonly ApiKeyRow[];
 }
 
 export function ApiKeysCard({ keys }: ApiKeysCardProps) {
@@ -78,11 +78,9 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
       setSecret(body.key);
       setLabel('');
       router.refresh();
-    } catch (err) {
+    } catch (error) {
       toast.error(
-        err instanceof Error
-          ? `Couldn't create key: ${err.message}`
-          : "Couldn't create key"
+        error instanceof Error ? `Couldn't create key: ${error.message}` : "Couldn't create key",
       );
     } finally {
       setCreating(false);
@@ -98,12 +96,8 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success('Key revoked');
       router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? `Couldn't revoke: ${err.message}`
-          : "Couldn't revoke"
-      );
+    } catch (error) {
+      toast.error(error instanceof Error ? `Couldn't revoke: ${error.message}` : "Couldn't revoke");
     } finally {
       setRevokingId(null);
     }
@@ -129,9 +123,7 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>
-                {secret ? 'API key created' : 'Create API key'}
-              </DialogTitle>
+              <DialogTitle>{secret ? 'API key created' : 'Create API key'}</DialogTitle>
               <DialogDescription>
                 {secret
                   ? "Copy this key now — it won't be shown again."
@@ -142,9 +134,7 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
             {secret ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2">
-                  <code className="flex-1 overflow-auto font-mono text-xs">
-                    {secret}
-                  </code>
+                  <code className="flex-1 overflow-auto font-mono text-xs">{secret}</code>
                   <CopyButton value={secret} label="Copy" size="sm" />
                 </div>
                 <DialogFooter>
@@ -171,7 +161,9 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
                   <Input
                     id="api-key-label"
                     value={label}
-                    onChange={(e) => setLabel(e.currentTarget.value)}
+                    onChange={(e) => {
+                      setLabel(e.currentTarget.value);
+                    }}
                     placeholder="e.g. Claude Code laptop"
                     autoFocus
                     required
@@ -181,15 +173,14 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setCreateOpen(false)}
+                    onClick={() => {
+                      setCreateOpen(false);
+                    }}
                     disabled={creating}
                   >
                     Cancel
                   </Button>
-                  <Button
-                    type="submit"
-                    disabled={creating || !label.trim()}
-                  >
+                  <Button type="submit" disabled={creating || !label.trim()}>
                     {creating ? 'Creating…' : 'Create key'}
                   </Button>
                 </DialogFooter>
@@ -214,9 +205,7 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
             >
               <div className="space-y-0.5">
                 <p className="font-medium">{k.label}</p>
-                <p className="font-mono text-xs text-muted-foreground">
-                  {k.prefix}…
-                </p>
+                <p className="font-mono text-xs text-muted-foreground">{k.prefix}…</p>
                 <p className="text-xs text-muted-foreground">
                   Created {formatRelativeDate(k.createdAt)}
                   {k.lastUsedAt
@@ -240,8 +229,8 @@ export function ApiKeysCard({ keys }: ApiKeysCardProps) {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Revoke this key?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Any client using {k.label} will lose access
-                      immediately. This can&apos;t be undone.
+                      Any client using {k.label} will lose access immediately. This can&apos;t be
+                      undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

@@ -4,39 +4,52 @@ This document is the source of truth for everything that happens after `git push
 
 ## Workflow map
 
-| Workflow                              | Trigger                         | Purpose                                                                                      |
-| ------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml`            | PR + push to `main`             | Lint / format / typecheck / verify-env / prisma-check / test / coverage / evals-dry / build. |
-| `.github/workflows/deploy-preview.yml`| PR to `main` (incl. labeled)    | Verify → PlanetScale preview branch → Vercel preview deploy → sticky PR comment → opt-in E2E.|
-| `.github/workflows/deploy-prod.yml`   | push to `main`, manual dispatch | Build → prisma migrate deploy → Vercel prod → Sentry release → healthz smoke → Slack/issue.  |
-| `.github/workflows/evals-nightly.yml` | cron `0 3 * * *`, manual        | Real-API Promptfoo sweep → baseline diff → HTML report on Pages → Slack on regression.       |
-| `.github/workflows/security.yml`      | PR + push + Monday 09:00 UTC    | `pnpm audit` (high+critical), CodeQL JS/TS.                                                  |
-| `.github/dependabot.yml`              | weekly Monday                   | npm + github-actions updates, grouped.                                                       |
+| Workflow                                        | Trigger                         | Purpose                                                                                                                            |
+| ----------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`                      | PR + push to `main`, manual     | Lint / changed-file format / typecheck / verify-env / prisma-check / test / safety coverage / evals-dry / build.                   |
+| `.github/workflows/deploy-preview.yml`          | PR to `main`                    | CI-equivalent verify only; no optional provider jobs appear as skipped PR checks.                                                  |
+| `.github/workflows/deploy-preview-external.yml` | manual dispatch                 | Maintainer-run PlanetScale preview branch → Vercel preview deploy → sticky PR comment → optional E2E after provider secrets exist. |
+| `.github/workflows/deploy-prod.yml`             | push to `main`, manual dispatch | Release-candidate verify → build always; external prod deploy runs only after provider secrets are configured.                     |
+| `.github/workflows/evals-nightly.yml`           | cron `0 3 * * *`, manual        | Real-API Promptfoo sweep when API secrets exist → baseline diff → HTML report on Pages → Slack on regression.                      |
+| `.github/workflows/security.yml`                | PR + push + Monday 09:00 UTC    | `pnpm audit` (high+critical) plus Gitleaks committed-secret scanning.                                                              |
+| `.github/dependabot.yml`                        | weekly Monday                   | npm + github-actions updates, grouped.                                                                                             |
 
-## Required GitHub secrets
+## Provider/API GitHub secrets
 
 Set in **Repository Settings → Secrets and variables → Actions**.
 
-| Secret                          | Used by                | Notes                                                                                     |
-| ------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
-| `VERCEL_TOKEN`                  | preview, prod          | Personal/service token with deploy scope on the Forge project.                            |
-| `VERCEL_ORG_ID`                 | preview, prod          | From `.vercel/project.json` after `vercel link`.                                          |
-| `VERCEL_PROJECT_ID`             | preview, prod          | Same source as above.                                                                     |
-| `PLANETSCALE_SERVICE_TOKEN`     | preview                | Service token value (the secret part).                                                    |
-| `PLANETSCALE_SERVICE_TOKEN_ID`  | preview                | Service token id.                                                                         |
-| `PLANETSCALE_ORG`               | preview                | Org slug, e.g. `forge`.                                                                   |
-| `PLANETSCALE_DB`                | preview                | Database name, e.g. `forge-prod`.                                                         |
-| `DATABASE_URL`                  | prod                   | PlanetScale prod connection string used by `prisma migrate deploy`.                       |
-| `SENTRY_AUTH_TOKEN`             | prod                   | Sentry token with `project:releases` scope.                                               |
-| `SENTRY_ORG`                    | prod                   | Sentry org slug.                                                                          |
-| `SENTRY_PROJECT`                | prod                   | Sentry project slug.                                                                      |
-| `SLACK_WEBHOOK_URL`             | prod, evals-nightly    | Incoming-webhook URL for `#forge-deploys` (prod) / `#forge-evals` (regressions).          |
-| `ANTHROPIC_API_KEY`             | evals-nightly          | Real Anthropic key. Never used by per-PR CI.                                              |
-| `OPENAI_API_KEY`                | evals-nightly          | Real OpenAI key. Never used by per-PR CI.                                                 |
-| `OPENAI_ORG_ID`                 | evals-nightly          | Optional OpenAI org id.                                                                   |
-| `CODECOV_TOKEN`                 | ci (coverage job)      | Codecov project upload token.                                                             |
+| Secret                         | Used by              | Notes                                                                            |
+| ------------------------------ | -------------------- | -------------------------------------------------------------------------------- |
+| `VERCEL_TOKEN`                 | preview, prod        | Personal/service token with deploy scope on the Forge project.                   |
+| `VERCEL_ORG_ID`                | preview, prod        | From `.vercel/project.json` after `vercel link`.                                 |
+| `VERCEL_PROJECT_ID`            | preview, prod        | Same source as above.                                                            |
+| `PLANETSCALE_SERVICE_TOKEN`    | preview              | Service token value (the secret part).                                           |
+| `PLANETSCALE_SERVICE_TOKEN_ID` | preview              | Service token id.                                                                |
+| `PLANETSCALE_ORG`              | preview              | Org slug, e.g. `forge`.                                                          |
+| `PLANETSCALE_DB`               | preview              | Database name, e.g. `forge-prod`.                                                |
+| `DATABASE_URL`                 | prod                 | PlanetScale prod connection string used by `prisma migrate deploy`.              |
+| `SENTRY_AUTH_TOKEN`            | prod                 | Sentry token with `project:releases` scope.                                      |
+| `SENTRY_ORG`                   | prod                 | Sentry org slug.                                                                 |
+| `SENTRY_PROJECT`               | prod                 | Sentry project slug.                                                             |
+| `SLACK_WEBHOOK_URL`            | prod, evals-nightly  | Incoming-webhook URL for `#forge-deploys` (prod) / `#forge-evals` (regressions). |
+| `ANTHROPIC_API_KEY`            | evals-nightly        | Real Anthropic key. Never used by per-PR CI.                                     |
+| `OPENAI_API_KEY`               | evals-nightly        | Real OpenAI key. Never used by per-PR CI.                                        |
+| `OPENAI_ORG_ID`                | evals-nightly        | Optional OpenAI org id.                                                          |
+| `CODECOV_TOKEN`                | ci (safety coverage) | Optional Codecov project upload token. Upload failures do not fail CI.           |
 
-Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered runs.
+Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered verification runs.
+
+`deploy-preview.yml` always runs verification and deliberately does not create optional PlanetScale, Vercel, sticky-comment, or E2E jobs. That keeps the PR check list clean while the repository is still missing deploy-provider credentials. Once the preview provider secrets are configured, maintainers can run `deploy-preview-external.yml` manually for a PR.
+
+`deploy-prod.yml` runs release-candidate verification and build on every push to `main`. If the Vercel / database / Sentry secrets are missing, the workflow records a clear preflight warning and skips external production systems instead of failing the whole push. Manual production deploy dispatches still fail fast when required provider secrets are missing.
+
+`evals-nightly.yml` skips the paid real-API sweep when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is missing. Once those secrets exist, regressions fail the workflow; Slack notifications are best-effort and never mask the real eval result.
+
+All Node-based jobs install through `scripts/ci/install.sh`, which runs `pnpm install --frozen-lockfile` and then generates the Prisma Client for `@forge/db`. Use that script instead of a raw `pnpm install` step in new workflows so fresh GitHub runners match local builds.
+
+Workflows use Node-24-compatible action majors and set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` so GitHub-hosted runners exercise the upcoming action runtime now, while the project itself continues to build and test on `NODE_VERSION=20`.
+
+The repository is currently private, so CodeQL is not part of the automatic PR security workflow until GitHub Advanced Security/code scanning is enabled. `ci.yml` intentionally checks Prettier only on changed files because the current tree still has historical formatting drift outside this branch; use a dedicated repo-wide formatting PR when you want to flip `pnpm format:check` back on globally.
 
 ## How to add a new sub-agent eval
 
@@ -56,6 +69,12 @@ Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-previe
 
 ```
 gh workflow run deploy-prod.yml --ref main
+```
+
+### Deploy a PR preview after provider secrets are configured
+
+```
+gh workflow run deploy-preview-external.yml --ref <pr-branch> -f pr_number=<number> -f run_e2e=false
 ```
 
 ### Hotfix that doesn't change the schema
@@ -108,18 +127,19 @@ Expect `{ "status": "ok", ... }`. If `status` ≠ `ok`, page the on-call channel
 
 ## Concurrency rules at a glance
 
-| Workflow         | Concurrency group                | Cancel in-progress?                                  |
-| ---------------- | -------------------------------- | ---------------------------------------------------- |
-| `ci.yml`         | `ci-<workflow>-<ref>`            | yes (newer commit wins)                              |
-| `deploy-preview` | `deploy-preview-<pr-number>`     | yes (newer PR commit wins)                           |
-| `deploy-prod`    | `deploy-prod` (single global)    | yes (newer main commit wins; we never want two prod) |
-| `evals-nightly`  | `evals-nightly` (single global)  | no (let nightly runs complete before next)           |
-| `security`       | `security-<workflow>-<ref>`      | yes                                                  |
+| Workflow                  | Concurrency group                     | Cancel in-progress?                                  |
+| ------------------------- | ------------------------------------- | ---------------------------------------------------- |
+| `ci.yml`                  | `ci-<workflow>-<ref>`                 | yes (newer commit wins)                              |
+| `deploy-preview`          | `deploy-preview-<pr-number>`          | yes (newer PR commit wins)                           |
+| `deploy-preview-external` | `deploy-preview-external-<pr-number>` | yes (newer manual run wins)                          |
+| `deploy-prod`             | `deploy-prod` (single global)         | yes (newer main commit wins; we never want two prod) |
+| `evals-nightly`           | `evals-nightly` (single global)       | no (let nightly runs complete before next)           |
+| `security`                | `security-<workflow>-<ref>`           | yes                                                  |
 
 ## Pinned action versions
 
 All third-party actions are pinned to a major version. Dependabot bumps them weekly. To pin to a SHA instead (recommended once the team has bandwidth to vet diffs):
 
 ```
-- uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+- uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 ```

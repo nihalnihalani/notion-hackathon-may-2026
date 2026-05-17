@@ -52,7 +52,7 @@ const DESCRIBE_PROMPT_DESCRIPTION =
 
 export function renderDescribeAgentPrompt(args: ForgeDescribeAgentArgs): {
   description: string;
-  messages: Array<{ role: 'user'; content: { type: 'text'; text: string } }>;
+  messages: { role: 'user'; content: { type: 'text'; text: string } }[];
 } {
   const inputLine = args.input?.trim()
     ? args.input.trim()
@@ -108,23 +108,17 @@ export const forgeDiagnoseFailureArgsShape = {
   hypothesis: z
     .string()
     .optional()
-    .describe(
-      'Optional starting hypothesis. Example: "The Notion API returned 429s".',
-    ),
+    .describe('Optional starting hypothesis. Example: "The Notion API returned 429s".'),
 } as const;
-export const forgeDiagnoseFailureArgsSchema = z.object(
-  forgeDiagnoseFailureArgsShape,
-);
-export type ForgeDiagnoseFailureArgs = z.infer<
-  typeof forgeDiagnoseFailureArgsSchema
->;
+export const forgeDiagnoseFailureArgsSchema = z.object(forgeDiagnoseFailureArgsShape);
+export type ForgeDiagnoseFailureArgs = z.infer<typeof forgeDiagnoseFailureArgsSchema>;
 
 const DIAGNOSE_PROMPT_DESCRIPTION =
   'Walk through a failed generation step-by-step and surface the likely root cause.';
 
 export function renderDiagnoseFailurePrompt(args: ForgeDiagnoseFailureArgs): {
   description: string;
-  messages: Array<{ role: 'user'; content: { type: 'text'; text: string } }>;
+  messages: { role: 'user'; content: { type: 'text'; text: string } }[];
 } {
   const hypothesisBlock = args.hypothesis?.trim()
     ? `\nMy starting hypothesis: ${args.hypothesis.trim()}\n`

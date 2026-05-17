@@ -2,23 +2,9 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { currentUser } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import {
-  ArrowRight,
-  Bot,
-  CircleCheck,
-  Clock,
-  Coins,
-  TrendingUp,
-  Zap,
-} from 'lucide-react';
+import { ArrowRight, Bot, CircleCheck, Clock, Coins, TrendingUp, Zap } from 'lucide-react';
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -72,9 +58,7 @@ export default async function OverviewPage() {
   return (
     <div className="space-y-8">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          Overview
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Overview</h1>
         <p className="text-sm text-muted-foreground">
           A live look at every agent your workspace has forged.
         </p>
@@ -88,9 +72,7 @@ export default async function OverviewPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Top patterns</CardTitle>
-            <CardDescription>
-              Which agent patterns your workspace generates most.
-            </CardDescription>
+            <CardDescription>Which agent patterns your workspace generates most.</CardDescription>
           </CardHeader>
           <CardContent>
             <Suspense fallback={<Skeleton className="h-64 w-full" />}>
@@ -115,9 +97,7 @@ export default async function OverviewPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>Recent generations</CardTitle>
-            <CardDescription>
-              The last 10 agent builds in your workspace.
-            </CardDescription>
+            <CardDescription>The last 10 agent builds in your workspace.</CardDescription>
           </div>
           <Button asChild variant="ghost" size="sm" className="gap-1">
             <Link href="/agents">
@@ -143,12 +123,7 @@ export default async function OverviewPage() {
 async function MetricsRow({ workspaceId }: { workspaceId: string }) {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [
-    totalCount,
-    weekCount,
-    succeededCount,
-    succeededAgg,
-  ] = await Promise.all([
+  const [totalCount, weekCount, succeededCount, succeededAgg] = await Promise.all([
     prisma.generation.count({ where: { workspaceId } }),
     prisma.generation.count({
       where: { workspaceId, startedAt: { gte: weekAgo } },
@@ -190,9 +165,7 @@ async function MetricsRow({ workspaceId }: { workspaceId: string }) {
       <MetricCard
         icon={Clock}
         label="Avg latency"
-        value={formatDuration(
-          avgLatencyMs ? Number(avgLatencyMs) : null
-        )}
+        value={formatDuration(avgLatencyMs ? Number(avgLatencyMs) : null)}
         sub="Successful builds"
       />
       <MetricCard
@@ -232,11 +205,7 @@ function MetricCard({
           <span>{label}</span>
           <Icon className="h-4 w-4" aria-hidden="true" />
         </div>
-        <span
-          className={`text-2xl font-semibold tracking-tight ${accentClass}`}
-        >
-          {value}
-        </span>
+        <span className={`text-2xl font-semibold tracking-tight ${accentClass}`}>{value}</span>
         <span className="text-xs text-muted-foreground">{sub}</span>
       </CardContent>
     </Card>
@@ -263,9 +232,7 @@ async function TopPatternsSection({ workspaceId }: { workspaceId: string }) {
   }
 
   const data = rows
-    .filter((r): r is typeof r & { pattern: NonNullable<typeof r.pattern> } =>
-      r.pattern !== null
-    )
+    .filter((r): r is typeof r & { pattern: NonNullable<typeof r.pattern> } => r.pattern !== null)
     .map((r) => ({
       name: AGENT_PATTERN_LABEL[r.pattern],
       count: r._count._all,
@@ -298,11 +265,7 @@ async function WeeklyActivity({ workspaceId }: { workspaceId: string }) {
   const total = succeeded + failed + running;
   if (total === 0) {
     return (
-      <EmptyState
-        icon={Bot}
-        title="Quiet week"
-        description="No generations in the last 7 days."
-      />
+      <EmptyState icon={Bot} title="Quiet week" description="No generations in the last 7 days." />
     );
   }
 
@@ -325,11 +288,7 @@ function ActivityRow({
   tone: 'success' | 'destructive' | 'accent';
 }) {
   const dot =
-    tone === 'success'
-      ? 'bg-success'
-      : tone === 'destructive'
-        ? 'bg-destructive'
-        : 'bg-primary';
+    tone === 'success' ? 'bg-success' : tone === 'destructive' ? 'bg-destructive' : 'bg-primary';
   return (
     <li className="flex items-center justify-between rounded-md border border-border bg-card/40 px-3 py-2">
       <span className="flex items-center gap-2">
@@ -341,11 +300,7 @@ function ActivityRow({
   );
 }
 
-async function RecentGenerationsTable({
-  workspaceId,
-}: {
-  workspaceId: string;
-}) {
+async function RecentGenerationsTable({ workspaceId }: { workspaceId: string }) {
   const rows = await prisma.generation.findMany({
     where: { workspaceId },
     orderBy: { startedAt: 'desc' },
@@ -388,10 +343,7 @@ async function RecentGenerationsTable({
         {rows.map((r) => (
           <TableRow key={r.id}>
             <TableCell className="max-w-md truncate font-medium">
-              <Link
-                href={`/generations/${r.id}`}
-                className="hover:underline"
-              >
+              <Link href={`/generations/${r.id}`} className="hover:underline">
                 {r.description}
               </Link>
             </TableCell>
@@ -450,12 +402,10 @@ function TableSkeleton({ rows }: { rows: number }) {
 function PendingInstallNotice() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Finish installing Forge
-      </h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Finish installing Forge</h1>
       <p className="max-w-prose text-muted-foreground">
-        Your Notion workspace isn&apos;t linked yet. Open Settings and
-        re-trigger the install flow to get started.
+        Your Notion workspace isn&apos;t linked yet. Open Settings and re-trigger the install flow
+        to get started.
       </p>
       <Button asChild>
         <Link href="/settings">Go to Settings</Link>

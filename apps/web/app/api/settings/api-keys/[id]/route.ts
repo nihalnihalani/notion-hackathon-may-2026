@@ -62,8 +62,8 @@ export const DELETE = withSentry<{ id: string }>(
           resourceId: id,
           metadata: { keyId: id },
         });
-      } catch (err) {
-        Sentry.captureException(err, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'audit.api_key.revoked' },
         });
       }

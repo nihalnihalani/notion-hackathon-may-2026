@@ -4,14 +4,14 @@
  * Spec: PLAN.md Part V (Generation), Part VI (idempotency window = 1h).
  */
 
-import { prisma } from "../client.js";
+import { prisma } from '../client.js';
 import type {
   AgentPattern,
   Generation,
   GenerationStatus,
   GenerationStep,
   Prisma,
-} from "../types.js";
+} from '../types.js';
 
 /**
  * Insert a new Generation in `queued` status.
@@ -35,9 +35,7 @@ export async function createGeneration(input: {
   descriptionHash: string;
 }): Promise<Generation> {
   const notionRowId =
-    input.notionRowId === undefined || input.notionRowId === ""
-      ? null
-      : input.notionRowId;
+    input.notionRowId === undefined || input.notionRowId === '' ? null : input.notionRowId;
   return prisma.generation.create({
     data: {
       workspaceId: input.workspaceId,
@@ -45,7 +43,7 @@ export async function createGeneration(input: {
       notionRowId,
       description: input.description,
       descriptionHash: input.descriptionHash,
-      status: "queued",
+      status: 'queued',
     },
   });
 }
@@ -69,9 +67,13 @@ export async function updateGenerationStatus(
   },
 ): Promise<Generation> {
   const isTerminal =
-    patch.status === "succeeded" ||
-    patch.status === "failed" ||
-    patch.status === "cancelled";
+    patch.status === 'succeeded' || patch.status === 'failed' || patch.status === 'cancelled';
+  let completedAtData: { completedAt?: Date | null } = {};
+  if (patch.completedAt !== undefined) {
+    completedAtData = { completedAt: patch.completedAt };
+  } else if (isTerminal) {
+    completedAtData = { completedAt: new Date() };
+  }
 
   return prisma.generation.update({
     where: { id },
@@ -86,11 +88,7 @@ export async function updateGenerationStatus(
         totalCostUsd: patch.totalCostUsd,
       }),
       // Default completedAt on terminal states if caller didn't specify.
-      ...(patch.completedAt !== undefined
-        ? { completedAt: patch.completedAt }
-        : isTerminal
-          ? { completedAt: new Date() }
-          : {}),
+      ...completedAtData,
     },
   });
 }
@@ -115,10 +113,10 @@ export async function findRecentByHash(
     where: {
       workspaceId,
       descriptionHash,
-      status: "succeeded",
+      status: 'succeeded',
       completedAt: { gte: since },
     },
-    orderBy: { completedAt: "desc" },
+    orderBy: { completedAt: 'desc' },
   });
 }
 
@@ -136,7 +134,42 @@ export async function getGenerationWithSteps(id: string): Promise<
   return prisma.generation.findUnique({
     where: { id },
     include: {
-      steps: { orderBy: { startedAt: "asc" } },
+      steps: { orderBy: { startedAt: 'asc' } },
     },
+  });
+}
+
+/**
+ * Find every Generation row stuck in a non-terminal state past the wall-clock
+ * deadline.
+ *
+ * "Stuck" means: `status ∈ { queued, running }` AND `startedAt` is older than
+ * `now - staleSinceMs`. These are the rows the stale-generation reaper cron
+ * (`/api/cron/cleanup-generations`) marks `failed` so the dashboard stops
+ * showing a spinner forever and ops sees the leak.
+ *
+ * The query uses the existing `(status, startedAt)` index defined on
+ * `Generation` (see `prisma/schema.prisma`) so it stays O(log n) even with
+ * millions of historical rows.
+ *
+ * Caller passes the SHARED `now` they're using for the deadline math (so
+ * downstream `totalLatencyMs = now - row.startedAt` matches the filter).
+ * Defaults to `Date.now()` for ergonomic call sites.
+ *
+ * @param staleSinceMs - age threshold in milliseconds. A row is returned when
+ *                       `(now - startedAt) > staleSinceMs`.
+ * @param now           - injected clock; defaults to `Date.now()`. Test seam.
+ */
+export async function findStaleGenerations(
+  staleSinceMs: number,
+  now: number = Date.now(),
+): Promise<Generation[]> {
+  const cutoff = new Date(now - staleSinceMs);
+  return prisma.generation.findMany({
+    where: {
+      status: { in: ['queued', 'running'] },
+      startedAt: { lt: cutoff },
+    },
+    orderBy: { startedAt: 'asc' },
   });
 }

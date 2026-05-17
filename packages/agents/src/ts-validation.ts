@@ -24,9 +24,7 @@
 import { parse } from '@typescript-eslint/parser';
 
 /** Result of {@link parseGeneratedTs}. Errors are pre-formatted for prompts. */
-export type ParseGeneratedTsResult =
-  | { ok: true }
-  | { ok: false; errors: string[] };
+export type ParseGeneratedTsResult = { ok: true } | { ok: false; errors: string[] };
 
 const PARSER_OPTIONS = Object.freeze({
   // Matches @forge/safety's scanner parser config so a successful parse here
@@ -52,8 +50,8 @@ export function parseGeneratedTs(source: string): ParseGeneratedTsResult {
   try {
     parse(source, PARSER_OPTIONS);
     return { ok: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return { ok: false, errors: [message] };
   }
 }
@@ -104,5 +102,5 @@ export function extractTsCodeFromResponse(text: string): string | null {
 
 /** Strip a UTF-8 BOM if present. Models sometimes emit one inside code blocks. */
 function stripBom(s: string): string {
-  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
+  return s.codePointAt(0) === 65_279 ? s.slice(1) : s;
 }

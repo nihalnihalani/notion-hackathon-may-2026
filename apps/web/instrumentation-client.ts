@@ -19,18 +19,19 @@
 
 import * as Sentry from '@sentry/nextjs';
 
+type SentryIntegration = ReturnType<typeof Sentry.browserTracingIntegration>;
+
 const DSN = process.env['NEXT_PUBLIC_SENTRY_DSN'];
 const ENVIRONMENT =
   process.env['NEXT_PUBLIC_SENTRY_ENVIRONMENT'] ??
   process.env['NEXT_PUBLIC_VERCEL_ENV'] ??
-  process.env['NODE_ENV'] ??
+  process.env.NODE_ENV ??
   'development';
 const RELEASE =
-  process.env['NEXT_PUBLIC_SENTRY_RELEASE'] ??
-  process.env['NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA'];
+  process.env['NEXT_PUBLIC_SENTRY_RELEASE'] ?? process.env['NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA'];
 
 const REPLAY_ENABLED = process.env['NEXT_PUBLIC_SENTRY_REPLAY_ENABLED'] === '1';
-const TRACES_SAMPLE_RATE = ENVIRONMENT === 'production' ? 0.1 : 1.0;
+const TRACES_SAMPLE_RATE = ENVIRONMENT === 'production' ? 0.1 : 1;
 
 // Mirror the server-side PII patterns. Kept inline (not imported from
 // instrumentation.ts) because that file lives in the Node/Edge bundle and
@@ -43,10 +44,10 @@ const CC_RE = /\b(?:\d[ -]*?){13,16}\b/g;
 function scrub(value: unknown): unknown {
   if (typeof value === 'string') {
     return value
-      .replace(EMAIL_RE, '<email>')
-      .replace(SSN_RE, '<ssn>')
-      .replace(CC_RE, '<cc>')
-      .replace(PHONE_RE, '<phone>');
+      .replaceAll(EMAIL_RE, '<email>')
+      .replaceAll(SSN_RE, '<ssn>')
+      .replaceAll(CC_RE, '<cc>')
+      .replaceAll(PHONE_RE, '<phone>');
   }
   if (Array.isArray(value)) return value.map(scrub);
   if (value && typeof value === 'object') {
@@ -64,7 +65,7 @@ function scrub(value: unknown): unknown {
 }
 
 if (DSN) {
-  const integrations: Sentry.Integration[] = [
+  const integrations: SentryIntegration[] = [
     // Browser tracing — auto-instruments pageloads and route changes. Sentry
     // v10's functional integration discovers App Router route changes
     // automatically; no router instrumentation arg needed.
@@ -92,7 +93,7 @@ if (DSN) {
     // 10% of normal sessions, 100% of sessions that errored — gives us
     // replay coverage for bug reports without paying for every page view.
     replaysSessionSampleRate: REPLAY_ENABLED ? 0.1 : 0,
-    replaysOnErrorSampleRate: REPLAY_ENABLED ? 1.0 : 0,
+    replaysOnErrorSampleRate: REPLAY_ENABLED ? 1 : 0,
     // We never want raw user input in Sentry, so explicitly opt out of the
     // default-PII helper Sentry exposes for App Router.
     sendDefaultPii: false,

@@ -155,11 +155,7 @@ export type WorkflowStepResult =
  * without us depending on the package at the workflow level.
  */
 export interface PostHogLike {
-  capture(input: {
-    distinctId: string;
-    event: string;
-    properties?: Record<string, unknown>;
-  }): void;
+  capture(input: { distinctId: string; event: string; properties?: Record<string, unknown> }): void;
   /** Optional flush hook — Vercel functions call this before returning. */
   flush?(): Promise<void>;
 }
@@ -244,16 +240,14 @@ export interface WorkflowDbHelpers {
           cacheReadTokens?: number | null;
           cacheWriteTokens?: number | null;
           costUsd?: number | null;
-          outputJson?: unknown | null;
-          errorJson?: unknown | null;
+          outputJson?: unknown;
+          errorJson?: unknown;
           latencyMs?: number | null;
           completedAt?: Date | null;
         },
   ): Promise<{ id: string }>;
   // Workspace context lookup (also fetches existing agents for Schema Smith)
-  getWorkspaceContext(
-    workspaceId: string,
-  ): Promise<WorkflowWorkspaceContext | null>;
+  getWorkspaceContext(workspaceId: string): Promise<WorkflowWorkspaceContext | null>;
   listExistingAgents(workspaceId: string): Promise<
     readonly {
       name: string;
@@ -408,6 +402,7 @@ export interface WorkflowSuccess {
   generationId: string;
   status: 'succeeded' | 'cached' | 'needs_clarification';
   agentId?: string;
+  generatedAgentId?: string;
   customAgentId?: string | null;
   deployUrl?: string;
   totalCostUsd: number;

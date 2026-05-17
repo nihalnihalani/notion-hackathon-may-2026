@@ -22,11 +22,7 @@
  */
 
 import { prisma } from '@forge/db';
-import {
-  appendBuildLogEntry,
-  asBlockId,
-  type BuildLogStatus,
-} from '@forge/notion-client';
+import { appendBuildLogEntry, asBlockId, type BuildLogStatus } from '@forge/notion-client';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -44,7 +40,7 @@ const logBodySchema = z.object({
   generationId: z.string().min(1),
   step: z.string().min(1).max(64),
   status: z.enum(['running', 'succeeded', 'failed', 'info']),
-  message: z.string().min(1).max(2_000),
+  message: z.string().min(1).max(2000),
   /** ISO 8601 timestamp. Defaults to "now" if absent. */
   timestamp: z.string().datetime().optional(),
 });
@@ -69,9 +65,7 @@ export const POST = withSentry(
     }
 
     const { generationId, step, status, message } = parsed.data;
-    const timestamp = parsed.data.timestamp
-      ? new Date(parsed.data.timestamp)
-      : new Date();
+    const timestamp = parsed.data.timestamp ? new Date(parsed.data.timestamp) : new Date();
 
     // Per-generation throttle (Notion 3 req/sec is global per integration, but
     // the per-generation limit prevents one runaway workflow from monopolizing).
@@ -119,10 +113,7 @@ export const POST = withSentry(
         level: 'error',
         tags: { workspaceId: ws.id, generationId },
       });
-      return apiError(
-        'upstream_failure',
-        'Workspace owner has no live Notion token.',
-      );
+      return apiError('upstream_failure', 'Workspace owner has no live Notion token.');
     }
 
     // The Build Log container block id is persisted on the workspace by the
@@ -139,8 +130,8 @@ export const POST = withSentry(
         message,
         timestamp,
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'notion.appendBuildLogEntry', generationId },
       });
       return apiError('upstream_failure', 'Notion append failed.');

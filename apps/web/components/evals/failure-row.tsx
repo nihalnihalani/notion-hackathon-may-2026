@@ -9,10 +9,7 @@ import { ChevronDown, XCircle } from 'lucide-react';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { AGENT_NAME_LABEL } from '@/lib/colors';
 import type { AgentName } from '@forge/db';
-import {
-  formatAbsoluteDate,
-  formatRelativeDate,
-} from '@/lib/formatters';
+import { formatAbsoluteDate, formatRelativeDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 
 export interface FailureRowData {
@@ -33,28 +30,22 @@ export function FailureRow({ row }: { row: FailureRowData }) {
         <TableCell>
           <button
             type="button"
-            onClick={() => setOpen((o) => !o)}
+            onClick={() => {
+              setOpen((o) => !o);
+            }}
             aria-expanded={open}
             className="flex items-center gap-1 text-sm font-medium hover:underline"
           >
             <ChevronDown
-              className={cn(
-                'h-3.5 w-3.5 transition-transform',
-                open && 'rotate-180'
-              )}
+              className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')}
               aria-hidden="true"
             />
-            <XCircle
-              className="h-3.5 w-3.5 text-destructive"
-              aria-hidden="true"
-            />
+            <XCircle className="h-3.5 w-3.5 text-destructive" aria-hidden="true" />
             {AGENT_NAME_LABEL[row.agent]}
           </button>
         </TableCell>
         <TableCell className="text-muted-foreground">
-          <code className="font-mono text-xs">
-            {row.goldenInputHash.slice(0, 10)}…
-          </code>
+          <code className="font-mono text-xs">{row.goldenInputHash.slice(0, 10)}…</code>
         </TableCell>
         <TableCell className="text-muted-foreground">{row.modelUsed}</TableCell>
         <TableCell

@@ -154,22 +154,22 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
       return finalize(totalStart, {
         pass: false,
         stage: 'safety',
-        errors: blockingViolations.map(formatViolation),
+        errors: blockingViolations.map((violation) => formatViolation(violation)),
       });
     }
-  } catch (err) {
+  } catch (error) {
     const safetyDurationMs = performance.now() - safetyStart;
     logger.info('inspector.stage', {
       stage: 'safety',
       pass: false,
       durationMs: safetyDurationMs,
       generationId: input.generationId,
-      error: errMessage(err),
+      error: errMessage(error),
     });
     return finalize(totalStart, {
       pass: false,
       stage: 'safety',
-      errors: [errMessage(err)],
+      errors: [errMessage(error)],
     });
   }
 
@@ -186,11 +186,11 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
       { path: `${SANDBOX_CWD}/${PACKAGE_JSON_FILENAME}`, content: mergedPackageJson },
       { path: `${SANDBOX_CWD}/${TSCONFIG_FILENAME}`, content: tsconfig },
     ]);
-  } catch (err) {
+  } catch (error) {
     // Sandbox FS failures are infrastructure — surface as InspectorError so
     // the Workflow can retry the *whole* generation step with a fresh sandbox.
     throw new InspectorError('Inspector: failed to write files into sandbox', {
-      cause: err,
+      cause: error,
       detail: { generationId: input.generationId },
     });
   }
@@ -235,19 +235,19 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
       durationMs: tscDurationMs,
       generationId: input.generationId,
     });
-  } catch (err) {
+  } catch (error) {
     const tscDurationMs = performance.now() - tscStart;
     logger.info('inspector.stage', {
       stage: 'tsc',
       pass: false,
       durationMs: tscDurationMs,
       generationId: input.generationId,
-      error: errMessage(err),
+      error: errMessage(error),
     });
     return finalize(totalStart, {
       pass: false,
       stage: 'tsc',
-      errors: [errMessage(err)],
+      errors: [errMessage(error)],
     });
   }
 
@@ -266,19 +266,19 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
       durationMs: dryrunDurationMs,
       generationId: input.generationId,
     });
-  } catch (err) {
+  } catch (error) {
     const dryrunDurationMs = performance.now() - dryrunStart;
     logger.info('inspector.stage', {
       stage: 'dryrun',
       pass: false,
       durationMs: dryrunDurationMs,
       generationId: input.generationId,
-      error: errMessage(err),
+      error: errMessage(error),
     });
     return finalize(totalStart, {
       pass: false,
       stage: 'dryrun',
-      errors: [extractNtnErrorDetail(err)],
+      errors: [extractNtnErrorDetail(error)],
     });
   }
 
@@ -287,14 +287,14 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
   let synthetic: unknown;
   try {
     synthetic = generateSynthetic(input.schema.inputSchema);
-  } catch (err) {
+  } catch (error) {
     // generateSynthetic can throw if Tool Coder somehow produced a JSchemaSpec
     // with an unhandled kind. Surface as exec-stage failure so Tool Coder
     // retries with the validator complaint in the prompt.
     return finalize(totalStart, {
       pass: false,
       stage: 'exec',
-      errors: [`failed to generate synthetic input: ${errMessage(err)}`],
+      errors: [`failed to generate synthetic input: ${errMessage(error)}`],
     });
   }
 
@@ -346,19 +346,19 @@ export async function inspector(input: InspectorInput): Promise<InspectionResult
       errors: [],
       output: execResult.output,
     });
-  } catch (err) {
+  } catch (error) {
     const execDurationMs = performance.now() - execStart;
     logger.info('inspector.stage', {
       stage: 'exec',
       pass: false,
       durationMs: execDurationMs,
       generationId: input.generationId,
-      error: errMessage(err),
+      error: errMessage(error),
     });
     return finalize(totalStart, {
       pass: false,
       stage: 'exec',
-      errors: [extractNtnErrorDetail(err)],
+      errors: [extractNtnErrorDetail(error)],
     });
   }
 }

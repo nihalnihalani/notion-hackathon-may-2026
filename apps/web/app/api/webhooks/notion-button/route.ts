@@ -59,6 +59,7 @@ import { apiError } from '@/lib/errors';
 import { buildNotionConfig, getNotionTokenForClerkUser } from '@/lib/notion';
 import { capture } from '@/lib/posthog';
 import { withSentry } from '@/lib/sentry';
+import { checkWebhookReplay } from '@/lib/webhook-dedup';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,22 @@ const buttonPayloadSchema = z.object({
 });
 
 /**
+ * Notion webhook envelope — every delivery carries a top-level `id` (UUID)
+ * and `timestamp` (ISO 8601) used for replay protection (PLAN §VI replay
+ * protection task). The Forge button payload fields live alongside these on
+ * the same root object. We intentionally `passthrough` so the button payload
+ * keys survive the parse.
+ *
+ * Source: https://developers.notion.com/reference/webhooks-events-delivery
+ */
+const envelopeSchema = z
+  .object({
+    id: z.string().min(1),
+    timestamp: z.string().min(1),
+  })
+  .passthrough();
+
+/**
  * Resolve the per-workspace HMAC verification secret from PlanetScale.
  *
  * The installer mints a 256-bit secret on first install and stores it on the
@@ -78,9 +95,7 @@ const buttonPayloadSchema = z.object({
  * workspace id. Returns `null` if no workspace is installed yet OR if the
  * column is empty (pre-installer row); callers MUST treat both as "reject".
  */
-async function getWorkspaceWebhookSecret(
-  notionWorkspaceId: string,
-): Promise<string | null> {
+async function getWorkspaceWebhookSecret(notionWorkspaceId: string): Promise<string | null> {
   const ws = await prisma.workspace.findUnique({
     where: { notionWorkspaceId },
     select: { webhookSecret: true },
@@ -133,9 +148,7 @@ export const POST = withSentry(
     // Try header-supplied workspace id first; some integrations may not set it.
     let notionWorkspaceId = req.headers.get('x-notion-workspace-id') ?? null;
 
-    let parsedPayload:
-      | z.infer<typeof buttonPayloadSchema>
-      | null = null;
+    let parsedPayload: z.infer<typeof buttonPayloadSchema> | null = null;
 
     // Parse the JSON early ONLY for the workspace-id fallback. The signature
     // verification still happens over `raw`.
@@ -162,13 +175,10 @@ export const POST = withSentry(
       // No installed workspace OR the installer never set a secret. Either
       // way the request cannot be authenticated. Audit the failure (without
       // PII) so we can spot misconfigurations.
-      Sentry.captureMessage(
-        'notion-button: no per-workspace webhook secret',
-        {
-          level: 'warning',
-          tags: { notionWorkspaceId },
-        },
-      );
+      Sentry.captureMessage('notion-button: no per-workspace webhook secret', {
+        level: 'warning',
+        tags: { notionWorkspaceId },
+      });
       try {
         const ws = await prisma.workspace.findUnique({
           where: { notionWorkspaceId },
@@ -220,6 +230,52 @@ export const POST = withSentry(
       return apiError('unauthenticated', 'Invalid Notion signature.');
     }
 
+    // ── Replay protection ────────────────────────────────────────────────
+    // After signature verify succeeds, validate the envelope's `id` +
+    // `timestamp` (5 min past / 1 min future skew) and SETNX-dedupe on the
+    // event id. A duplicate delivery returns 200 so Notion stops retrying —
+    // a 4xx would loop the retry queue.
+    let envelope: z.infer<typeof envelopeSchema> | null = null;
+    try {
+      envelope = envelopeSchema.parse(JSON.parse(raw));
+    } catch {
+      return apiError('validation', 'Webhook envelope is missing required id/timestamp fields.');
+    }
+    let replay;
+    try {
+      replay = await checkWebhookReplay('notion-button', envelope);
+    } catch (error) {
+      // Redis unavailable — fail open on dedupe (still safer than retry
+      // storm) but capture so we can spot the outage. Stale-timestamp +
+      // signature verify still protect us from replay attacks.
+      Sentry.captureException(error, {
+        tags: { phase: 'webhook-dedup', source: 'notion-button' },
+      });
+      replay = { ok: true as const, duplicate: false as const };
+    }
+    if (!replay.ok) {
+      Sentry.captureMessage(`notion-button: envelope rejected (${replay.reason})`, {
+        level: 'warning',
+        tags: { reason: replay.reason, notionWorkspaceId },
+      });
+      const message =
+        replay.reason === 'stale'
+          ? 'Event timestamp is older than the replay window.'
+          : replay.reason === 'future_skew'
+            ? 'Event timestamp is too far in the future.'
+            : replay.reason === 'missing_id'
+              ? 'Webhook envelope is missing the id field.'
+              : replay.reason === 'missing_timestamp'
+                ? 'Webhook envelope is missing the timestamp field.'
+                : 'Webhook envelope timestamp is malformed.';
+      return apiError('validation', message);
+    }
+    if (replay.duplicate) {
+      // 200 (NOT 4xx) — a non-2xx tells Notion to retry, which is exactly
+      // the loop dedupe is meant to break.
+      return NextResponse.json({ ok: true, status: 'duplicate', eventId: replay.eventId });
+    }
+
     if (!parsedPayload) {
       return apiError('validation', 'Body is not a valid button payload.');
     }
@@ -266,8 +322,8 @@ export const POST = withSentry(
     try {
       const page = await getPage(config, asPageId(pageId));
       description = extractDescriptionFromPage(page);
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'notion.getPage', pageId },
       });
       return NextResponse.json({ ok: true, ignored: 'page_fetch_failed' });
@@ -285,8 +341,7 @@ export const POST = withSentry(
     if (cached && cached.agentId) {
       // Post a Notion comment so the user gets a visible "already done" hint.
       try {
-        const appUrl =
-          process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+        const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
         await addComment(config, {
           parent: { page_id: pageId },
           rich_text: [
@@ -299,8 +354,8 @@ export const POST = withSentry(
             },
           ],
         });
-      } catch (err) {
-        Sentry.captureException(err, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'notion.addComment', pageId },
         });
       }
@@ -351,8 +406,8 @@ export const POST = withSentry(
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: pageId,
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'workflow.enqueue', generationId: generation.id },
       });
       // Still return 200 — the row exists and a retry job can pick it up.

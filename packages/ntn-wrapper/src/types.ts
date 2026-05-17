@@ -82,7 +82,7 @@ export interface Worker {
 
 /** Subset of fields parsed from `ntn workers capabilities list <name> --json`. */
 export interface WorkerCapability {
-  kind: 'tool' | 'sync' | 'webhook' | string;
+  kind: string;
   key: string;
   title?: string;
   description?: string;
@@ -95,7 +95,7 @@ export interface WorkerCapability {
 export interface WorkerRun {
   id: string;
   workerName?: string;
-  status?: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | string;
+  status?: string;
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
@@ -106,7 +106,7 @@ export interface WorkerRun {
 /** Subset of fields parsed from `ntn workers sync state get <name>`. */
 export interface SyncState {
   workerName: string;
-  status: 'idle' | 'running' | 'paused' | 'errored' | string;
+  status: string;
   cursor?: string;
   lastRunAt?: string;
   lastError?: string;
@@ -124,13 +124,7 @@ export interface WebhookEndpoint {
 }
 
 /** Names of supported OAuth providers per the integrations catalog (Part XI). */
-export type OAuthProvider =
-  | 'github'
-  | 'linear'
-  | 'stripe'
-  | 'slack'
-  | 'google'
-  | (string & {});
+export type OAuthProvider = 'github' | 'linear' | 'stripe' | 'slack' | 'google' | (string & {});
 
 /** Newtype-flavoured aliases — same runtime shape, clearer call sites. */
 export type PageId = string;
@@ -154,10 +148,10 @@ export interface DoctorReport {
   ok: boolean;
   loggedIn?: boolean;
   cliVersion?: string;
-  checks: Array<{
+  checks: {
     name: string;
     ok: boolean;
     message?: string;
-  }>;
+  }[];
   raw: unknown;
 }

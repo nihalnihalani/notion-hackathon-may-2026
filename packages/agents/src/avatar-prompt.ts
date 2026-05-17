@@ -72,7 +72,7 @@ function truncate(text: string, max: number): string {
 export function deriveAvatarPrompt(description: string, pattern: AgentPattern): string {
   // Normalize whitespace so accidental newlines + tabs in the user's
   // description don't bloat the prompt or break the template.
-  const normalized = description.replace(/\s+/gu, ' ').trim();
+  const normalized = description.replaceAll(/\s+/gu, ' ').trim();
   const safeDescription =
     normalized.length === 0
       ? 'a helpful Notion agent'

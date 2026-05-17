@@ -47,14 +47,13 @@ import { noopLogger } from './types.js';
 // MCP SDK ≥1.29 widens `structuredContent` to `Record<string, unknown>`.
 // We intersect with that so concrete view interfaces (which lack the string
 // index signature) still satisfy the structural target.
-type ToolSuccess<T> = {
-  content: Array<{ type: 'text'; text: string }>;
+interface ToolSuccess<T> {
+  [key: string]: unknown;
+  content: { type: 'text'; text: string }[];
   structuredContent: T & Record<string, unknown>;
-};
+}
 
-type ToolResult<T> =
-  | ToolSuccess<T>
-  | ReturnType<typeof toMcpErrorContent>;
+type ToolResult<T> = ToolSuccess<T> | ReturnType<typeof toMcpErrorContent>;
 
 function ok<T>(structured: T, summary: string): ToolSuccess<T> {
   return {
@@ -129,15 +128,15 @@ export async function forgeAgent(
       },
       `Queued generation ${result.generationId}. Poll with get_generation_status.`,
     );
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.forge_agent.failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return toMcpErrorContent(
       new WorkflowTriggerError(
         'Failed to enqueue generation. The workflow trigger rejected the request.',
-        { cause },
+        { cause: error },
       ),
     );
   }
@@ -167,13 +166,13 @@ export async function getGenerationStatus(
       return toMcpErrorContent(new GenerationNotFoundError(args.generationId));
     }
     return ok(row, `Generation ${row.id} — status: ${row.status} (${row.steps.length} step(s))`);
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.get_generation_status.failed', {
       workspaceId: context.workspaceId,
       generationId: args.generationId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
-    return toMcpErrorContent(cause);
+    return toMcpErrorContent(error);
   }
 }
 
@@ -193,9 +192,7 @@ export async function listMyAgents(
   args: ListMyAgentsInput,
   context: ForgeMcpContext,
   config: ForgeMcpConfig,
-): Promise<
-  ToolResult<{ agents: ReadonlyArray<GeneratedAgentView>; total: number }>
-> {
+): Promise<ToolResult<{ agents: readonly GeneratedAgentView[]; total: number }>> {
   const logger = resolveLogger(config);
   try {
     const rows = await config.listAgents(
@@ -207,13 +204,11 @@ export async function listMyAgents(
       { agents: safe, total: safe.length },
       `Found ${safe.length} agent(s)${args.status ? ` with status=${args.status}` : ''}.`,
     );
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.list_my_agents.failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
-    return toMcpErrorContent(
-      new AgentListError('Failed to list agents.', { cause }),
-    );
+    return toMcpErrorContent(new AgentListError('Failed to list agents.', { cause: error }));
   }
 }

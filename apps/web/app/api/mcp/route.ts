@@ -61,7 +61,7 @@ import {
 import { asBlockId } from '@forge/notion-client';
 import { publishGenerationRequested } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
-import { NextResponse } from 'next/server';
+import type { NextResponse } from 'next/server';
 
 import { extractBearer, validateApiKey } from '@/lib/api-keys';
 import { apiError } from '@/lib/errors';
@@ -78,10 +78,7 @@ export const dynamic = 'force-dynamic';
 
 async function authenticate(
   req: Request,
-): Promise<
-  | { ok: true; context: ForgeMcpContext }
-  | { ok: false; response: NextResponse }
-> {
+): Promise<{ ok: true; context: ForgeMcpContext } | { ok: false; response: NextResponse }> {
   const bearer = extractBearer(req);
   if (!bearer) {
     return {
@@ -106,10 +103,7 @@ async function authenticate(
   if (!ws) {
     return {
       ok: false,
-      response: apiError(
-        'unauthenticated',
-        'Workspace for this API key no longer exists.',
-      ),
+      response: apiError('unauthenticated', 'Workspace for this API key no longer exists.'),
     };
   }
 
@@ -164,9 +158,7 @@ const logger: Logger = {
  * Throws on enqueue failure so the package surfaces a `WorkflowTriggerError`
  * to the MCP client.
  */
-async function workflowTrigger(
-  input: WorkflowTriggerInput,
-): Promise<WorkflowTriggerResult> {
+async function workflowTrigger(input: WorkflowTriggerInput): Promise<WorkflowTriggerResult> {
   // Per-user rate limit; the same limiter used by the package surface.
   const rl = await checkRateLimit(limiters.mcpForgeAgent(), input.userId);
   if (!rl.success) {
@@ -266,8 +258,7 @@ async function getGenerationStatus(
     createdAt: row.startedAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
     totalLatencyMs: row.totalLatencyMs,
-    totalCostUsd:
-      row.totalCostUsd === null ? null : Number(row.totalCostUsd),
+    totalCostUsd: row.totalCostUsd === null ? null : Number(row.totalCostUsd),
     steps: row.steps.map((s) => ({
       id: s.id,
       agent: s.agent,
@@ -290,11 +281,9 @@ async function getGenerationStatus(
 async function listAgents(
   filter: { status?: AgentStatus },
   context: ForgeMcpContext,
-): Promise<ReadonlyArray<GeneratedAgentView>> {
+): Promise<readonly GeneratedAgentView[]> {
   const rows = await findActiveAgentsByWorkspace(context.workspaceId);
-  const filtered = filter.status
-    ? rows.filter((r) => r.status === filter.status)
-    : rows;
+  const filtered = filter.status ? rows.filter((r) => r.status === filter.status) : rows;
   return filtered.map((r) => ({
     id: r.id,
     ntnWorkerName: r.ntnWorkerName,

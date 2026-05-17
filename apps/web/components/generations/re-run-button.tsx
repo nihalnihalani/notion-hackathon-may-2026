@@ -44,21 +44,15 @@ export function ReRunButton({ generationId }: ReRunButtonProps) {
       toast.success('Re-running generation');
       router.push(`/generations/${body.generationId}`);
       router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to re-run');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to re-run');
     } finally {
       setPending(false);
     }
   }, [generationId, router]);
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={pending}
-      onClick={() => void run()}
-    >
+    <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void run()}>
       <RefreshCcw className="h-3.5 w-3.5" />
       {pending ? 'Re-running…' : 'Re-run with same prompt'}
     </Button>

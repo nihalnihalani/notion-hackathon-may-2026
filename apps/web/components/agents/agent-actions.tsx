@@ -49,11 +49,7 @@ interface AgentActionsProps {
 
 type ActionKind = 'pause' | 'resume' | 'redeploy' | 'delete';
 
-export function AgentActions({
-  agentId,
-  agentName,
-  status,
-}: AgentActionsProps) {
+export function AgentActions({ agentId, agentName, status }: AgentActionsProps) {
   const router = useRouter();
   const [pending, setPending] = React.useState<ActionKind | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
@@ -76,18 +72,16 @@ export function AgentActions({
             ? `Paused ${agentName}`
             : kind === 'resume'
               ? `Resumed ${agentName}`
-              : `Redeployed ${agentName}`
+              : `Redeployed ${agentName}`,
         );
         router.refresh();
-      } catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : `Failed to ${kind}`
-        );
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : `Failed to ${kind}`);
       } finally {
         setPending(null);
       }
     },
-    [agentId, agentName, router]
+    [agentId, agentName, router],
   );
 
   const runDelete = React.useCallback(async () => {
@@ -105,10 +99,8 @@ export function AgentActions({
       toast.success(`Deleted ${agentName}`);
       setConfirmDelete(false);
       router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to delete agent'
-      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete agent');
     } finally {
       setPending(null);
     }
@@ -184,16 +176,13 @@ export function AgentActions({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {agentName}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will retract the agent from your Notion workspace and
-              soft-delete its record. Run history is preserved for audit but
-              the agent will stop responding immediately. This cannot be
-              undone from the dashboard.
+              This will retract the agent from your Notion workspace and soft-delete its record. Run
+              history is preserved for audit but the agent will stop responding immediately. This
+              cannot be undone from the dashboard.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={pending === 'delete'}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={pending === 'delete'}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={pending === 'delete'}

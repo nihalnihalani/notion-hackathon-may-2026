@@ -20,10 +20,10 @@ function assertDatasourceId(id: string): void {
 function safeStringify(payload: unknown, what: string): string {
   try {
     return JSON.stringify(payload);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `${what} payload is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }
@@ -58,9 +58,6 @@ export async function resolveDatasource<T = unknown>(
   opts: NtnRunOptions = {},
 ): Promise<T> {
   assertDatasourceId(id);
-  const { data } = await runNtnJson<T>(
-    ['datasources', 'resolve', id, '--json'],
-    opts,
-  );
+  const { data } = await runNtnJson<T>(['datasources', 'resolve', id, '--json'], opts);
   return data;
 }

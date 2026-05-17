@@ -1,15 +1,7 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
-import {
-  Coins,
-  Database,
-  KeyRound,
-  Paintbrush,
-  Plug,
-  ShieldAlert,
-  Sparkles,
-} from 'lucide-react';
+import { Coins, Database, KeyRound, Paintbrush, Plug, ShieldAlert, Sparkles } from 'lucide-react';
 
 import { ApiKeysCard, type ApiKeyRow } from '@/components/settings/api-keys-card';
 import { DangerZone } from '@/components/settings/danger-zone';
@@ -17,21 +9,12 @@ import { ModelSelector, type DefaultModel } from '@/components/settings/model-se
 import { ThemeToggle } from '@/components/settings/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CopyButton } from '@/components/shared/copy-button';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { prisma } from '@/lib/db';
-import {
-  formatCount,
-  formatUsd,
-} from '@/lib/formatters';
+import { formatCount, formatUsd } from '@/lib/formatters';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,12 +48,8 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          Settings
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Configure your Forge workspace.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Settings</h1>
+        <p className="text-sm text-muted-foreground">Configure your Forge workspace.</p>
       </header>
 
       <Card>
@@ -78,9 +57,7 @@ export default async function SettingsPage() {
           <CardTitle className="flex items-center gap-2">
             <Paintbrush className="h-4 w-4" /> Appearance
           </CardTitle>
-          <CardDescription>
-            Defaults to your system preference.
-          </CardDescription>
+          <CardDescription>Defaults to your system preference.</CardDescription>
         </CardHeader>
         <CardContent>
           <ThemeToggle />
@@ -109,14 +86,13 @@ export default async function SettingsPage() {
             <Plug className="h-4 w-4" /> Connected providers
           </CardTitle>
           <CardDescription>
-            Each provider grants Forge OAuth scopes its generated agents can
-            call.
+            Each provider grants Forge OAuth scopes its generated agents can call.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2 sm:grid-cols-2">
             {OAUTH_PROVIDERS.map((p) => {
-              const alwaysOn = 'alwaysOn' in p && p.alwaysOn === true;
+              const alwaysOn = 'alwaysOn' in p && p.alwaysOn;
               return (
                 <li
                   key={p.id}
@@ -124,14 +100,10 @@ export default async function SettingsPage() {
                 >
                   <span className="flex items-center gap-2 font-medium">
                     {p.label}
-                    {alwaysOn ? (
-                      <Badge variant="success">Connected</Badge>
-                    ) : null}
+                    {alwaysOn ? <Badge variant="success">Connected</Badge> : null}
                   </span>
                   {alwaysOn ? (
-                    <span className="text-xs text-muted-foreground">
-                      Required
-                    </span>
+                    <span className="text-xs text-muted-foreground">Required</span>
                   ) : (
                     <Button asChild variant="outline" size="sm">
                       <a href={`/api/oauth/${p.id}/start`}>Connect</a>
@@ -149,9 +121,7 @@ export default async function SettingsPage() {
           <CardTitle className="flex items-center gap-2">
             <KeyRound className="h-4 w-4" /> API keys
           </CardTitle>
-          <CardDescription>
-            For MCP clients (Claude Code, Cursor) to drive Forge.
-          </CardDescription>
+          <CardDescription>For MCP clients (Claude Code, Cursor) to drive Forge.</CardDescription>
         </CardHeader>
         <CardContent>
           <Suspense
@@ -173,8 +143,7 @@ export default async function SettingsPage() {
             <Coins className="h-4 w-4" /> Billing
           </CardTitle>
           <CardDescription>
-            Current month usage. Free during the hackathon — paid plans
-            coming soon.
+            Current month usage. Free during the hackathon — paid plans coming soon.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -217,11 +186,7 @@ export default async function SettingsPage() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function DefaultModelSection({
-  clerkUserId,
-}: {
-  clerkUserId: string;
-}) {
+async function DefaultModelSection({ clerkUserId }: { clerkUserId: string }) {
   const dbUser = await prisma.user.findUnique({
     where: { clerkId: clerkUserId },
     select: { workspace: { select: { defaultModel: true } } },
@@ -254,12 +219,7 @@ async function ApiKeysSection({ clerkUserId }: { clerkUserId: string }) {
     select: { workspaceId: true },
   });
   if (!dbUser) {
-    return (
-      <EmptyState
-        icon={KeyRound}
-        title="Install Forge to manage API keys"
-      />
-    );
+    return <EmptyState icon={KeyRound} title="Install Forge to manage API keys" />;
   }
   const keys: ApiKeyRow[] = [];
   return <ApiKeysCard keys={keys} />;
@@ -307,9 +267,7 @@ async function BillingSection({ clerkUserId }: { clerkUserId: string }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border bg-muted/30 p-3">
-      <p className="text-xs uppercase tracking-widest text-muted-foreground">
-        {label}
-      </p>
+      <p className="text-xs uppercase tracking-widest text-muted-foreground">{label}</p>
       <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
@@ -321,24 +279,18 @@ async function WorkspaceSection({ clerkUserId }: { clerkUserId: string }) {
     include: { workspace: true },
   });
   if (!dbUser) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Workspace not bound yet.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">Workspace not bound yet.</p>;
   }
   const ws = dbUser.workspace;
   const forgePageUrl = ws.forgePageId
-    ? `https://www.notion.so/${ws.forgePageId.replace(/-/g, '')}`
+    ? `https://www.notion.so/${ws.forgePageId.replaceAll('-', '')}`
     : null;
 
   return (
     <div className="space-y-3 text-sm">
       <Row label="Workspace name" value={ws.name} />
       <Row label="Notion workspace ID" value={ws.notionWorkspaceId} copy />
-      {forgePageUrl ? (
-        <Row label="Forge page" value={forgePageUrl} copy link />
-      ) : null}
+      {forgePageUrl ? <Row label="Forge page" value={forgePageUrl} copy link /> : null}
     </div>
   );
 }

@@ -20,7 +20,7 @@ import {
   type AnthropicResponse,
   type AnthropicSystem,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DIRECT_BASE = 'https://api.anthropic.com';
 const MESSAGES_PATH = '/v1/messages';
@@ -57,8 +57,12 @@ export interface AnthropicClient {
 }
 
 export function createAnthropicClient(config: AnthropicConfig): AnthropicClient {
-  const useGateway = typeof config.gatewayUrl === 'string' && config.gatewayUrl.length > 0;
-  const base = useGateway ? config.gatewayUrl! : config.baseUrl ?? DIRECT_BASE;
+  const gatewayUrl =
+    typeof config.gatewayUrl === 'string' && config.gatewayUrl.length > 0
+      ? config.gatewayUrl
+      : undefined;
+  const useGateway = gatewayUrl !== undefined;
+  const base = gatewayUrl ?? config.baseUrl ?? DIRECT_BASE;
 
   // Direct API uses x-api-key (not Bearer). Gateway uses Bearer.
   const ctx = useGateway
@@ -92,10 +96,10 @@ export function createAnthropicClient(config: AnthropicConfig): AnthropicClient 
       }
       const body: Record<string, unknown> = {
         model: params.model,
-        messages: params.messages as Array<{
+        messages: params.messages as {
           role: 'user' | 'assistant';
           content: string | AnthropicContentBlockInput[];
-        }>,
+        }[],
         max_tokens: params.maxTokens,
       };
       if (system !== undefined) body['system'] = system;

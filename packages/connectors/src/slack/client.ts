@@ -21,7 +21,7 @@ import {
   type SlackMessage,
   type SlackUser,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://slack.com/api';
 
@@ -59,15 +59,9 @@ export interface SlackClient {
     text: string,
     opts?: PostMessageOptions & RequestOptions,
   ): Promise<SlackMessage>;
-  postBlocks(
-    channel: string,
-    blocks: SlackBlock[],
-    opts?: RequestOptions,
-  ): Promise<SlackMessage>;
+  postBlocks(channel: string, blocks: SlackBlock[], opts?: RequestOptions): Promise<SlackMessage>;
   getChannel(id: string, opts?: RequestOptions): Promise<SlackChannel>;
-  listChannels(
-    opts?: ListChannelsOptions & RequestOptions,
-  ): Promise<SlackChannel[]>;
+  listChannels(opts?: ListChannelsOptions & RequestOptions): Promise<SlackChannel[]>;
   getUser(id: string, opts?: RequestOptions): Promise<SlackUser>;
 }
 

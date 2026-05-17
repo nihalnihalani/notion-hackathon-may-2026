@@ -1,17 +1,16 @@
 # =============================================================================
 # Forge — Security scanning
 #
-# Runs on every PR + weekly cron. Three jobs:
+# Runs on every PR + weekly cron. Two jobs:
 #   1. pnpm audit — fails on `high` or `critical` advisories. We intentionally
 #      do NOT fail on `moderate` because dev-only transitive deps frequently
 #      sit at moderate and would otherwise wedge every PR. Cron job will
 #      escalate moderate to a Slack ping if needed (future).
-#   2. CodeQL JavaScript/TypeScript scan.
-#   3. Secret-scan placeholder (GitHub Advanced Security handles real
-#      detection at the org level; this job documents that it runs).
+#   2. Gitleaks scans git history for committed secrets. This replaces the
+#      previous reminder-only job so the security workflow has no placeholder
+#      checks.
 #
-# Required GitHub secrets: none — both pnpm audit and CodeQL use the
-# `GITHUB_TOKEN` provided automatically by Actions.
+# Required GitHub secrets: none.
 # =============================================================================
 name: Security
 
@@ -24,6 +23,7 @@ on:
     # Mondays 09:00 UTC: catches anything published over the weekend before
     # the engineering week starts.
     - cron: '0 9 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
@@ -31,12 +31,10 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write
-  actions: read
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '9'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
   audit:
@@ -44,16 +42,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
-          version: ${{ env.PNPM_VERSION }}
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: bash scripts/ci/install.sh
       - name: pnpm audit
         run: |
           echo "::group::pnpm audit (high)"
@@ -66,43 +63,24 @@ jobs:
         run: pnpm audit --json > pnpm-audit.json || true
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pnpm-audit-${{ github.sha }}
           path: pnpm-audit.json
           retention-days: 14
 
-  codeql:
-    name: CodeQL (JavaScript/TypeScript)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-          # `security-and-quality` adds maintainability rules on top of the
-          # default security pack. Worth the extra ~30s for a hackathon repo.
-          queries: security-and-quality
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: '/language:${{ matrix.language }}'
-
   secret-scan:
-    name: Secret-scan reminder
+    name: Gitleaks secret scan
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 10
     steps:
-      - name: Reminder
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Gitleaks detect
         run: |
-          echo "GitHub Advanced Security secret scanning runs at the org level."
-          echo "If a leak is detected, GitHub will open a security alert + email the committer."
-          echo "See: https://docs.github.com/en/code-security/secret-scanning"
+          go run github.com/zricethezav/gitleaks/v8@v8.30.1 detect \
+            --source . \
+            --redact \
+            --no-banner \
+            --verbose

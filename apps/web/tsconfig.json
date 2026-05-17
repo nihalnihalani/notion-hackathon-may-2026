@@ -23,6 +23,8 @@
     "next-env.d.ts",
     "next.config.ts",
     "proxy.ts",
+    "instrumentation.ts",
+    "instrumentation-client.ts",
     "app/**/*",
     "components/**/*",
     "lib/**/*",

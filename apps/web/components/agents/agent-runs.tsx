@@ -35,12 +35,12 @@ interface AgentRun {
 }
 
 interface AgentRunsResponse {
-  runs: ReadonlyArray<AgentRun>;
+  runs: readonly AgentRun[];
 }
 
 type LoadState =
   | { kind: 'loading' }
-  | { kind: 'ready'; runs: ReadonlyArray<AgentRun> }
+  | { kind: 'ready'; runs: readonly AgentRun[] }
   | { kind: 'unsupported' }
   | { kind: 'error'; message: string };
 
@@ -62,10 +62,10 @@ export function AgentRuns({ agentId }: { agentId: string }) {
       }
       const body = (await res.json()) as AgentRunsResponse;
       setState({ kind: 'ready', runs: body.runs });
-    } catch (err) {
+    } catch (error) {
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to load runs',
+        message: error instanceof Error ? error.message : 'Failed to load runs',
       });
     }
   }, [agentId]);
@@ -101,12 +101,7 @@ export function AgentRuns({ agentId }: { agentId: string }) {
         title="Couldn't load run history"
         description={state.message}
         action={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void load()}
-          >
+          <Button type="button" variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="h-3.5 w-3.5" /> Retry
           </Button>
         }
@@ -127,12 +122,7 @@ export function AgentRuns({ agentId }: { agentId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void load()}
-        >
+        <Button type="button" variant="ghost" size="sm" onClick={() => void load()}>
           <RefreshCw className="h-3.5 w-3.5" /> Refresh
         </Button>
       </div>
@@ -149,9 +139,7 @@ export function AgentRuns({ agentId }: { agentId: string }) {
           {state.runs.map((r) => (
             <TableRow key={r.id}>
               <TableCell>{formatRelativeDate(r.startedAt)}</TableCell>
-              <TableCell className="text-muted-foreground">
-                {r.trigger}
-              </TableCell>
+              <TableCell className="text-muted-foreground">{r.trigger}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatDuration(r.durationMs)}
               </TableCell>

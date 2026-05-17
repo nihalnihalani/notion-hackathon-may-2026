@@ -68,10 +68,12 @@ function generateNonNull(spec: JSchemaSpec): unknown {
       return SYNTHETIC_SCALAR[spec.kind];
     }
     case 'number':
-    case 'integer':
+    case 'integer': {
       return SYNTHETIC_SCALAR[spec.kind];
-    case 'boolean':
+    }
+    case 'boolean': {
       return SYNTHETIC_SCALAR.boolean;
+    }
     case 'object': {
       const out: Record<string, unknown> = {};
       const required = spec.required ?? [];
@@ -84,10 +86,12 @@ function generateNonNull(spec: JSchemaSpec): unknown {
       }
       return out;
     }
-    case 'array':
+    case 'array': {
       return [generateSynthetic(spec.items)];
-    default:
+    }
+    default: {
       return assertNever(spec);
+    }
   }
 }
 
@@ -164,18 +168,24 @@ function jSchemaToZodNonNull(spec: JSchemaSpec): ZodTypeAny {
       }
       return z.string();
     }
-    case 'email':
+    case 'email': {
       return z.string().email();
-    case 'uuid':
+    }
+    case 'uuid': {
       return z.string().uuid();
-    case 'datetime':
+    }
+    case 'datetime': {
       return z.string().datetime({ offset: true });
-    case 'number':
+    }
+    case 'number': {
       return z.number();
-    case 'integer':
+    }
+    case 'integer': {
       return z.number().int();
-    case 'boolean':
+    }
+    case 'boolean': {
       return z.boolean();
+    }
     case 'object': {
       const shape: Record<string, ZodTypeAny> = {};
       const required = new Set(spec.required ?? []);
@@ -185,9 +195,11 @@ function jSchemaToZodNonNull(spec: JSchemaSpec): ZodTypeAny {
       }
       return z.object(shape).strict();
     }
-    case 'array':
+    case 'array': {
       return z.array(jSchemaToZod(spec.items));
-    default:
+    }
+    default: {
       return assertNever(spec);
+    }
   }
 }

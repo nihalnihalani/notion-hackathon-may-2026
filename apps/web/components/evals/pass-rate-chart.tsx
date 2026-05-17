@@ -32,7 +32,7 @@ export interface PassRatePoint {
 }
 
 interface PassRateChartProps {
-  data: ReadonlyArray<PassRatePoint>;
+  data: readonly PassRatePoint[];
 }
 
 const AGENT_COLORS: Record<AgentName, string> = {
@@ -42,12 +42,7 @@ const AGENT_COLORS: Record<AgentName, string> = {
   shipper: 'hsl(var(--warning))',
 };
 
-const AGENT_KEYS: ReadonlyArray<AgentName> = [
-  'schema_smith',
-  'tool_coder',
-  'inspector',
-  'shipper',
-];
+const AGENT_KEYS: readonly AgentName[] = ['schema_smith', 'tool_coder', 'inspector', 'shipper'];
 
 export function PassRateChart({ data }: PassRateChartProps) {
   const rows = data.map((d) => ({
@@ -86,15 +81,11 @@ export function PassRateChart({ data }: PassRateChartProps) {
               fontSize: 12,
               color: 'hsl(var(--popover-foreground))',
             }}
-            formatter={(v: number) =>
-              typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : v
-            }
+            formatter={(v: number) => (typeof v === 'number' ? `${(v * 100).toFixed(0)}%` : v)}
           />
           <Legend
             wrapperStyle={{ fontSize: 12 }}
-            formatter={(value: string) =>
-              AGENT_NAME_LABEL[value as AgentName] ?? value
-            }
+            formatter={(value: string) => AGENT_NAME_LABEL[value as AgentName] ?? value}
           />
           {AGENT_KEYS.map((agent) => (
             <Line

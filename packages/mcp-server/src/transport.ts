@@ -39,6 +39,10 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { ForgeMcpContext, Logger } from './types.js';
 import { noopLogger } from './types.js';
 
+function noopResolve(): void {
+  // Replaced immediately when the response wait promise is constructed.
+}
+
 /**
  * Web-standard MCP request handler.
  *
@@ -62,13 +66,16 @@ export async function handleMcpHttpRequest(
   // GET → standalone SSE channel for server-initiated messages. We don't
   // emit any in stateless mode, so 405 is the spec-compliant answer.
   if (method === 'GET') {
-    return new Response('Method Not Allowed: stateless MCP endpoint does not offer a standalone SSE stream', {
-      status: 405,
-      headers: {
-        Allow: 'POST, DELETE',
-        'Content-Type': 'text/plain',
+    return new Response(
+      'Method Not Allowed: stateless MCP endpoint does not offer a standalone SSE stream',
+      {
+        status: 405,
+        headers: {
+          Allow: 'POST, DELETE',
+          'Content-Type': 'text/plain',
+        },
       },
-    });
+    );
   }
 
   // DELETE → session termination. Stateless = no session; respond 405 per spec.
@@ -97,10 +104,10 @@ export async function handleMcpHttpRequest(
       return jsonRpcParseError(null, 'Request body was empty');
     }
     body = JSON.parse(text);
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.transport.parse_error', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcParseError(null, 'Failed to parse JSON-RPC payload');
   }
@@ -123,31 +130,39 @@ export async function handleMcpHttpRequest(
   const collected: JSONRPCMessage[] = [];
 
   // Resolver wiring up the wait loop below.
-  let resolve: (value: void | PromiseLike<void>) => void = () => undefined;
+  let resolve: (value: void | PromiseLike<void>) => void = noopResolve;
   const done = new Promise<void>((r) => {
     resolve = r;
   });
 
   // `isRequest` narrows the JSON-RPC union, but the SDK's discriminated union
-   // types don't propagate that narrowing here — re-extract via `extractId`
-   // which already knows how to read the id off any shape.
+  // types don't propagate that narrowing here — re-extract via `extractId`
+  // which already knows how to read the id off any shape.
   const targetId = isRequest ? extractId(body) : null;
 
+  // InMemoryTransport exposes callback properties, not EventTarget methods.
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
   clientSide.onmessage = (message) => {
     collected.push(message);
     if (targetId !== null && isJsonRpcResponseMatching(message, targetId)) {
       resolve();
     }
   };
-  clientSide.onclose = () => resolve();
-  clientSide.onerror = () => resolve();
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  clientSide.onclose = () => {
+    resolve();
+  };
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  clientSide.onerror = () => {
+    resolve();
+  };
 
   try {
     await server.connect(serverSide);
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.transport.connect_failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcInternalError(extractId(body), 'Server failed to attach to transport');
   }
@@ -155,11 +170,11 @@ export async function handleMcpHttpRequest(
   // Deliver the request to the server.
   try {
     await clientSide.send(body);
-  } catch (cause) {
+  } catch (error) {
     await safeClose(server, clientSide);
     logger.error('mcp.transport.send_failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcInternalError(extractId(body), 'Failed to deliver request to server');
   }
@@ -183,15 +198,13 @@ export async function handleMcpHttpRequest(
   const matchId = targetId;
   const response = collected.find((m) => isJsonRpcResponseMatching(m, matchId));
   if (!response) {
-    return jsonRpcInternalError(
-      matchId,
-      'Server completed without producing a JSON-RPC response',
-    );
+    return jsonRpcInternalError(matchId, 'Server completed without producing a JSON-RPC response');
   }
 
   // ── Negotiate response framing: JSON vs SSE ─────────────────────────────
   const accept = (req.headers.get('accept') ?? '').toLowerCase();
-  const acceptsJson = accept.includes('application/json') || accept === '' || accept.includes('*/*');
+  const acceptsJson =
+    accept.includes('application/json') || accept === '' || accept.includes('*/*');
   const acceptsSse = accept.includes('text/event-stream');
 
   if (!acceptsJson && acceptsSse) {
@@ -235,7 +248,7 @@ function jsonRpcParseError(id: string | number | null, message: string): Respons
       jsonrpc: '2.0',
       // Parse errors per spec use a null id when the offending id can't be determined.
       id: id ?? null,
-      error: { code: -32700, message },
+      error: { code: -32_700, message },
     } as JSONRPCMessage,
     400,
   );
@@ -246,7 +259,7 @@ function jsonRpcInternalError(id: string | number | null, message: string): Resp
     {
       jsonrpc: '2.0',
       id: id ?? null,
-      error: { code: -32603, message },
+      error: { code: -32_603, message },
     } as JSONRPCMessage,
     500,
   );
@@ -254,12 +267,19 @@ function jsonRpcInternalError(id: string | number | null, message: string): Resp
 
 function isJsonRpcMessage(value: unknown): value is JSONRPCMessage {
   if (typeof value !== 'object' || value === null) return false;
-  const v = value as { jsonrpc?: unknown; method?: unknown; id?: unknown; result?: unknown; error?: unknown };
+  const v = value as {
+    jsonrpc?: unknown;
+    method?: unknown;
+    id?: unknown;
+    result?: unknown;
+    error?: unknown;
+  };
   if (v.jsonrpc !== '2.0') return false;
   // Either a request (method + id), a notification (method, no id), a
   // response (id + result), or an error response (id + error).
   if (typeof v.method === 'string') return true;
-  if ((typeof v.id === 'string' || typeof v.id === 'number') && ('result' in v || 'error' in v)) return true;
+  if ((typeof v.id === 'string' || typeof v.id === 'number') && ('result' in v || 'error' in v))
+    return true;
   return false;
 }
 

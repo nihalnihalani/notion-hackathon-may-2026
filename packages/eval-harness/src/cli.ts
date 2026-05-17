@@ -25,12 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
-import {
-  compareToBaseline,
-  readBaseline,
-  writeBaseline,
-  type Baseline,
-} from './baseline.js';
+import { compareToBaseline, readBaseline, writeBaseline, type Baseline } from './baseline.js';
 import { runEvals, validateEvalConfigs, type EvalRunResult } from './runner.js';
 
 interface ParsedArgs {
@@ -39,15 +34,14 @@ interface ParsedArgs {
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const [, , command = '', ...rest] = argv;
+  const command = argv[2] ?? '';
+  const rest = argv.slice(3);
   const flags = new Map<string, string | true>();
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
-    if (!arg || !arg.startsWith('--')) continue;
+    if (!arg?.startsWith('--')) continue;
     const eq = arg.indexOf('=');
-    if (eq !== -1) {
-      flags.set(arg.slice(2, eq), arg.slice(eq + 1));
-    } else {
+    if (eq === -1) {
       const next = rest[i + 1];
       if (next && !next.startsWith('--')) {
         flags.set(arg.slice(2), next);
@@ -55,6 +49,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       } else {
         flags.set(arg.slice(2), true);
       }
+    } else {
+      flags.set(arg.slice(2, eq), arg.slice(eq + 1));
     }
   }
   return { command, flags };
@@ -158,8 +154,8 @@ function ensureDir(p: string): void {
   }
 }
 
-main().catch((err: unknown) => {
-  const msg = err instanceof Error ? err.stack ?? err.message : String(err);
+main().catch((error: unknown) => {
+  const msg = error instanceof Error ? (error.stack ?? error.message) : String(error);
   process.stderr.write(`eval-harness CLI failed: ${msg}\n`);
   process.exit(1);
 });

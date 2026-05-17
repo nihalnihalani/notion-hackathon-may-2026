@@ -25,46 +25,48 @@ export const noUnboundedLoops: Rule = {
 
     walk(ast, (node) => {
       // while(true) { ... }
-      if (node.type === 'WhileStatement' && isTruthyConstant(node.test)) {
-        if (!hasExitStatement(node.body)) {
-          violations.push(
-            makeViolation({
-              rule: RULE,
-              severity: 'warn',
-              message: 'while(true) loop with no break/return/throw — possible infinite loop',
-              node,
-              source,
-            }),
-          );
-        }
+      if (
+        node.type === 'WhileStatement' &&
+        isTruthyConstant(node.test) &&
+        !hasExitStatement(node.body)
+      ) {
+        violations.push(
+          makeViolation({
+            rule: RULE,
+            severity: 'warn',
+            message: 'while(true) loop with no break/return/throw — possible infinite loop',
+            node,
+            source,
+          }),
+        );
       }
       // do { ... } while(true)
-      if (node.type === 'DoWhileStatement' && isTruthyConstant(node.test)) {
-        if (!hasExitStatement(node.body)) {
-          violations.push(
-            makeViolation({
-              rule: RULE,
-              severity: 'warn',
-              message: 'do/while(true) loop with no break/return/throw — possible infinite loop',
-              node,
-              source,
-            }),
-          );
-        }
+      if (
+        node.type === 'DoWhileStatement' &&
+        isTruthyConstant(node.test) &&
+        !hasExitStatement(node.body)
+      ) {
+        violations.push(
+          makeViolation({
+            rule: RULE,
+            severity: 'warn',
+            message: 'do/while(true) loop with no break/return/throw — possible infinite loop',
+            node,
+            source,
+          }),
+        );
       }
       // for(;;) — `test === null` means empty
-      if (node.type === 'ForStatement' && node.test === null) {
-        if (!hasExitStatement(node.body)) {
-          violations.push(
-            makeViolation({
-              rule: RULE,
-              severity: 'warn',
-              message: 'for(;;) loop with no break/return/throw — possible infinite loop',
-              node,
-              source,
-            }),
-          );
-        }
+      if (node.type === 'ForStatement' && node.test === null && !hasExitStatement(node.body)) {
+        violations.push(
+          makeViolation({
+            rule: RULE,
+            severity: 'warn',
+            message: 'for(;;) loop with no break/return/throw — possible infinite loop',
+            node,
+            source,
+          }),
+        );
       }
     });
 

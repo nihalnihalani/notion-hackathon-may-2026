@@ -49,9 +49,7 @@ import type {
 
 // ─── Builders (shared with forge.test.ts shape) ──────────────────────────────
 
-function makeEvent(
-  overrides: Partial<GenerationRequestedEvent> = {},
-): GenerationRequestedEvent {
+function makeEvent(overrides: Partial<GenerationRequestedEvent> = {}): GenerationRequestedEvent {
   return {
     generationId: 'gen_ing_1',
     workspaceId: 'ws_ing_1',
@@ -66,9 +64,7 @@ function makeEvent(
   };
 }
 
-function makeSchemaSmithOutput(
-  overrides: Partial<SchemaSmithOutput> = {},
-): SchemaSmithOutput {
+function makeSchemaSmithOutput(overrides: Partial<SchemaSmithOutput> = {}): SchemaSmithOutput {
   return {
     pattern: 'sync-source',
     inputSchema: { kind: 'object', describe: 'cfg', properties: {} },
@@ -99,6 +95,7 @@ function makeFailingInspection(): InspectionResult {
 
 function makeShipperResult(): ShipperResult {
   return {
+    generatedAgentId: 'generated_agent_1',
     customAgentId: 'ca_1',
     deployUrl: 'https://u/d',
     ntnWorkerName: 'gh-issue-sync',
@@ -305,9 +302,7 @@ describe('runForgeOnInngest — clarification halt', () => {
 
     expect(h.stepIds).toContain('post-clarification');
     expect(toolCoder).not.toHaveBeenCalled();
-    expect(h.db.updateGenerationStatus.mock.calls.at(-1)?.[1].status).toBe(
-      'failed',
-    );
+    expect(h.db.updateGenerationStatus.mock.calls.at(-1)?.[1].status).toBe('failed');
   });
 });
 

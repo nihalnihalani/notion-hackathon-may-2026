@@ -31,11 +31,7 @@ import {
 } from '@/components/ui/table';
 import { AgentActions } from '@/components/agents/agent-actions';
 import { AGENT_PATTERN_LABEL } from '@/lib/colors';
-import {
-  formatCount,
-  formatRelativeDate,
-  formatUsd,
-} from '@/lib/formatters';
+import { formatCount, formatRelativeDate, formatUsd } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 
 export interface AgentRow {
@@ -50,12 +46,12 @@ export interface AgentRow {
 }
 
 interface AgentsTableProps {
-  agents: ReadonlyArray<AgentRow>;
+  agents: readonly AgentRow[];
 }
 
 type Filter = 'all' | AgentStatus;
 
-const FILTERS: ReadonlyArray<{ key: Filter; label: string }> = [
+const FILTERS: readonly { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Active' },
   { key: 'paused', label: 'Paused' },
@@ -71,10 +67,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
     return agents.filter((a) => {
       if (filter !== 'all' && a.status !== filter) return false;
       if (!q) return true;
-      return (
-        a.ntnWorkerName.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
-      );
+      return a.ntnWorkerName.toLowerCase().includes(q) || a.description.toLowerCase().includes(q);
     });
   }, [agents, filter, search]);
 
@@ -100,12 +93,14 @@ export function AgentsTable({ agents }: AgentsTableProps) {
               type="button"
               role="tab"
               aria-selected={filter === f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => {
+                setFilter(f.key);
+              }}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                 filter === f.key
                   ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
+                  : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground',
               )}
             >
               {f.label}
@@ -123,7 +118,9 @@ export function AgentsTable({ agents }: AgentsTableProps) {
           <Input
             type="search"
             value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
+            onChange={(e) => {
+              setSearch(e.currentTarget.value);
+            }}
             placeholder="Search agents…"
             className="pl-8"
             aria-label="Search agents"
@@ -134,9 +131,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
       {filtered.length === 0 ? (
         <EmptyState
           icon={Bot}
-          title={
-            agents.length === 0 ? 'No agents yet' : 'No matching agents'
-          }
+          title={agents.length === 0 ? 'No agents yet' : 'No matching agents'}
           description={
             agents.length === 0
               ? 'Click ⚡ Forge this Agent in your Notion workspace to create your first one.'
@@ -176,10 +171,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
             {filtered.map((a) => (
               <TableRow key={a.id}>
                 <TableCell className="font-medium">
-                  <Link
-                    href={`/agents/${a.id}`}
-                    className="hover:underline"
-                  >
+                  <Link href={`/agents/${a.id}`} className="hover:underline">
                     {a.ntnWorkerName}
                   </Link>
                 </TableCell>
@@ -193,9 +185,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                   <StatusBadge kind="agent" status={a.status} />
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground">
-                  {a.lastInvokedAt
-                    ? formatRelativeDate(a.lastInvokedAt)
-                    : 'Never'}
+                  {a.lastInvokedAt ? formatRelativeDate(a.lastInvokedAt) : 'Never'}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatCount(a.totalInvocations)}
@@ -204,11 +194,7 @@ export function AgentsTable({ agents }: AgentsTableProps) {
                   {formatUsd(a.monthlyCostUsd)}
                 </TableCell>
                 <TableCell className="text-right">
-                  <AgentActions
-                    agentId={a.id}
-                    agentName={a.ntnWorkerName}
-                    status={a.status}
-                  />
+                  <AgentActions agentId={a.id} agentName={a.ntnWorkerName} status={a.status} />
                 </TableCell>
               </TableRow>
             ))}

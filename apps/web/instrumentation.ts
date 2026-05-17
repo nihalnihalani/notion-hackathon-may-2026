@@ -23,19 +23,20 @@
 
 import * as Sentry from '@sentry/nextjs';
 
+type SentryIntegration = ReturnType<typeof Sentry.browserTracingIntegration>;
+
 const DSN = process.env['SENTRY_DSN'] ?? process.env['NEXT_PUBLIC_SENTRY_DSN'];
 const ENVIRONMENT =
   process.env['SENTRY_ENVIRONMENT'] ??
   process.env['VERCEL_ENV'] ??
-  process.env['NODE_ENV'] ??
+  process.env.NODE_ENV ??
   'development';
-const RELEASE =
-  process.env['SENTRY_RELEASE'] ?? process.env['VERCEL_GIT_COMMIT_SHA'];
+const RELEASE = process.env['SENTRY_RELEASE'] ?? process.env['VERCEL_GIT_COMMIT_SHA'];
 
 // Performance traces sampled at 10% in prod, 100% in dev — matches the rule
 // in PLAN.md Part X so we get full traces while iterating locally without
 // blowing the Sentry quota in production.
-const TRACES_SAMPLE_RATE = ENVIRONMENT === 'production' ? 0.1 : 1.0;
+const TRACES_SAMPLE_RATE = ENVIRONMENT === 'production' ? 0.1 : 1;
 
 /**
  * PII scrubber used by both Node and Edge runtimes. We strip the common
@@ -58,10 +59,10 @@ const CC_RE = /\b(?:\d[ -]*?){13,16}\b/g;
 function scrub(value: unknown): unknown {
   if (typeof value === 'string') {
     return value
-      .replace(EMAIL_RE, '<email>')
-      .replace(SSN_RE, '<ssn>')
-      .replace(CC_RE, '<cc>')
-      .replace(PHONE_RE, '<phone>');
+      .replaceAll(EMAIL_RE, '<email>')
+      .replaceAll(SSN_RE, '<ssn>')
+      .replaceAll(CC_RE, '<cc>')
+      .replaceAll(PHONE_RE, '<phone>');
   }
   if (Array.isArray(value)) return value.map(scrub);
   if (value && typeof value === 'object') {
@@ -93,16 +94,11 @@ export async function register(): Promise<void> {
     // bundle never tries to resolve `@sentry/profiling-node`. The dynamic
     // import is wrapped in a try/catch because the profiling integration is
     // an optional peer dep — if it's not installed we still want tracing.
-    const integrations: Sentry.Integration[] = [];
+    const integrations: SentryIntegration[] = [];
     try {
-      const profiling = await import('@sentry/profiling-node').catch(
-        () => null,
-      );
-      if (profiling && 'nodeProfilingIntegration' in profiling) {
-        const integ = (
-          profiling as { nodeProfilingIntegration: () => Sentry.Integration }
-        ).nodeProfilingIntegration();
-        integrations.push(integ);
+      const profiling = await import('@sentry/profiling-node').catch(() => null);
+      if (profiling) {
+        integrations.push(profiling.nodeProfilingIntegration());
       }
     } catch {
       // Profiling is best-effort; absence must not break boot.
@@ -116,7 +112,7 @@ export async function register(): Promise<void> {
       tracesSampleRate: TRACES_SAMPLE_RATE,
       // Match traces sample rate so we don't profile transactions we won't
       // see in Sentry. 1.0 here means "of the sampled traces, profile all".
-      profilesSampleRate: 1.0,
+      profilesSampleRate: 1,
       // PII filter applied to every breadcrumb's data + message.
       beforeBreadcrumb(breadcrumb) {
         const scrubbed = { ...breadcrumb };

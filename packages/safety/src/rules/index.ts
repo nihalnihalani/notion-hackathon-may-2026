@@ -3,20 +3,9 @@ import { noChildProcess } from './no-child-process.js';
 import { noFsOutsideTmp } from './no-fs-outside-tmp.js';
 import { noEval } from './no-eval.js';
 import { noNonAllowlistedNetwork } from './no-non-allowlisted-network.js';
-import { depAllowlist, checkPackageJson } from './dep-allowlist.js';
+import { depAllowlist } from './dep-allowlist.js';
 import { noProcessEnvWrite } from './no-process-env-write.js';
 import { noUnboundedLoops } from './no-unbounded-loops.js';
-
-export {
-  noChildProcess,
-  noFsOutsideTmp,
-  noEval,
-  noNonAllowlistedNetwork,
-  depAllowlist,
-  checkPackageJson,
-  noProcessEnvWrite,
-  noUnboundedLoops,
-};
 
 /**
  * All AST rules, in the order they run. `depAllowlist` is included for
@@ -32,3 +21,11 @@ export const ALL_RULES: Rule[] = [
   noUnboundedLoops,
   depAllowlist,
 ];
+
+export { checkPackageJson, depAllowlist } from './dep-allowlist.js';
+export { noChildProcess } from './no-child-process.js';
+export { noFsOutsideTmp } from './no-fs-outside-tmp.js';
+export { noEval } from './no-eval.js';
+export { noNonAllowlistedNetwork } from './no-non-allowlisted-network.js';
+export { noProcessEnvWrite } from './no-process-env-write.js';
+export { noUnboundedLoops } from './no-unbounded-loops.js';

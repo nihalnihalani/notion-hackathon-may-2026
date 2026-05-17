@@ -28,10 +28,7 @@ export class NotionError extends Error {
   public readonly provider = NOTION_PROVIDER;
 
   constructor(message: string, init: NotionErrorInit) {
-    super(
-      message,
-      init.cause === undefined ? undefined : { cause: init.cause },
-    );
+    super(message, init.cause === undefined ? undefined : { cause: init.cause });
     this.name = 'NotionError';
     this.status = init.status;
     this.body = init.body;
@@ -43,10 +40,7 @@ export class NotionRateLimitError extends NotionError {
   /** Seconds the server asked us to wait (parsed from `Retry-After`). */
   public readonly retryAfter: number | undefined;
 
-  constructor(
-    message: string,
-    init: NotionErrorInit & { retryAfter?: number },
-  ) {
+  constructor(message: string, init: NotionErrorInit & { retryAfter?: number }) {
     super(message, init);
     this.name = 'NotionRateLimitError';
     this.retryAfter = init.retryAfter;
@@ -112,7 +106,7 @@ export function errorFromNotionStatus(args: {
   const { status, body, retryAfter } = args;
   const code = extractNotionCode(body);
   const apiMsg = extractNotionMessage(body);
-  const baseMsg = `notion request failed: HTTP ${status}${
+  const baseMsg = `notion request failed: HTTP ${String(status)}${
     code ? ` (${code})` : ''
   }${apiMsg ? ` — ${apiMsg}` : ''}`;
 

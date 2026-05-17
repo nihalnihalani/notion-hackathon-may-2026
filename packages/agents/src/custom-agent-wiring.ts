@@ -85,7 +85,7 @@ const CUSTOM_AGENT_TOOLS_PATH = '/v1/custom_agents/tools';
  * Hard timeout for the (single) attempt against Notion. Kept short so we
  * always fall back inside the Shipper deadline budget.
  */
-const ATTEMPT_TIMEOUT_MS = 5_000;
+const ATTEMPT_TIMEOUT_MS = 5000;
 
 /** Arguments for {@link wireCustomAgent}. */
 export interface WireCustomAgentArgs {
@@ -150,7 +150,9 @@ function buildFallbackUrl(workspaceId: string): string {
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), ms);
+    timer = setTimeout(() => {
+      resolve(null);
+    }, ms);
   });
   try {
     const result = await Promise.race([p, timeout]);
@@ -194,9 +196,7 @@ export async function wireCustomAgent(args: WireCustomAgentArgs): Promise<WireCu
   // signature is wider than what we need and assigning the global into our
   // narrower contract would require a cast at every call site. The
   // declaration below is the intersection of all impls we accept.
-  const fetchImpl:
-    | ((input: string | URL, init?: RequestInit) => Promise<Response>)
-    | undefined =
+  const fetchImpl: ((input: string | URL, init?: RequestInit) => Promise<Response>) | undefined =
     args.fetch ??
     args.notionConfig.fetch ??
     (typeof globalThis.fetch === 'function'
@@ -220,8 +220,8 @@ export async function wireCustomAgent(args: WireCustomAgentArgs): Promise<WireCu
     capabilities: args.capabilities.map((cap) => ({
       kind: cap.kind,
       key: cap.key,
-      ...(cap.title !== undefined ? { title: cap.title } : {}),
-      ...(cap.description !== undefined ? { description: cap.description } : {}),
+      ...(cap.title === undefined ? {} : { title: cap.title }),
+      ...(cap.description === undefined ? {} : { description: cap.description }),
     })),
   });
 
@@ -266,7 +266,7 @@ export async function wireCustomAgent(args: WireCustomAgentArgs): Promise<WireCu
       return { customAgentId: null, fallbackUrl, via: 'fallback' };
     }
 
-    if (parsed && typeof parsed.id === 'string' && parsed.id.length > 0) {
+    if (typeof parsed.id === 'string' && parsed.id.length > 0) {
       return { customAgentId: parsed.id, via: 'rest' };
     }
     return { customAgentId: null, fallbackUrl, via: 'fallback' };

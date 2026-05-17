@@ -26,14 +26,13 @@ let initialised = false;
  * render — the underlying SDK only runs init once.
  */
 export function initPosthog(): PostHog | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof globalThis === 'undefined') return null;
   const key = process.env['NEXT_PUBLIC_POSTHOG_KEY'];
   if (!key) return null;
   if (initialised) return posthog;
 
   posthog.init(key, {
-    api_host:
-      process.env['NEXT_PUBLIC_POSTHOG_HOST'] ?? 'https://us.i.posthog.com',
+    api_host: process.env['NEXT_PUBLIC_POSTHOG_HOST'] ?? 'https://us.i.posthog.com',
     // We drive page-view capture ourselves from the App Router listener —
     // see comment at top of file.
     capture_pageview: false,
@@ -47,7 +46,7 @@ export function initPosthog(): PostHog | null {
     },
     person_profiles: 'identified_only',
     loaded: (ph) => {
-      if (process.env['NODE_ENV'] === 'development') {
+      if (process.env.NODE_ENV === 'development') {
         ph.debug(false);
       }
     },
@@ -62,7 +61,7 @@ export function initPosthog(): PostHog | null {
  * server-side or the public key is unset.
  */
 export function getPosthog(): PostHog | null {
-  if (typeof window === 'undefined') return null;
+  if (typeof globalThis === 'undefined') return null;
   if (!process.env['NEXT_PUBLIC_POSTHOG_KEY']) return null;
   return posthog;
 }

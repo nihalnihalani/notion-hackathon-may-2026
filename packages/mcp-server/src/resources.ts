@@ -14,12 +14,7 @@
  */
 
 import { toMcpErrorContent } from './errors.js';
-import type {
-  ForgeMcpConfig,
-  ForgeMcpContext,
-  GeneratedAgentView,
-  Logger,
-} from './types.js';
+import type { ForgeMcpConfig, ForgeMcpContext, GeneratedAgentView, Logger } from './types.js';
 import { noopLogger } from './types.js';
 
 /** The single URI we register. Kept as a const so server.ts can re-use it. */
@@ -27,9 +22,8 @@ export const FORGE_AGENTS_URI = 'forge://agents';
 
 /** Stable metadata used when registering the resource. */
 export const FORGE_AGENTS_RESOURCE_METADATA = Object.freeze({
-  title: "Workspace agents",
-  description:
-    "All deployed Forge agents (active + paused) for the requesting workspace, as JSON.",
+  title: 'Workspace agents',
+  description: 'All deployed Forge agents (active + paused) for the requesting workspace, as JSON.',
   mimeType: 'application/json',
 });
 
@@ -46,11 +40,11 @@ export async function readForgeAgentsResource(
   context: ForgeMcpContext,
   config: ForgeMcpConfig,
 ): Promise<{
-  contents: Array<{
+  contents: {
     uri: string;
     mimeType: string;
     text: string;
-  }>;
+  }[];
 }> {
   const logger: Logger = config.logger ?? noopLogger;
   try {
@@ -60,7 +54,7 @@ export async function readForgeAgentsResource(
       workspaceId: context.workspaceId,
       generatedAt: new Date().toISOString(),
       total: safe.length,
-      agents: safe satisfies ReadonlyArray<GeneratedAgentView>,
+      agents: safe satisfies readonly GeneratedAgentView[],
     };
     return {
       contents: [
@@ -71,12 +65,12 @@ export async function readForgeAgentsResource(
         },
       ],
     };
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.resource.forge_agents.failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
-    const errorPayload = toMcpErrorContent(cause);
+    const errorPayload = toMcpErrorContent(error);
     return {
       contents: [
         {

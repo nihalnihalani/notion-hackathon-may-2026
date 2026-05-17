@@ -8,7 +8,7 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       exclude: ['src/index.ts', 'src/types.ts', 'src/allowlists.ts'],
-      reporter: ['text', 'json-summary'],
+      reporter: ['text', 'json-summary', 'lcov'],
       thresholds: {
         // Per-file thresholds are too brittle for this codebase; the rules
         // are tiny pure functions and one branch can swing 5%. Aim global.

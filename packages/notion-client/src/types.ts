@@ -18,10 +18,7 @@
 
 // ── Fetch + Logger ───────────────────────────────────────────────────────────
 
-export type FetchLike = (
-  url: string | URL,
-  init?: RequestInit,
-) => Promise<Response>;
+export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
 export interface Logger {
   debug?: (msg: string, meta?: Record<string, unknown>) => void;
@@ -75,7 +72,7 @@ export interface RetryOptions {
 export const DEFAULT_RETRY: RetryOptions = {
   retries: 3,
   initialDelayMs: 250,
-  maxDelayMs: 8_000,
+  maxDelayMs: 8000,
   jitter: true,
 };
 
@@ -271,7 +268,7 @@ export type NotionPropertyValue =
   | {
       id: string;
       type: 'multi_select';
-      multi_select: Array<{ id?: string; name: string; color?: NotionColor }>;
+      multi_select: { id?: string; name: string; color?: NotionColor }[];
     }
   | {
       id: string;
@@ -294,24 +291,24 @@ export type NotionPropertyValue =
   | {
       id: string;
       type: 'people';
-      people: Array<{ object: 'user'; id: string }>;
+      people: { object: 'user'; id: string }[];
     }
   | {
       id: string;
       type: 'files';
-      files: Array<
+      files: (
         | { name: string; type: 'external'; external: { url: string } }
         | {
             name: string;
             type: 'file';
             file: { url: string; expiry_time: string };
           }
-      >;
+      )[];
     }
   | {
       id: string;
       type: 'relation';
-      relation: Array<{ id: string }>;
+      relation: { id: string }[];
       has_more?: boolean;
     }
   | {
@@ -430,9 +427,7 @@ export type NotionUser =
 export interface NotionComment {
   object: 'comment';
   id: CommentId;
-  parent:
-    | { type: 'page_id'; page_id: string }
-    | { type: 'block_id'; block_id: string };
+  parent: { type: 'page_id'; page_id: string } | { type: 'block_id'; block_id: string };
   discussion_id: string;
   created_time: string;
   last_edited_time: string;

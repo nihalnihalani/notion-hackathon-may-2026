@@ -1,34 +1,24 @@
 # =============================================================================
 # Forge — Deploy (preview)
 #
-# Runs on every pull request targeting main. This workflow owns the *full*
-# preview path: it lints + typechecks + tests + verify-envs the PR, then
-# deploys the resulting build to Vercel as a preview, branches the
-# PlanetScale prod schema into a per-PR DB branch, posts the preview URL
-# and DB branch as a sticky comment on the PR, and (when the PR carries the
-# `e2e` label) runs the Playwright happy-path suite against the live
-# preview URL.
+# Runs on every pull request targeting main. This workflow always lints +
+# checks changed-file formatting + typechecks + tests + verify-envs + builds
+# the PR using the same stubbed environment as CI. It intentionally does not
+# create optional PlanetScale/Vercel/E2E jobs, because this repository does not
+# have preview-provider secrets configured yet; those live in the manual
+# `deploy-preview-external.yml` workflow.
 #
-# The Vercel GitHub integration can also auto-build previews, but we drive
-# it from CI so the deploy is gated on `pnpm test && pnpm verify:env`
-# passing first — no green check, no preview URL.
+# The Vercel GitHub integration can also auto-build previews, but provider
+# previews should be run through the manual external workflow so they are
+# gated on CI-equivalent checks first.
 #
-# Required GitHub secrets (Repository Settings → Secrets and variables →
-# Actions):
-#   VERCEL_TOKEN              Personal/Service token for the Vercel CLI
-#   VERCEL_ORG_ID             Vercel team / org id (`vercel link` writes it)
-#   VERCEL_PROJECT_ID         Forge project id in Vercel
-#   PLANETSCALE_SERVICE_TOKEN PlanetScale service-token value
-#   PLANETSCALE_SERVICE_TOKEN_ID PlanetScale service-token id
-#   PLANETSCALE_ORG           PlanetScale org slug (e.g. "forge")
-#   PLANETSCALE_DB            PlanetScale database name (e.g. "forge-prod")
 # =============================================================================
 name: Deploy (preview)
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
 
 # Cancel any in-flight preview deploy for the same PR — newer commits win.
 concurrency:
@@ -37,22 +27,17 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 env:
   NODE_VERSION: '20'
-  PNPM_VERSION: '9'
   TURBO_TELEMETRY_DISABLED: '1'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # 1. Verify the PR is shippable before we spend a deploy slot on it.
-  # ---------------------------------------------------------------------------
   verify:
-    name: Lint / typecheck / test / verify-env
+    name: Lint / format / typecheck / test / build / verify-env
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Match `verify-env` stub values from ci.yml exactly so a passing CI run
     # implies this job will also pass. Drift is a smell — review both together.
     env:
@@ -91,28 +76,34 @@ jobs:
       STRIPE_SECRET_KEY: sk_test_stripe_fake_ci_stub
       STRIPE_WEBHOOK_SECRET: whsec_stripe_fake_ci_stub
       FORGE_INTERNAL_TOKEN: ci_stub_token_0000000000000000000000000000000000000000000000
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
         with:
-          version: ${{ env.PNPM_VERSION }}
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
           run_install: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - name: Cache Turbo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-preview-${{ github.sha }}
           restore-keys: |
             turbo-${{ runner.os }}-preview-
-      - run: pnpm install --frozen-lockfile
-      - name: Lint / typecheck / test / verify-env
+      - run: bash scripts/ci/install.sh
+      - name: Lint / format / typecheck / test / build / verify-env
         run: |
           echo "::group::lint"
           pnpm lint -- --max-warnings=0
+          echo "::endgroup::"
+          echo "::group::format changed files"
+          pnpm format:check:changed -- "${BASE_SHA}" "${HEAD_SHA}"
           echo "::endgroup::"
           echo "::group::typecheck"
           pnpm typecheck
@@ -120,150 +111,9 @@ jobs:
           echo "::group::test"
           pnpm test
           echo "::endgroup::"
+          echo "::group::build"
+          pnpm build
+          echo "::endgroup::"
           echo "::group::verify-env"
           pnpm verify:env
           echo "::endgroup::"
-
-  # ---------------------------------------------------------------------------
-  # 2. Branch PlanetScale prod into a per-PR DB branch so the preview deploy
-  #    talks to its own isolated schema. Idempotent: pscale will exit non-zero
-  #    if the branch already exists, which we tolerate.
-  # ---------------------------------------------------------------------------
-  planetscale-branch:
-    name: PlanetScale preview branch
-    needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      branch_name: ${{ steps.branch.outputs.branch_name }}
-      branch_url: ${{ steps.branch.outputs.branch_url }}
-    env:
-      PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
-      PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
-      PSCALE_ORG: ${{ secrets.PLANETSCALE_ORG }}
-      PSCALE_DB: ${{ secrets.PLANETSCALE_DB }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install pscale CLI
-        uses: planetscale/setup-pscale-action@v1
-      - id: branch
-        name: Create or reuse preview branch
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          BRANCH="preview-pr-${PR_NUMBER}"
-          echo "::group::pscale branch create (idempotent)"
-          if pscale branch show "${PSCALE_DB}" "${BRANCH}" --org "${PSCALE_ORG}" >/dev/null 2>&1; then
-            echo "Branch ${BRANCH} already exists — reusing."
-          else
-            pscale branch create "${PSCALE_DB}" "${BRANCH}" \
-              --from main --org "${PSCALE_ORG}" --wait
-          fi
-          echo "::endgroup::"
-          BRANCH_URL="https://app.planetscale.com/${PSCALE_ORG}/${PSCALE_DB}/${BRANCH}"
-          echo "branch_name=${BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "branch_url=${BRANCH_URL}" >> "$GITHUB_OUTPUT"
-
-  # ---------------------------------------------------------------------------
-  # 3. Deploy preview to Vercel via CLI. We `vercel build` first so the
-  #    artifact uploaded to Vercel is identical to what CI just verified.
-  # ---------------------------------------------------------------------------
-  vercel-preview:
-    name: Vercel preview deploy
-    needs: [verify, planetscale-branch]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      preview_url: ${{ steps.deploy.outputs.preview_url }}
-    env:
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install Vercel CLI
-        run: pnpm add -g vercel@latest
-      - name: Pull Vercel env (preview)
-        run: vercel pull --yes --environment=preview --token="${VERCEL_TOKEN}"
-      - name: Build
-        run: vercel build --token="${VERCEL_TOKEN}"
-      - id: deploy
-        name: Deploy prebuilt artifact
-        run: |
-          set -euo pipefail
-          echo "::group::vercel deploy"
-          URL=$(vercel deploy --prebuilt --token="${VERCEL_TOKEN}" \
-            --meta githubCommitSha="${GITHUB_SHA}" \
-            --meta githubPrNumber="${{ github.event.pull_request.number }}")
-          echo "::endgroup::"
-          echo "preview_url=${URL}" >> "$GITHUB_OUTPUT"
-
-  # ---------------------------------------------------------------------------
-  # 4. Sticky PR comment with preview + DB branch URLs.
-  # ---------------------------------------------------------------------------
-  pr-comment:
-    name: Sticky PR comment
-    needs: [planetscale-branch, vercel-preview]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Upsert sticky comment
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: forge-preview
-          message: |
-            ### Forge preview is up
-
-            | What | Where |
-            | --- | --- |
-            | Preview deploy | ${{ needs.vercel-preview.outputs.preview_url }} |
-            | DB branch | ${{ needs.planetscale-branch.outputs.branch_url }} |
-            | Commit | `${{ github.event.pull_request.head.sha }}` |
-
-            Add the **`e2e`** label to this PR to run the Playwright happy-path suite against the preview URL.
-
-  # ---------------------------------------------------------------------------
-  # 5. Playwright E2E — opt-in via the `e2e` label so PRs without UI changes
-  #    don't pay the cost.
-  # ---------------------------------------------------------------------------
-  e2e:
-    name: Playwright E2E (opt-in via `e2e` label)
-    needs: vercel-preview
-    if: contains(github.event.pull_request.labels.*.name, 'e2e')
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      PLAYWRIGHT_BASE_URL: ${{ needs.vercel-preview.outputs.preview_url }}
-      CI: 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Run E2E
-        run: pnpm exec playwright test
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report-${{ github.event.pull_request.number }}
-          path: playwright-report/
-          retention-days: 14

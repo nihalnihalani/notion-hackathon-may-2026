@@ -76,7 +76,7 @@ function tidy(markdown: string): string {
     .split('\n')
     .map((line) => line.replace(/[\t ]+$/u, ''))
     .join('\n')
-    .replace(/\n{3,}/gu, '\n\n')
+    .replaceAll(/\n{3,}/gu, '\n\n')
     .trim();
 }
 
@@ -93,7 +93,9 @@ function tidy(markdown: string): string {
 export function formatReleaseNotes(args: FormatReleaseNotesArgs): string {
   const patternLabel = PATTERN_LABELS[args.pattern];
   const trimmedDescription = args.description.trim();
-  const safeLines = Number.isFinite(args.sourceLines) ? Math.max(0, Math.trunc(args.sourceLines)) : 0;
+  const safeLines = Number.isFinite(args.sourceLines)
+    ? Math.max(0, Math.trunc(args.sourceLines))
+    : 0;
 
   const lines: string[] = [
     '# Your new Notion agent is live',
@@ -107,7 +109,12 @@ export function formatReleaseNotes(args: FormatReleaseNotesArgs): string {
     lines.push(`**Webhook URL:** \`${args.webhookUrl}\``);
   }
 
-  lines.push('', '## What you asked for', '', `> ${trimmedDescription.length === 0 ? '(no description provided)' : trimmedDescription}`);
+  lines.push(
+    '',
+    '## What you asked for',
+    '',
+    `> ${trimmedDescription.length === 0 ? '(no description provided)' : trimmedDescription}`,
+  );
 
   if (args.oauthRedirectUrl !== undefined && args.oauthRedirectUrl.length > 0) {
     lines.push(

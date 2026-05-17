@@ -62,11 +62,10 @@ export function VoiceInputButton({
   // Probe browser support once on mount so the button renders the disabled
   // state from the first paint instead of after the user clicks.
   React.useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof globalThis === 'undefined') return;
     const hasMediaDevices =
-      typeof navigator !== 'undefined' &&
-      typeof navigator.mediaDevices?.getUserMedia === 'function';
-    const hasRecorder = typeof window.MediaRecorder === 'function';
+      typeof navigator !== 'undefined' && typeof navigator.mediaDevices.getUserMedia === 'function';
+    const hasRecorder = typeof globalThis.MediaRecorder === 'function';
     if (!hasMediaDevices || !hasRecorder) {
       setState('unsupported');
     }
@@ -79,7 +78,6 @@ export function VoiceInputButton({
     return () => {
       teardown();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function teardown(): void {
@@ -128,14 +126,14 @@ export function VoiceInputButton({
           recorderRef.current.stop();
         }
       }, maxDurationMs);
-    } catch (err) {
+    } catch (error) {
       teardown();
       setState('idle');
       const message =
-        err instanceof Error
-          ? err.name === 'NotAllowedError'
+        error instanceof Error
+          ? error.name === 'NotAllowedError'
             ? 'Microphone permission denied.'
-            : err.message
+            : error.message
           : 'Could not start recording.';
       toast.error(message);
     }
@@ -190,11 +188,9 @@ export function VoiceInputButton({
         throw new Error('Empty transcription.');
       }
       onTranscribed(body.text);
-    } catch (err) {
+    } catch (error) {
       toast.error(
-        err instanceof Error
-          ? `Couldn't transcribe: ${err.message}`
-          : "Couldn't transcribe",
+        error instanceof Error ? `Couldn't transcribe: ${error.message}` : "Couldn't transcribe",
       );
     } finally {
       setState('idle');

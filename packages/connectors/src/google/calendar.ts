@@ -13,7 +13,7 @@ import {
   type CalendarEvent,
   type CalendarTime,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://www.googleapis.com/calendar/v3';
 
@@ -37,11 +37,7 @@ export interface CalendarClient {
     maxResults?: number,
     opts?: RequestOptions,
   ): Promise<CalendarEvent[]>;
-  getEvent(
-    calendarId: string,
-    id: string,
-    opts?: RequestOptions,
-  ): Promise<CalendarEvent>;
+  getEvent(calendarId: string, id: string, opts?: RequestOptions): Promise<CalendarEvent>;
   createEvent(
     calendarId: string,
     params: CreateCalendarEventParams,

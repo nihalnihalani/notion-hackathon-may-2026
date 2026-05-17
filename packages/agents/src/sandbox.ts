@@ -103,7 +103,7 @@ export interface SandboxFile {
  * runner). Inspector uses `try/finally` to guarantee teardown.
  */
 export interface SandboxRunner {
-  writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void>;
+  writeFiles(files: readonly SandboxFile[]): Promise<void>;
   run(opts: SandboxRunOptions): Promise<SandboxRunResult>;
   close(): Promise<void>;
 }
@@ -164,16 +164,14 @@ export interface VercelSandboxConfig {
  * an integration test in the orchestrator package.
  */
 interface VercelSandboxInstance {
-  writeFiles(files: Array<{ path: string; content: Buffer; mode?: number }>): Promise<void>;
-  runCommand(
-    params: {
-      cmd: string;
-      args?: string[];
-      cwd?: string;
-      env?: Record<string, string>;
-      signal?: AbortSignal;
-    },
-  ): Promise<{
+  writeFiles(files: { path: string; content: Buffer; mode?: number }[]): Promise<void>;
+  runCommand(params: {
+    cmd: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    signal?: AbortSignal;
+  }): Promise<{
     exitCode: number;
     stdout(): Promise<string>;
     stderr(): Promise<string>;
@@ -208,14 +206,20 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   // supplied `token`.
   if (config.token !== undefined) {
     if (config.teamId === undefined || config.teamId.length === 0) {
-      throw new InspectorError('createVercelSandbox: teamId is required when using access-token auth', {
-        detail: { hasToken: true },
-      });
+      throw new InspectorError(
+        'createVercelSandbox: teamId is required when using access-token auth',
+        {
+          detail: { hasToken: true },
+        },
+      );
     }
     if (config.projectId === undefined || config.projectId.length === 0) {
-      throw new InspectorError('createVercelSandbox: projectId is required when using access-token auth', {
-        detail: { hasToken: true, teamId: config.teamId },
-      });
+      throw new InspectorError(
+        'createVercelSandbox: projectId is required when using access-token auth',
+        {
+          detail: { hasToken: true, teamId: config.teamId },
+        },
+      );
     }
   }
 
@@ -226,11 +230,11 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   // — not in this sub-agent package — to keep the agent bundle slim).
   let sdk: VercelSandboxModule;
   try {
-    sdk = (await loadVercelSandboxSdk()) as unknown as VercelSandboxModule;
-  } catch (err) {
+    sdk = (await loadVercelSandboxSdk()) as VercelSandboxModule;
+  } catch (error) {
     throw new InspectorError(
       'createVercelSandbox: failed to load @vercel/sandbox SDK. Install with `pnpm add @vercel/sandbox`.',
-      { cause: err },
+      { cause: error },
     );
   }
 
@@ -253,14 +257,14 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   let instance: VercelSandboxInstance;
   try {
     instance = await sdk.Sandbox.create(createOpts);
-  } catch (err) {
-    throw new InspectorError('createVercelSandbox: Sandbox.create failed', { cause: err });
+  } catch (error) {
+    throw new InspectorError('createVercelSandbox: Sandbox.create failed', { cause: error });
   }
 
   let closed = false;
 
   return {
-    async writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void> {
+    async writeFiles(files: readonly SandboxFile[]): Promise<void> {
       if (closed) {
         throw new InspectorError('writeFiles called after sandbox close', {});
       }
@@ -314,11 +318,11 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
       closed = true;
       try {
         await instance.stop({ blocking: true });
-      } catch (err) {
+      } catch (error) {
         // Stop is idempotent per the SDK; treat residual errors as best-effort.
         // We swallow rather than throw because the Inspector's `finally` block
         // calls close — a throw here would mask the actual inspection error.
-        throw new InspectorError('createVercelSandbox: sandbox.stop failed', { cause: err });
+        throw new InspectorError('createVercelSandbox: sandbox.stop failed', { cause: error });
       }
     },
   };
@@ -337,9 +341,7 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
 async function loadVercelSandboxSdk(): Promise<unknown> {
   const specifier = ['@vercel', 'sandbox'].join('/');
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const importer = new Function('s', 'return import(s);') as (
-    s: string,
-  ) => Promise<unknown>;
+  const importer = new Function('s', 'return import(s);') as (s: string) => Promise<unknown>;
   return importer(specifier);
 }
 
@@ -382,9 +384,7 @@ export async function createInProcessSandbox(
     // (e.g. `/forge`, `/vercel/sandbox`). In the in-process runner we have
     // no real chroot, so we *remap* absolute paths under the sandbox root.
     // Relative paths resolve against the root as usual.
-    const target = isAbsolute(path)
-      ? resolve(root, `.${path}`)
-      : resolve(root, path);
+    const target = isAbsolute(path) ? resolve(root, `.${path}`) : resolve(root, path);
     // Defence in depth: reject any path that would escape the sandbox root
     // via `..` segments after remapping.
     if (!target.startsWith(root)) {
@@ -394,7 +394,7 @@ export async function createInProcessSandbox(
   };
 
   return {
-    async writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void> {
+    async writeFiles(files: readonly SandboxFile[]): Promise<void> {
       if (closed) {
         throw new InspectorError('writeFiles called after sandbox close', {});
       }
@@ -422,16 +422,17 @@ export async function createInProcessSandbox(
         try {
           // Pass-through env merge: `undefined` means inherit; we explicitly
           // merge the runner's env to keep PATH (so `node`, `npx`, etc. resolve).
-          const env: NodeJS.ProcessEnv = opts.env === undefined ? { ...process.env } : { ...process.env, ...opts.env };
+          const env: NodeJS.ProcessEnv =
+            opts.env === undefined ? { ...process.env } : { ...process.env, ...opts.env };
           child = spawn(opts.cmd, opts.args, {
             cwd,
             env,
             stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
           });
-        } catch (err) {
+        } catch (error) {
           rejectPromise(
-            new InspectorError(`in-process sandbox: failed to spawn ${opts.cmd}`, { cause: err }),
+            new InspectorError(`in-process sandbox: failed to spawn ${opts.cmd}`, { cause: error }),
           );
           return;
         }
@@ -491,7 +492,7 @@ export async function createInProcessSandbox(
             const durationMs = performance.now() - started;
             // Conventional: timeout → exit code 124 (`/usr/bin/timeout` convention).
             // Tests can branch on this without re-implementing the timeout check.
-            const exitCode = timedOut ? 124 : code ?? -1;
+            const exitCode = timedOut ? 124 : (code ?? -1);
             if (timedOut) {
               stderrBuf += `\n[in-process sandbox: timed out after ${String(timeoutMs)}ms]`;
             }

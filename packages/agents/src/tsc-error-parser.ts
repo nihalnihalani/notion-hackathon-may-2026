@@ -31,7 +31,8 @@ export interface TscError {
 // The file portion is anything up to the trailing `(`. We deliberately do not
 // constrain it to a TS extension — `tsc --noEmit` can emit diagnostics against
 // .d.ts and .json files (with `resolveJsonModule`).
-const DIAGNOSTIC_RE = /^(?<file>.+?)\((?<line>\d+),(?<col>\d+)\):\s+error\s+(?<code>TS\d+):\s+(?<msg>.*)$/u;
+const DIAGNOSTIC_RE =
+  /^(?<file>.+?)\((?<line>\d+),(?<col>\d+)\):\s+error\s+(?<code>TS\d+):\s+(?<msg>.*)$/u;
 
 /** Hard cap on diagnostic message length — avoids pathological mid-line continuations. */
 const MAX_MESSAGE_BYTES = 8 * 1024;
@@ -80,12 +81,13 @@ export function parseTscErrors(stderr: string): TscError[] {
     }
     // Continuation: starts with whitespace AND we have a prior diagnostic.
     if (/^\s+\S/u.test(line) && errors.length > 0) {
-      const previous = errors[errors.length - 1];
+      const previous = errors.at(-1);
       if (previous === undefined) {
         continue;
       }
       const candidate = `${previous.message}\n${line.trim()}`;
-      previous.message = candidate.length > MAX_MESSAGE_BYTES ? candidate.slice(0, MAX_MESSAGE_BYTES) : candidate;
+      previous.message =
+        candidate.length > MAX_MESSAGE_BYTES ? candidate.slice(0, MAX_MESSAGE_BYTES) : candidate;
     }
     // Anything else (banner lines, blank lines, `Found N errors`) is ignored.
   }

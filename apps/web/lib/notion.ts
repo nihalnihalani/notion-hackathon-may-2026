@@ -34,9 +34,7 @@ function getRedis(): Redis | null {
  * Returns `null` if the user hasn't granted Notion OAuth (Clerk has no token
  * to surface). Caller should treat that as a re-install signal.
  */
-export async function getNotionTokenForClerkUser(
-  clerkUserId: string,
-): Promise<string | null> {
+export async function getNotionTokenForClerkUser(clerkUserId: string): Promise<string | null> {
   const redis = getRedis();
   const cacheKey = `${TOKEN_KEY_PREFIX}${clerkUserId}`;
 
@@ -52,10 +50,9 @@ export async function getNotionTokenForClerkUser(
   // The Clerk SDK signature varies across major versions; cast to any here is
   // intentional and isolated. Validate at runtime.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const list = (await (cc.users as any).getUserOauthAccessToken(
-    clerkUserId,
-    'oauth_notion',
-  )) as { data: Array<{ token: string }> } | Array<{ token: string }>;
+  const list = (await (cc.users as any).getUserOauthAccessToken(clerkUserId, 'oauth_notion')) as
+    | { data: { token: string }[] }
+    | { token: string }[];
 
   const arr = Array.isArray(list) ? list : list.data;
   const token = arr[0]?.token;
@@ -76,6 +73,6 @@ export async function getNotionTokenForClerkUser(
 export function buildNotionConfig(token: string): NotionClientConfig {
   return {
     token,
-    pacer: createPacer({ allowedRequests: 3, intervalMs: 1_000 }),
+    pacer: createPacer({ allowedRequests: 3, intervalMs: 1000 }),
   };
 }

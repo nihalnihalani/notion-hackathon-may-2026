@@ -26,7 +26,7 @@ import {
 } from 'recharts';
 
 interface TopPatternsChartProps {
-  data: ReadonlyArray<{ name: string; count: number }>;
+  data: readonly { name: string; count: number }[];
 }
 
 export function TopPatternsChart({ data }: TopPatternsChartProps) {
@@ -39,11 +39,7 @@ export function TopPatternsChart({ data }: TopPatternsChartProps) {
           margin={{ top: 6, right: 16, bottom: 6, left: 8 }}
           barCategoryGap={12}
         >
-          <CartesianGrid
-            stroke="hsl(var(--border))"
-            strokeDasharray="3 3"
-            horizontal={false}
-          />
+          <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" horizontal={false} />
           <XAxis
             type="number"
             stroke="hsl(var(--muted-foreground))"
@@ -72,10 +68,7 @@ export function TopPatternsChart({ data }: TopPatternsChartProps) {
           />
           <Bar dataKey="count" radius={[0, 4, 4, 0]}>
             {data.map((_, i) => (
-              <Cell
-                key={i}
-                fill={i === 0 ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.55)'}
-              />
+              <Cell key={i} fill={i === 0 ? 'hsl(var(--primary))' : 'hsl(var(--primary) / 0.55)'} />
             ))}
           </Bar>
         </BarChart>

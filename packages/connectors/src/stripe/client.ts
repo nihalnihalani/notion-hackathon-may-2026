@@ -20,7 +20,7 @@ import {
   type StripeRefund,
   type StripeSubscription,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://api.stripe.com/v1';
 
@@ -37,7 +37,7 @@ function encodeForm(body: Record<string, unknown>): URLSearchParams {
   const walk = (key: string, value: unknown): void => {
     if (value === undefined || value === null) return;
     if (Array.isArray(value)) {
-      value.forEach((v, i) => walk(`${key}[${i}]`, v));
+      for (const [i, v] of value.entries()) walk(`${key}[${i}]`, v);
       return;
     }
     if (typeof value === 'object') {
@@ -46,7 +46,16 @@ function encodeForm(body: Record<string, unknown>): URLSearchParams {
       }
       return;
     }
-    params.append(key, String(value));
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      typeof value === 'bigint'
+    ) {
+      params.append(key, String(value));
+      return;
+    }
+    throw new TypeError(`Unsupported Stripe form value for '${key}'`);
   };
   for (const [k, v] of Object.entries(body)) walk(k, v);
   return params;
@@ -55,16 +64,9 @@ function encodeForm(body: Record<string, unknown>): URLSearchParams {
 export interface StripeClient {
   listRecentCharges(limit?: number, opts?: RequestOptions): Promise<StripeCharge[]>;
   getCharge(id: string, opts?: RequestOptions): Promise<StripeCharge>;
-  refundCharge(
-    id: string,
-    amount?: number,
-    opts?: RequestOptions,
-  ): Promise<StripeRefund>;
+  refundCharge(id: string, amount?: number, opts?: RequestOptions): Promise<StripeRefund>;
   getCustomer(id: string, opts?: RequestOptions): Promise<StripeCustomer>;
-  listSubscriptions(
-    customer?: string,
-    opts?: RequestOptions,
-  ): Promise<StripeSubscription[]>;
+  listSubscriptions(customer?: string, opts?: RequestOptions): Promise<StripeSubscription[]>;
   getSubscription(id: string, opts?: RequestOptions): Promise<StripeSubscription>;
 }
 
@@ -98,11 +100,7 @@ export function createStripeClient(config: ConnectorConfig): StripeClient {
         ctx,
         opts?.retry,
       );
-      const parsed = maybeValidate(
-        stripeListSchema(stripeChargeSchema),
-        data,
-        opts?.validate,
-      );
+      const parsed = maybeValidate(stripeListSchema(stripeChargeSchema), data, opts?.validate);
       return parsed.data;
     },
 

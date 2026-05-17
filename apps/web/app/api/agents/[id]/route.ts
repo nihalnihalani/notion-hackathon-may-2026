@@ -42,17 +42,16 @@ export const DELETE = withSentry<{ id: string }>(
     let ntnAlreadyGone = false;
     try {
       await deleteWorker(agent.ntnWorkerName);
-    } catch (err) {
+    } catch (error) {
       // Treat "no such worker" as success — the desired terminal state.
-      if (err instanceof NtnNotInstalledError) {
+      if (error instanceof NtnNotInstalledError) {
         ntnAlreadyGone = true;
       } else {
-        const message =
-          err instanceof Error ? err.message.toLowerCase() : '';
+        const message = error instanceof Error ? error.message.toLowerCase() : '';
         if (message.includes('not found') || message.includes('404')) {
           ntnAlreadyGone = true;
         } else {
-          Sentry.captureException(err, {
+          Sentry.captureException(error, {
             tags: {
               phase: 'ntn.deleteWorker',
               ntnWorkerName: agent.ntnWorkerName,
@@ -77,8 +76,8 @@ export const DELETE = withSentry<{ id: string }>(
           reason: 'user_request',
         },
       });
-    } catch (err) {
-      Sentry.captureException(err, { tags: { phase: 'audit.agent.deleted' } });
+    } catch (error) {
+      Sentry.captureException(error, { tags: { phase: 'audit.agent.deleted' } });
     }
 
     await capture({

@@ -458,6 +458,8 @@ export const inspectionResultSchema: z.ZodType<InspectionResult> = z.object({
  * Advocate response).
  */
 export interface ShipperResult {
+  /** Local GeneratedAgent.id persisted in PlanetScale; use this for Forge URLs. */
+  generatedAgentId: string;
   customAgentId: string | null;
   deployUrl: string;
   ntnWorkerName: string;
@@ -468,6 +470,7 @@ export interface ShipperResult {
 }
 
 export const shipperResultSchema: z.ZodType<ShipperResult> = z.object({
+  generatedAgentId: z.string(),
   customAgentId: z.string().nullable(),
   deployUrl: z.string(),
   ntnWorkerName: z.string(),

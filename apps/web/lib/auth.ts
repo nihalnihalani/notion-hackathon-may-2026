@@ -114,8 +114,7 @@ export async function requireUser(): Promise<
 export async function requireGenerationOwnership(
   generationId: string,
 ): Promise<
-  | { ok: true; ctx: ResolvedUser; generationId: string }
-  | { ok: false; response: NextResponse }
+  { ok: true; ctx: ResolvedUser; generationId: string } | { ok: false; response: NextResponse }
 > {
   const r = await requireWorkspace();
   if (!r.ok) return r;
@@ -169,9 +168,7 @@ export async function validateApiKey(
   // safe to call directly too.
   const trimmed = headerValue.trim();
   const lower = trimmed.toLowerCase();
-  const plaintext = lower.startsWith('bearer ')
-    ? trimmed.slice('bearer '.length).trim()
-    : trimmed;
+  const plaintext = lower.startsWith('bearer ') ? trimmed.slice('bearer '.length).trim() : trimmed;
 
   // 16 chars is well below our 32-byte (~44 char base64url) format —
   // anything shorter is guaranteed not to be one of ours.
@@ -184,9 +181,7 @@ export async function validateApiKey(
     return null;
   }
 
-  let row:
-    | { id: string; userId: string; user: { workspaceId: string } | null }
-    | null;
+  let row: { id: string; userId: string; user: { workspaceId: string } | null } | null;
   try {
     row = await prisma.userApiKey.findFirst({
       where: { hashedKey, revokedAt: null },
@@ -199,7 +194,7 @@ export async function validateApiKey(
   } catch {
     return null;
   }
-  if (!row || !row.user) return null;
+  if (!row?.user) return null;
 
   // Fire-and-forget lastUsedAt bump. We do NOT await — failing to update
   // a "last seen" timestamp must never reject a valid API call. The
@@ -226,9 +221,7 @@ async function sha256Hex(input: string): Promise<string> {
 /**
  * Verify the given `agentId` belongs to the caller's workspace.
  */
-export async function requireAgentOwnership(
-  agentId: string,
-): Promise<
+export async function requireAgentOwnership(agentId: string): Promise<
   | {
       ok: true;
       ctx: ResolvedUser;

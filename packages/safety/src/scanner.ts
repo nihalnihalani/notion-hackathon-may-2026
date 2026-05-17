@@ -26,10 +26,9 @@ function parseSource(source: string): TSESTree.Program {
   try {
     // `parse` returns AST.Program; cast to the TSESTree type used by rules.
     return parse(source, PARSER_OPTIONS) as TSESTree.Program;
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'unknown parser error';
-    throw new ScannerParseError(`Failed to parse source: ${message}`, err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown parser error';
+    throw new ScannerParseError(`Failed to parse source: ${message}`, error);
   }
 }
 
@@ -70,10 +69,7 @@ export function scan(source: string, opts: ScanOptions): ScanResult {
  * Inspector can distinguish "couldn't find the file" from "file isn't
  * parseable".
  */
-export async function scanFile(
-  path: string,
-  opts: ScanOptions,
-): Promise<ScanResult> {
+export async function scanFile(path: string, opts: ScanOptions): Promise<ScanResult> {
   const source = await readFile(path, 'utf8');
   return scan(source, opts);
 }
@@ -82,9 +78,6 @@ export async function scanFile(
  * Scan a parsed package.json object. Returns violations only (no AST,
  * nothing to time around — caller aggregates into its own report).
  */
-export function scanPackageJson(
-  packageJson: object,
-  opts: ScanOptions,
-): Violation[] {
+export function scanPackageJson(packageJson: object, opts: ScanOptions): Violation[] {
   return checkPackageJson(packageJson, opts);
 }

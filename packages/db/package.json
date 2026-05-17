@@ -21,7 +21,10 @@
       "default": "./dist/client.js"
     }
   },
-  "files": ["dist", "prisma"],
+  "files": [
+    "dist",
+    "prisma"
+  ],
   "scripts": {
     "build": "tsc -b",
     "lint": "eslint src",
@@ -40,7 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "20.17.10",
-    "@types/pg": "8.11.10",
+    "@types/pg": "8.15.6",
     "prisma": "5.22.0",
     "typescript": "5.7.2",
     "vitest": "2.1.8"

@@ -19,10 +19,7 @@
  */
 
 import { FORGE_WORKFLOW_NAME } from './forge.js';
-import type {
-  GenerationCancelledEvent,
-  GenerationRequestedEvent,
-} from './types.js';
+import type { GenerationCancelledEvent, GenerationRequestedEvent } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Runtime adapter — pluggable, so tests don't need `workflow/api` installed
@@ -40,10 +37,7 @@ export interface WorkflowRunner {
    * publisher works whether the caller has the workflow body in scope or
    * just the registered name.
    */
-  start(
-    workflowOrName: unknown,
-    args: readonly unknown[],
-  ): Promise<{ runId: string }>;
+  start(workflowOrName: unknown, args: readonly unknown[]): Promise<{ runId: string }>;
   /**
    * Send a resume payload to a waiting hook. Used for cancellation when the
    * workflow uses `createHook()` to wait for a cancellation signal.
@@ -68,9 +62,7 @@ export function __resetCachedRunner(): void {
 /**
  * Resolve the runner: explicit override > cached > dynamic-import.
  */
-async function resolveRunner(
-  override: WorkflowRunner | undefined,
-): Promise<WorkflowRunner> {
+async function resolveRunner(override: WorkflowRunner | undefined): Promise<WorkflowRunner> {
   if (override !== undefined) return override;
   if (cachedRunner !== undefined) return cachedRunner;
 
@@ -82,13 +74,16 @@ async function resolveRunner(
       start: WorkflowRunner['start'];
       resumeHook?: WorkflowRunner['resumeHook'];
     };
-    cachedRunner = { start: mod.start, ...(mod.resumeHook !== undefined && { resumeHook: mod.resumeHook }) };
+    cachedRunner = {
+      start: mod.start,
+      ...(mod.resumeHook !== undefined && { resumeHook: mod.resumeHook }),
+    };
     return cachedRunner;
-  } catch (err) {
+  } catch (error) {
     throw new Error(
       `Vercel Workflow SDK not available: could not import '${moduleName}'. ` +
         `Install the 'workflow' package or pass an explicit runner. ` +
-        `Original error: ${err instanceof Error ? err.message : String(err)}`,
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -212,9 +207,7 @@ function validateRequestedPayload(p: GenerationRequestedEvent): void {
   for (const key of required) {
     const value = (p as unknown as Record<string, unknown>)[key];
     if (value === undefined || value === null || value === '') {
-      throw new Error(
-        `publishGenerationRequested: payload missing required field '${key}'`,
-      );
+      throw new Error(`publishGenerationRequested: payload missing required field '${key}'`);
     }
   }
   if (p.descriptionHash.length !== 64) {

@@ -18,6 +18,11 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const optionalNonEmptyString = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
+
 const envSchema = z.object({
   // App
   NEXT_PUBLIC_APP_URL: z.string().url('must be a valid URL'),
@@ -38,15 +43,12 @@ const envSchema = z.object({
   // about it before shipping a request with no real key.
   OPENAI_API_KEY: z
     .string()
-    .regex(
-      /^sk-(proj-|svcacct-|admin-|None-)?[A-Za-z0-9_-]{20,}$/,
-      'invalid OpenAI key format',
-    )
+    .regex(/^sk-(proj-|svcacct-|admin-|None-)?[A-Za-z0-9_-]{20,}$/, 'invalid OpenAI key format')
     .refine(
       (s) => !s.includes('fake-ci-stub') || process.env['CI'] === 'true',
       'placeholder key in non-CI env',
     ),
-  OPENAI_ORG_ID: z.string().trim().min(1).optional(),
+  OPENAI_ORG_ID: optionalNonEmptyString,
 
   // Notion Developer Platform
   NOTION_OAUTH_CLIENT_ID: z.string().trim().min(1, 'must be non-empty'),
@@ -78,10 +80,7 @@ const envSchema = z.object({
   VERCEL_AI_GATEWAY_API_KEY: z.string().trim().min(1, 'must be non-empty'),
   VERCEL_BLOB_READ_WRITE_TOKEN: z
     .string()
-    .startsWith(
-      'vercel_blob_rw_',
-      'must start with "vercel_blob_rw_" (Vercel Blob R/W token)',
-    ),
+    .startsWith('vercel_blob_rw_', 'must start with "vercel_blob_rw_" (Vercel Blob R/W token)'),
   VERCEL_EDGE_CONFIG: z.string().trim().min(1, 'must be non-empty'),
 
   // Observability — Sentry DSNs are just URLs so self-hosted Sentry works too.
@@ -94,9 +93,7 @@ const envSchema = z.object({
   NEXT_PUBLIC_POSTHOG_KEY: z.string().trim().min(1, 'must be non-empty'),
 
   // Email
-  RESEND_API_KEY: z
-    .string()
-    .regex(/^re_/, 'must start with "re_" (Resend API key format)'),
+  RESEND_API_KEY: z.string().regex(/^re_/, 'must start with "re_" (Resend API key format)'),
   RESEND_FROM_EMAIL: z.string().email('must be a valid email address'),
 
   // Upstash Redis — don't pin .upstash.io because Upstash supports custom domains.
@@ -116,8 +113,8 @@ const envSchema = z.object({
     .regex(/^whsec_/, 'must start with "whsec_" (Stripe webhook secret format)'),
 
   // Inngest — optional backup pipeline.
-  INNGEST_EVENT_KEY: z.string().trim().min(1).optional(),
-  INNGEST_SIGNING_KEY: z.string().trim().min(1).optional(),
+  INNGEST_EVENT_KEY: optionalNonEmptyString,
+  INNGEST_SIGNING_KEY: optionalNonEmptyString,
 
   // Internal
   FORGE_INTERNAL_TOKEN: z

@@ -94,15 +94,11 @@ export const forgeAgentInputShape = {
     .string()
     .min(10, 'description must be at least 10 characters')
     .max(2000, 'description must be at most 2000 characters')
-    .describe(
-      'Plain-English description of the agent to forge — input, output, triggers.',
-    ),
+    .describe('Plain-English description of the agent to forge — input, output, triggers.'),
   force: z
     .boolean()
     .optional()
-    .describe(
-      'Bypass the 1h descriptionHash idempotency cache and re-run the pipeline.',
-    ),
+    .describe('Bypass the 1h descriptionHash idempotency cache and re-run the pipeline.'),
 } as const;
 export const forgeAgentInputSchema = z.object(forgeAgentInputShape);
 export type ForgeAgentInput = z.infer<typeof forgeAgentInputSchema>;
@@ -114,12 +110,8 @@ export const getGenerationStatusInputShape = {
     .min(1, 'generationId is required')
     .describe('The `Generation.id` returned by `forge_agent`.'),
 } as const;
-export const getGenerationStatusInputSchema = z.object(
-  getGenerationStatusInputShape,
-);
-export type GetGenerationStatusInput = z.infer<
-  typeof getGenerationStatusInputSchema
->;
+export const getGenerationStatusInputSchema = z.object(getGenerationStatusInputShape);
+export type GetGenerationStatusInput = z.infer<typeof getGenerationStatusInputSchema>;
 
 /** Input for `list_my_agents`. */
 export const listMyAgentsInputShape = {
@@ -186,7 +178,7 @@ export interface GenerationStatusView {
   readonly completedAt: string | null;
   readonly totalLatencyMs: number | null;
   readonly totalCostUsd: number | null;
-  readonly steps: ReadonlyArray<GenerationStepView>;
+  readonly steps: readonly GenerationStepView[];
 }
 
 export interface GenerationStepView {
@@ -210,7 +202,7 @@ export interface GeneratedAgentView {
   readonly description: string;
   readonly status: AgentStatus;
   readonly avatarUrl: string | null;
-  readonly oauthProviders: ReadonlyArray<string>;
+  readonly oauthProviders: readonly string[];
   readonly createdAt: string;
 }
 
@@ -234,9 +226,7 @@ export interface ForgeMcpConfig {
    * MUST create the `Generation` row before returning so the returned id is
    * immediately queryable by `get_generation_status`.
    */
-  readonly workflowTrigger: (
-    input: WorkflowTriggerInput,
-  ) => Promise<WorkflowTriggerResult>;
+  readonly workflowTrigger: (input: WorkflowTriggerInput) => Promise<WorkflowTriggerResult>;
 
   /**
    * Fetch a single generation + its ordered step trail. The caller (route
@@ -256,7 +246,7 @@ export interface ForgeMcpConfig {
   readonly listAgents: (
     filter: { status?: AgentStatus },
     context: ForgeMcpContext,
-  ) => Promise<ReadonlyArray<GeneratedAgentView>>;
+  ) => Promise<readonly GeneratedAgentView[]>;
 
   /** Optional structured logger. Defaults to {@link noopLogger}. */
   readonly logger?: Logger;

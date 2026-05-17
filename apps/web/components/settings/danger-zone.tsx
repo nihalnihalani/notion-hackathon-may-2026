@@ -50,11 +50,9 @@ export function DangerZone({ workspaceName }: DangerZoneProps) {
       }
       toast.success('Forge uninstalled.');
       router.push('/');
-    } catch (err) {
+    } catch (error) {
       toast.error(
-        err instanceof Error
-          ? `Uninstall failed: ${err.message}`
-          : 'Uninstall failed'
+        error instanceof Error ? `Uninstall failed: ${error.message}` : 'Uninstall failed',
       );
     } finally {
       setPending(false);
@@ -64,18 +62,14 @@ export function DangerZone({ workspaceName }: DangerZoneProps) {
   return (
     <div className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
       <div className="flex items-start gap-3">
-        <ShieldAlert
-          className="mt-0.5 h-5 w-5 shrink-0 text-destructive"
-          aria-hidden="true"
-        />
+        <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">
             Uninstall Forge from {workspaceName}
           </p>
           <p className="text-sm text-muted-foreground">
-            Removes the Forge page + databases from your Notion workspace
-            and retracts every deployed agent. Generation history is
-            preserved for audit.
+            Removes the Forge page + databases from your Notion workspace and retracts every
+            deployed agent. Generation history is preserved for audit.
           </p>
         </div>
       </div>
@@ -87,16 +81,10 @@ export function DangerZone({ workspaceName }: DangerZoneProps) {
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Uninstall Forge from this workspace?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Uninstall Forge from this workspace?</AlertDialogTitle>
             <AlertDialogDescription>
-              Type{' '}
-              <span className="font-medium text-foreground">
-                {workspaceName}
-              </span>{' '}
-              to confirm. Every active agent will stop responding
-              immediately.
+              Type <span className="font-medium text-foreground">{workspaceName}</span> to confirm.
+              Every active agent will stop responding immediately.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-1.5">
@@ -104,7 +92,9 @@ export function DangerZone({ workspaceName }: DangerZoneProps) {
             <Input
               id="uninstall-confirm"
               value={confirmText}
-              onChange={(e) => setConfirmText(e.currentTarget.value)}
+              onChange={(e) => {
+                setConfirmText(e.currentTarget.value);
+              }}
               placeholder={workspaceName}
               autoComplete="off"
               autoCapitalize="off"

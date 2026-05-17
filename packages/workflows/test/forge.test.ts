@@ -32,10 +32,7 @@ import {
   type ToolCoderOutput,
 } from '@forge/agents';
 
-import {
-  GenerationCancelledError,
-  runForgeGeneration,
-} from '../src/forge.js';
+import { GenerationCancelledError, runForgeGeneration } from '../src/forge.js';
 import type {
   GenerationRequestedEvent,
   WorkflowConfig,
@@ -47,9 +44,7 @@ import type {
 
 // ─── Fixture builders ─────────────────────────────────────────────────────────
 
-function makeEvent(
-  overrides: Partial<GenerationRequestedEvent> = {},
-): GenerationRequestedEvent {
+function makeEvent(overrides: Partial<GenerationRequestedEvent> = {}): GenerationRequestedEvent {
   return {
     generationId: 'gen_test_1',
     workspaceId: 'ws_test_1',
@@ -64,9 +59,7 @@ function makeEvent(
   };
 }
 
-function makeSchemaSmithOutput(
-  overrides: Partial<SchemaSmithOutput> = {},
-): SchemaSmithOutput {
+function makeSchemaSmithOutput(overrides: Partial<SchemaSmithOutput> = {}): SchemaSmithOutput {
   return {
     pattern: 'database-query',
     inputSchema: { kind: 'string', describe: 'query string' },
@@ -78,9 +71,7 @@ function makeSchemaSmithOutput(
   };
 }
 
-function makeToolCoderOutput(
-  overrides: Partial<ToolCoderOutput> = {},
-): ToolCoderOutput {
+function makeToolCoderOutput(overrides: Partial<ToolCoderOutput> = {}): ToolCoderOutput {
   return {
     source: 'export const worker = {};',
     sourceLines: 1,
@@ -108,10 +99,9 @@ function makeFailingInspection(stage: InspectionResult['stage'] = 'tsc'): Inspec
   };
 }
 
-function makeShipperResult(
-  overrides: Partial<ShipperResult> = {},
-): ShipperResult {
+function makeShipperResult(overrides: Partial<ShipperResult> = {}): ShipperResult {
   return {
+    generatedAgentId: 'generated_agent_1',
     customAgentId: 'agent_deployed_1',
     deployUrl: 'https://workers.notion.so/triage-linear-bugs',
     ntnWorkerName: 'triage-linear-bugs',
@@ -216,9 +206,7 @@ function makeHarness(opts: { force?: boolean; cacheHit?: boolean } = {}): MockHa
   };
 
   const ntn: WorkflowNtnAdapter = {
-    listDatabases: vi
-      .fn()
-      .mockResolvedValue([{ id: 'db1', name: 'Tasks', properties: [] }]),
+    listDatabases: vi.fn().mockResolvedValue([{ id: 'db1', name: 'Tasks', properties: [] }]),
   };
 
   const sandboxClose = vi.fn().mockResolvedValue(undefined);
@@ -289,6 +277,8 @@ describe('runForgeGeneration — happy path', () => {
 
     expect(result.status).toBe('succeeded');
     expect(result.cacheHit).toBe(false);
+    expect(result.agentId).toBe('generated_agent_1');
+    expect(result.generatedAgentId).toBe('generated_agent_1');
     expect(result.customAgentId).toBe('agent_deployed_1');
     expect(result.deployUrl).toBe('https://workers.notion.so/triage-linear-bugs');
 
@@ -302,17 +292,10 @@ describe('runForgeGeneration — happy path', () => {
     const startedAgents = harness.recordedSteps
       .filter((s) => s.kind === 'start')
       .map((s) => s.agent);
-    expect(startedAgents).toEqual([
-      'schema_smith',
-      'tool_coder',
-      'inspector',
-      'shipper',
-    ]);
+    expect(startedAgents).toEqual(['schema_smith', 'tool_coder', 'inspector', 'shipper']);
 
     // Generation marked running then succeeded.
-    const statusCalls = harness.db.updateGenerationStatus.mock.calls.map(
-      (c) => c[1].status,
-    );
+    const statusCalls = harness.db.updateGenerationStatus.mock.calls.map((c) => c[1].status);
     expect(statusCalls).toContain('running');
     expect(statusCalls[statusCalls.length - 1]).toBe('succeeded');
 
@@ -340,9 +323,7 @@ describe('runForgeGeneration — Inspector retry loop', () => {
 
     // Second tool-coder call carries prevErrors.
     const secondToolCoderInput = vi.mocked(toolCoder).mock.calls[1]?.[0];
-    expect(secondToolCoderInput?.prevErrors).toEqual([
-      'Type error: foo is not assignable to bar',
-    ]);
+    expect(secondToolCoderInput?.prevErrors).toEqual(['Type error: foo is not assignable to bar']);
   });
 
   it('marks generation failed after 2 Tool Coder attempts both Inspector-fail', async () => {
@@ -424,10 +405,7 @@ describe('runForgeGeneration — idempotency cache hit', () => {
     vi.mocked(inspector).mockResolvedValue(makePassingInspection());
     vi.mocked(shipper).mockResolvedValue(makeShipperResult());
 
-    const result = await runForgeGeneration(
-      makeEvent({ force: true }),
-      harness.config,
-    );
+    const result = await runForgeGeneration(makeEvent({ force: true }), harness.config);
 
     expect(result.status).toBe('succeeded');
     expect(result.cacheHit).toBe(false);
@@ -442,9 +420,9 @@ describe('runForgeGeneration — cancellation', () => {
     abortController.abort();
     harness.config.subAgent.abortSignal = abortController.signal;
 
-    await expect(
-      runForgeGeneration(makeEvent(), harness.config),
-    ).rejects.toBeInstanceOf(GenerationCancelledError);
+    await expect(runForgeGeneration(makeEvent(), harness.config)).rejects.toBeInstanceOf(
+      GenerationCancelledError,
+    );
 
     // Generation marked cancelled.
     const lastUpdate = harness.db.updateGenerationStatus.mock.calls.at(-1);
