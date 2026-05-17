@@ -303,6 +303,13 @@ def sync_dispatch(
             if page_id in (state.get("pages") or {}):
                 continue
 
+            if owner is None:
+                log.info(
+                    "pending Notion task %s has no Assignee yet; leaving it pending",
+                    page_id,
+                )
+                continue
+
             if owner not in ALLOWED_OWNERS:
                 reason = (
                     f"Invalid Assignee {owner!r}; must be one of "

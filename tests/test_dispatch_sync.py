@@ -156,6 +156,19 @@ def test_invalid_assignee_blocks_in_notion(store):
     assert "Skynet" in reason
 
 
+def test_missing_assignee_waits_without_blocking(store):
+    page = _notion_page("page_no_assignee")
+    page["properties"]["Assignee"] = {"select": None}
+    client = _make_client([page])
+
+    resolved = sync_dispatch(client, "ds_xyz", store=store)
+
+    assert resolved == 0
+    assert store.render_handoffs_md() == ""
+    assert store.get_bridge_state().get("pages", {}) == {}
+    client.update_page.assert_not_called()
+
+
 def test_active_lock_conflict_blocks_task(store):
     # Seed CURRENT_STATE.md with an active lock on the file the task wants.
     store.set_file(
