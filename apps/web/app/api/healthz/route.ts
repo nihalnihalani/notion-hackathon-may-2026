@@ -8,10 +8,9 @@
  * Checks performed (each capped at 1.5s):
  *   - PlanetScale Postgres   → `SELECT 1`
  *   - Upstash Redis          → `PING`
- *
- * The Notion API ping is intentionally skipped here: it requires a workspace
- * token (we don't carry one), and Notion's own status page is already a
- * better signal for that dependency.
+ *   - Notion API             → unauthenticated `GET /v1/oauth/token` —
+ *                              returns a 4xx but PROVES Notion is up; only
+ *                              a network/DNS failure means "down".
  */
 
 import { NextResponse } from 'next/server';
@@ -81,12 +80,68 @@ async function checkRedis(): Promise<CheckResult> {
   }
 }
 
+/**
+ * Ping the Notion API without a workspace token. `GET /v1/oauth/token`
+ * 405s (or 4xx) when unauthenticated — that's the success signal we want.
+ * Notion answering AT ALL means the upstream is reachable; only a network
+ * error / DNS failure / timeout counts as "down".
+ *
+ * Uses the public OAuth client id/secret so we don't depend on a workspace
+ * access token being available in the healthz handler's context. Sending an
+ * empty body to a JSON endpoint also returns a 4xx, never a 5xx-from-us.
+ */
+async function checkNotion(): Promise<CheckResult> {
+  const t0 = Date.now();
+  const clientId = process.env['NOTION_OAUTH_CLIENT_ID'];
+  const clientSecret = process.env['NOTION_OAUTH_CLIENT_SECRET'];
+  if (!clientId || !clientSecret) {
+    return { ok: false, latencyMs: 0, error: 'notion_oauth_not_configured' };
+  }
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    'base64',
+  );
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch('https://api.notion.com/v1/oauth/token', {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          'Notion-Version': '2025-09-03',
+        },
+        signal: controller.signal,
+      });
+      // Any HTTP status ≤ 599 means Notion answered. 4xx is expected here
+      // because `GET` on the token endpoint is not authenticated for issue.
+      return {
+        ok: res.status <= 599,
+        latencyMs: Date.now() - t0,
+        ...(res.status >= 500 && { error: `http_${res.status}` }),
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    // AbortError (timeout) or DNS/network failure → genuinely down.
+    return {
+      ok: false,
+      latencyMs: Date.now() - t0,
+      error: err instanceof Error ? err.message : 'unknown',
+    };
+  }
+}
+
 export const GET = withSentry(
   async () => {
-    const [db, redis] = await Promise.all([checkDatabase(), checkRedis()]);
+    const [db, redis, notion] = await Promise.all([
+      checkDatabase(),
+      checkRedis(),
+      checkNotion(),
+    ]);
     const body: HealthBody = {
-      status: db.ok && redis.ok ? 'ok' : 'degraded',
-      checks: { database: db, redis },
+      status: db.ok && redis.ok && notion.ok ? 'ok' : 'degraded',
+      checks: { database: db, redis, notion },
       version: process.env['VERCEL_GIT_COMMIT_SHA'] ?? 'dev',
       timestamp: new Date().toISOString(),
     };
