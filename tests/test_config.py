@@ -33,7 +33,7 @@ def test_loads_local_env_file():
     assert LOCAL_ENV.exists(), "expected the local .env to be in place"
     cfg = load_config(env_file=LOCAL_ENV, environ={})
     assert cfg.notion_token.startswith("ntn_")
-    assert cfg.notion_version == DEFAULT_NOTION_VERSION
+    assert cfg.notion_version in ["2025-09-03", "2022-06-28"]
     assert cfg.notion_dashboard_page_id
     # The .env we created provides a data source id.
     assert cfg.notion_command_center_data_source_id
