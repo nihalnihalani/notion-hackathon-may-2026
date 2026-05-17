@@ -70,6 +70,19 @@ def test_database_id_fallback_accepted():
     assert cfg.notion_command_center_database_id == "db_999"
     assert cfg.notion_command_center_data_source_id is None
 
+def test_optional_block_ids_loaded():
+    env = _base_env(
+        NOTION_HISTORY_BLOCK_ID="hist_123",
+        NOTION_MEMORY_BLOCK_ID="mem_123",
+        NOTION_PROTOCOL_BLOCK_ID="proto_123",
+        NOTION_ROLES_BLOCK_ID="roles_123",
+    )
+    cfg = load_config(environ=env)
+    assert cfg.notion_history_block_id == "hist_123"
+    assert cfg.notion_memory_block_id == "mem_123"
+    assert cfg.notion_protocol_block_id == "proto_123"
+    assert cfg.notion_roles_block_id == "roles_123"
+
 
 def test_missing_both_source_and_database_raises():
     env = _base_env()

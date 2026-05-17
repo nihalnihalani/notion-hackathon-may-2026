@@ -523,6 +523,42 @@ def test_empty_state_shape_matches_plan():
         "version",
         "command_center_data_source_id",
         "dashboard_block_id",
+        "mission_control",
         "pages",
     }
     assert state["version"] == 1
+
+# ---- Mission Control block/hash aliases ------------------------------------
+
+
+def test_mc_block_and_hash(tmp_path):
+    store = StateStore(tmp_path)
+    # Default is None
+    assert store.get_mc_block("config_file") is None
+    assert store.get_mc_hash("config_file") is None
+
+    # Set and get block
+    store.set_mc_block("config_file", "block_123")
+    assert store.get_mc_block("config_file") == "block_123"
+    assert store.get_mc_hash("config_file") is None
+
+    # Set and get hash
+    store.set_mc_hash("config_file", "hash_abc")
+    assert store.get_mc_block("config_file") == "block_123"
+    assert store.get_mc_hash("config_file") == "hash_abc"
+
+    # Set another file
+    store.set_mc_block("other_file", "block_456")
+    assert store.get_mc_block("other_file") == "block_456"
+    assert store.get_mc_block("config_file") == "block_123"
+
+    # Overwrite
+    store.set_mc_block("config_file", "block_new")
+    assert store.get_mc_block("config_file") == "block_new"
+    
+    # Check persistence
+    store2 = StateStore(tmp_path)
+    assert store2.get_mc_block("config_file") == "block_new"
+    assert store2.get_mc_hash("config_file") == "hash_abc"
+    assert store2.get_mc_block("other_file") == "block_456"
+

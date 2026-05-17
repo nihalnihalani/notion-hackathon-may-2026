@@ -81,6 +81,7 @@ def empty_state() -> dict[str, Any]:
         "version": SCHEMA_VERSION,
         "command_center_data_source_id": None,
         "dashboard_block_id": None,
+        "mission_control": {},
         "pages": {},
     }
 
@@ -143,6 +144,9 @@ class StateStore:
         data.setdefault("version", SCHEMA_VERSION)
         data.setdefault("command_center_data_source_id", None)
         data.setdefault("dashboard_block_id", None)
+        mission_control = data.get("mission_control")
+        if not isinstance(mission_control, dict):
+            data["mission_control"] = {}
         pages = data.get("pages")
         if not isinstance(pages, dict):
             data["pages"] = {}
@@ -319,3 +323,99 @@ class StateStore:
             state = self.load()
             state["dashboard_hash"] = dash_hash
             self.save(state)
+
+    # ---- Mission Control multi-block state ----------------------------------
+
+    def _mission_control_entry(
+        self, state: Mapping[str, Any], section_name: str
+    ) -> Optional[Mapping[str, Any]]:
+        mc = state.get("mission_control")
+        if not isinstance(mc, Mapping):
+            return None
+        entry = mc.get(section_name)
+        if not isinstance(entry, Mapping):
+            return None
+        return entry
+
+    def get_mission_control_block_id(self, section_name: str) -> Optional[str]:
+        if not section_name:
+            return None
+        entry = self._mission_control_entry(self.load(), section_name)
+        if entry is None:
+            return None
+        block_id = entry.get("block_id")
+        return block_id if isinstance(block_id, str) else None
+
+    def set_mission_control_block_id(
+        self, section_name: str, block_id: Optional[str]
+    ) -> None:
+        if not section_name:
+            raise ValueError("section_name is required")
+        with self.locked():
+            state = self.load()
+            mc = state.setdefault("mission_control", {})
+            if not isinstance(mc, dict):
+                mc = {}
+                state["mission_control"] = mc
+            existing = mc.get(section_name)
+            entry: dict[str, Any] = (
+                dict(existing) if isinstance(existing, Mapping) else {}
+            )
+            entry["block_id"] = block_id
+            entry.setdefault("hash", None)
+            mc[section_name] = entry
+            self.save(state)
+
+    def get_mission_control_hash(self, section_name: str) -> Optional[str]:
+        if not section_name:
+            return None
+        entry = self._mission_control_entry(self.load(), section_name)
+        if entry is None:
+            return None
+        content_hash = entry.get("hash")
+        return content_hash if isinstance(content_hash, str) else None
+
+    def set_mission_control_hash(
+        self, section_name: str, content_hash: Optional[str]
+    ) -> None:
+        if not section_name:
+            raise ValueError("section_name is required")
+        with self.locked():
+            state = self.load()
+            mc = state.setdefault("mission_control", {})
+            if not isinstance(mc, dict):
+                mc = {}
+                state["mission_control"] = mc
+            existing = mc.get(section_name)
+            entry: dict[str, Any] = (
+                dict(existing) if isinstance(existing, Mapping) else {}
+            )
+            entry["hash"] = content_hash
+            entry.setdefault("block_id", None)
+            mc[section_name] = entry
+            self.save(state)
+    def get_mc_block(self, file_key: str) -> Optional[str]:
+        mc = self.load().get("mission_control", {})
+        if not isinstance(mc, dict):
+            return None
+        entry = mc.get(file_key)
+        if not isinstance(entry, dict):
+            return None
+        block_id = entry.get("block_id")
+        return block_id if isinstance(block_id, str) else None
+
+    def set_mc_block(self, file_key: str, block_id: Optional[str]) -> None:
+        self.set_mission_control_block_id(file_key, block_id)
+
+    def get_mc_hash(self, file_key: str) -> Optional[str]:
+        mc = self.load().get("mission_control", {})
+        if not isinstance(mc, dict):
+            return None
+        entry = mc.get(file_key)
+        if not isinstance(entry, dict):
+            return None
+        content_hash = entry.get("hash")
+        return content_hash if isinstance(content_hash, str) else None
+
+    def set_mc_hash(self, file_key: str, content_hash: Optional[str]) -> None:
+        self.set_mission_control_hash(file_key, content_hash)

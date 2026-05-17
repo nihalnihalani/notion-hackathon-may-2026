@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.config import build_client, load_config
-from src.dashboard_sync import sync_dashboard
+from src.mission_control_sync import sync_mission_control
 from src.dispatch_sync import sync_dispatch
 from src.result_sync import sync_results
 from src.state_store import StateStore
@@ -65,10 +65,10 @@ def _one_cycle(notion, config, store: StateStore) -> None:
         if pushed:
             log.info("pushed %d result(s) back to Notion", pushed)
 
-    if sync_dashboard(
+    sync_mission_control(
         notion, config.notion_dashboard_page_id, config.warroom_path, store
-    ):
-        log.info("CURRENT_STATE.md upserted into Notion dashboard block")
+    )
+    log.info("Mission control dashboard blocks synced")
 
 
 def main() -> int:

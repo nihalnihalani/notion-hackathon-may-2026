@@ -4,6 +4,9 @@ This module is kept so existing imports of `src.state_observer` continue to
 work. The canonical name per plan.md Task 8 is `src.dashboard_sync`.
 """
 
+import os
+import hashlib
+from filelock import FileLock
 from src.dashboard_sync import (  # noqa: F401
     MAX_BLOCK_LEN,
     STATE_FILE,
@@ -11,6 +14,13 @@ from src.dashboard_sync import (  # noqa: F401
     safe_truncate_markdown,
     sync_dashboard,
 )
+from src.dispatch_sync import rate_limit_sleep
+
+def _atomic_write(path: str, content: str) -> None:
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    os.replace(temp_path, path)
 
 def push_file_to_notion(client, block_id, file_name, hash_name, warroom_path, tail_only=False):
     """Upsert a generic file into a Notion code block. Idempotent on content hash."""
