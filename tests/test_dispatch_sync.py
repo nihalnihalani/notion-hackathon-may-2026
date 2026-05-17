@@ -1,7 +1,8 @@
 """Unit tests for src/dispatch_sync.py (plan.md Task 6) — Redis-backed.
 
 Covers:
-- A new Notion `Pending` task appends one handoff and marks Notion `Dispatched`.
+- A submitted Notion `Pending` task appends one handoff and marks Notion `Dispatched`.
+- A draft/unsubmitted task is ignored, so editing a card never dispatches early.
 - Restart does not duplicate the handoff (idempotency on Notion page id).
 - Invalid Assignee blocks the Notion task instead of dispatching.
 - Active lock conflict blocks the task with a clear reason.
@@ -40,6 +41,7 @@ def _notion_page(
     owner: str = "Hermes",
     files: str = "/home/alhinai/WarRoom/**",
     context: str = "Just look around.",
+    submitted: bool = True,
 ) -> dict:
     return {
         "id": page_id,
@@ -48,6 +50,7 @@ def _notion_page(
             "Assignee": {"select": {"name": owner}},
             "Authorized Files": {"rich_text": [{"text": {"content": files}}]},
             "Context": {"rich_text": [{"text": {"content": context}}]},
+            "Submit": {"checkbox": submitted},
             "Working Directory": {"rich_text": []},
             "Next Action": {"rich_text": []},
         },
@@ -121,6 +124,32 @@ def test_new_pending_task_appends_handoff_and_marks_dispatched(store):
     snapshot = store.get_notion_inbox(expected_key)
     assert snapshot is not None
     assert "Inspect War Room health" in snapshot
+
+
+def test_unsubmitted_pending_task_does_not_touch_storage_or_notion(store):
+    page = _notion_page("page_draft", submitted=False)
+    client = _make_client([page])
+
+    resolved = sync_dispatch(client, "ds_xyz", store=store)
+
+    assert resolved == 0
+    assert store.render_handoffs_md() == ""
+    assert store.get_bridge_state().get("pages", {}) == {}
+    assert store.get_notion_inbox(handoff_key_for_page("page_draft")) is None
+    client.update_page.assert_not_called()
+
+
+def test_missing_submit_property_is_treated_as_draft(store):
+    page = _notion_page("page_no_submit_property")
+    del page["properties"]["Submit"]
+    client = _make_client([page])
+
+    resolved = sync_dispatch(client, "ds_xyz", store=store)
+
+    assert resolved == 0
+    assert store.render_handoffs_md() == ""
+    assert store.get_bridge_state().get("pages", {}) == {}
+    client.update_page.assert_not_called()
 
 
 def test_restart_does_not_duplicate_handoff(store):

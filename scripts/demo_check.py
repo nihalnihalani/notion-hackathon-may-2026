@@ -49,12 +49,12 @@ def main():
         sys.exit(1)
 
     print("--- Demo Acceptance Check ---")
-    print("\n1. Create Notion task with `Status = Pending`.")
+    print("\n1. Create a Notion task draft, then press its Submit button.")
     print("   Open Notion UI, go to your Command Center DB.")
     print("   Create a task titled 'Acceptance Test Task'.")
     print("   Set 'Assignee' to 'Hermes'.")
-    print("   Set 'Status' to 'Pending'.")
-    input("   [Press Enter when you have created the task]")
+    print("   Press the Notion `Submit` button so `Submit` is checked and `Status` is `Pending`.")
+    input("   [Press Enter only after pressing Submit]")
 
     print("\n2. Run `python3 notion_warroom_bridge.py --once`.")
     if not run_once():

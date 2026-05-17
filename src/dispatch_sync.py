@@ -1,4 +1,4 @@
-"""Dispatch sync: copy Notion `Pending` tasks into the War Room handoff queue.
+"""Dispatch sync: copy submitted Notion `Pending` tasks into the War Room handoff queue.
 
 This module is the Redis-backed rewrite of the dispatch flow (Path B of the
 storage migration). The previous file-based implementation appended to
@@ -57,6 +57,15 @@ _PENDING_QUERY: dict[str, Any] = {
     "page_size": 50,
 }
 
+# Name of the user-facing "submit" gate. When the Notion database has a
+# checkbox property with this name, the bridge only dispatches cards
+# where the box is ticked. This lets users freely edit a draft card
+# (Status defaults to Pending the moment Notion creates the row) without
+# the bridge yanking it out from under them mid-edit. Click the checkbox
+# (or hook it to a Notion button labelled "Submit") when you're ready.
+#
+SUBMIT_PROPERTY = "Submit"
+
 
 def rate_limit_sleep() -> None:
     """Legacy pacing helper retained for callers still on the raw client."""
@@ -87,6 +96,16 @@ def _select_name(prop: Optional[Mapping[str, Any]]) -> Optional[str]:
     if not sel:
         return None
     return sel.get("name")
+
+
+def _is_submitted(props: Mapping[str, Any]) -> bool:
+    """Return True only when the page has a checked `Submit` checkbox."""
+    prop = props.get(SUBMIT_PROPERTY)
+    if not isinstance(prop, Mapping):
+        return False
+    if "checkbox" not in prop:
+        return False
+    return bool(prop.get("checkbox"))
 
 
 # ---- Helpers ----------------------------------------------------------------
@@ -254,11 +273,16 @@ def sync_dispatch(
     store: Optional[RedisStore] = None,
     query_payload: Optional[Mapping[str, Any]] = None,
 ) -> int:
-    """Dispatch new Notion `Pending` tasks into the War Room handoff queue.
+    """Dispatch submitted Notion `Pending` tasks into the War Room handoff queue.
 
     Returns the count of pages this call newly resolved (dispatched OR blocked).
     Pages already present in state are left untouched so the bridge stays
     idempotent across restarts.
+
+    `Status = Pending` is intentionally not enough to dispatch. The page
+    must also have `Submit` checked, which should be driven by a Notion
+    button. Draft/in-progress cards therefore remain editable without
+    touching Redis storage or causing the handoff watcher to invoke agents.
 
     ``warroom_path`` is kept as an optional positional for back-compat with
     older callers (e.g. the daemon prior to the Redis migration); all storage
@@ -283,6 +307,19 @@ def sync_dispatch(
         if not page_id:
             continue
         props = page.get("properties") or {}
+
+        # User-facing submit gate: only dispatch when the operator has
+        # explicitly opted in. Cards in Pending without the box ticked,
+        # or without the Submit property configured yet, are skipped
+        # silently — the user is still drafting.
+        submitted = _is_submitted(props)
+        if not submitted:
+            log.debug(
+                "pending Notion task %s not submitted yet; leaving it pending",
+                page_id,
+            )
+            continue
+
         title = _title(props.get("Name"))
         owner = _select_name(props.get("Assignee"))
         files_touched = _rich_text(

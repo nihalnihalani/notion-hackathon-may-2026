@@ -7,7 +7,7 @@ The War Room Bridge connects Notion to local AI agents (Hermes, OpenClaw, Codex,
 ## Architecture and Safety Boundary
 
 The bridge is designed with strict security isolation:
-1. **Unidirectional Command Plane:** Notion tasks with `Status = Pending` are fetched by the bridge and appended to a local `~/WarRoom/HANDOFFS.md` file.
+1. **Explicit Submit Gate:** Notion tasks are dispatched only when `Status = Pending` **and** the `Submit` checkbox is checked. Draft cards can be edited freely without touching storage or invoking agents.
 2. **Local Agent Execution:** The bridge **never** executes shell commands directly, **never** invokes agents, and **never** talks to Telegram. It simply writes the `.md` files. Your local agents (Hermes, OpenClaw) monitor these files under their own local safety locks.
 3. **Bidirectional Result Sync:** When an agent updates a task in `HANDOFFS.md` to `COMPLETED` and provides a `Result`, the bridge detects the change and syncs it back up to the Notion Database, marking the card as `Completed`.
 4. **Idempotency and Locks:** A local JSON state file maintains sync hashes so tasks aren't duplicated. File-level locks prevent race conditions between the bridge and active agents.
@@ -48,6 +48,13 @@ Run a single pass for testing or cron-jobs (exits immediately after one sync cyc
 ```bash
 python3 notion_warroom_bridge.py --once
 ```
+
+### Submit Button
+
+Add a `Submit` checkbox property to the Command Center data source. In Notion,
+create a button named `Submit` that sets `Submit` to checked and `Status` to
+`Pending`. The bridge ignores cards until that checkbox is checked, so storage
+updates and agent invocation happen only after the button is pressed.
 
 ### Testing
 
