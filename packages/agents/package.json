@@ -41,10 +41,20 @@
   "dependencies": {
     "@forge/connectors": "workspace:*",
     "@forge/db": "workspace:*",
+    "@forge/notion-client": "workspace:*",
     "@forge/ntn-wrapper": "workspace:*",
     "@forge/safety": "workspace:*",
     "@typescript-eslint/parser": "8.16.0",
+    "@vercel/blob": "0.27.1",
     "zod": "3.23.8"
+  },
+  "peerDependencies": {
+    "resend": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "resend": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "22.10.2",

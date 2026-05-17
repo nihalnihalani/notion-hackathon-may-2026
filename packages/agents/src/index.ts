@@ -9,13 +9,83 @@
  * Shared types, errors, and cost helpers live here at the root.
  */
 
-// ─── Sub-agent entry points (Schema Smith only at this revision) ────────────
+// ─── Sub-agent entry points ─────────────────────────────────────────────────
 export { schemaSmith, type SchemaSmithInput } from './schema-smith.js';
+export { toolCoder, type ToolCoderInput } from './tool-coder.js';
+export { inspector, type InspectorInput } from './inspector.js';
+export {
+  shipper,
+  type ShipperInput,
+  type ShipperSubAgentConfig,
+  type ShipperResendClient,
+  type ShipperPrismaClient,
+  type GeneratedAgentRow,
+  type PrismaAgentPattern,
+  type VercelBlobPutFn,
+  type MinimaxConfig,
+} from './shipper.js';
 
-// Siblings will land alongside:
-// export { toolCoder, type ToolCoderInput } from './tool-coder.js';
-// export { inspector, type InspectorInput } from './inspector.js';
-// export { shipper, type ShipperInput } from './shipper.js';
+// ─── Shipper helpers (also usable standalone) ──────────────────────────────
+export { wireCustomAgent } from './custom-agent-wiring.js';
+export type {
+  WireCustomAgentArgs,
+  WireCustomAgentResult,
+} from './custom-agent-wiring.js';
+export { deriveAvatarPrompt } from './avatar-prompt.js';
+export { formatReleaseNotes } from './release-notes.js';
+export type { FormatReleaseNotesArgs } from './release-notes.js';
+
+// ─── Tool Coder Worker code templates ──────────────────────────────────────
+export {
+  databaseQueryTemplate,
+  type DatabaseQueryTemplateArgs,
+} from './templates/database-query.js';
+export {
+  webhookTriggerTemplate,
+  type WebhookTriggerTemplateArgs,
+} from './templates/webhook-trigger.js';
+export {
+  syncSourceTemplate,
+  type SyncSourceTemplateArgs,
+} from './templates/sync-source.js';
+export {
+  externalApiCallTemplate,
+  type ExternalApiCallTemplateArgs,
+} from './templates/external-api-call.js';
+export {
+  multiStepTemplate,
+  type MultiStepTemplateArgs,
+} from './templates/multi-step.js';
+
+// ─── Few-shot catalog (system-prompt content + evaluation fixtures) ─────────
+export { FEW_SHOT_EXAMPLES, type FewShotExample } from './few-shot/index.js';
+
+// ─── Tool Coder pure helpers ────────────────────────────────────────────────
+export {
+  parseGeneratedTs,
+  extractTsCodeFromResponse,
+  type ParseGeneratedTsResult,
+} from './ts-validation.js';
+export { deriveWorkerName, validateWorkerName } from './worker-name.js';
+
+// ─── Inspector sandbox runners ──────────────────────────────────────────────
+export { createVercelSandbox, createInProcessSandbox } from './sandbox.js';
+export type {
+  SandboxRunner,
+  SandboxRunOptions,
+  SandboxRunResult,
+  SandboxFile,
+  VercelSandboxConfig,
+  InProcessSandboxConfig,
+} from './sandbox.js';
+
+// ─── Inspector pure helpers ─────────────────────────────────────────────────
+export {
+  generateSynthetic,
+  validateAgainstOutputSchema,
+  type ValidateOutputResult,
+} from './synthetic.js';
+export { parseTscErrors, type TscError } from './tsc-error-parser.js';
 
 // ─── Shared types ───────────────────────────────────────────────────────────
 export {
