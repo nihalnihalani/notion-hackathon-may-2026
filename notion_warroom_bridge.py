@@ -1,24 +1,30 @@
 import os
 import sys
 import time
+import argparse
+from pathlib import Path
 
-from src.config import build_client, load_config
+from src.config import load_config, build_client
 from src.dispatch_sync import sync_dispatch
 from src.result_sync import sync_results
 from src.state_observer import push_state_to_notion
 
 def main():
     print("🚀 Starting Notion <-> War Room Bridge Daemon (V6 Final MVP)...")
-    config = load_config()
+    base_dir = Path(__file__).parent.resolve()
+    config = load_config(env_file=base_dir / ".env")
     
     # Use the safe wrapper to hit the 2025-09-03 API directly
     notion = build_client(config) 
 
-    warroom = config["WARROOM_PATH"]
-    dispatch_db = config["NOTION_COMMAND_CENTER_DB_ID"]
-    state_block = config["NOTION_STATE_BLOCK_ID"]
+    warroom = str(config.warroom_path)
+    dispatch_db = config.notion_command_center_database_id or config.notion_command_center_data_source_id
+    state_block = config.notion_dashboard_page_id if getattr(config, 'notion_state_block_id', None) is None else getattr(config, 'notion_state_block_id', config.notion_dashboard_page_id)
+    # The config file expects notion_dashboard_page_id, I'll check my env block
+    if os.getenv("NOTION_STATE_BLOCK_ID"):
+        state_block = os.getenv("NOTION_STATE_BLOCK_ID")
     
-    poll_seconds = config.get("POLL_SECONDS", 15)
+    poll_seconds = config.poll_seconds
 
     os.makedirs(warroom, exist_ok=True)
 

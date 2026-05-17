@@ -82,7 +82,7 @@ def sync_results(client, warroom_path):
             page_id=task_id,
             properties={
                 "Status": {"status": {"name": "Completed"}},
-                "Result": {"rich_text": [{"text": {"content": result_text}}]} if result_text else {"rich_text": []},
+                "Result Summary": {"rich_text": [{"text": {"content": result_text}}]} if result_text else {"rich_text": []},
                 "Next Action": {"rich_text": [{"text": {"content": next_action}}]} if next_action else {"rich_text": []},
             },
         )

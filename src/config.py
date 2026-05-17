@@ -107,3 +107,39 @@ def load_config(
         warroom_path=warroom_path,
         poll_seconds=poll_seconds,
     )
+
+def build_client(cfg: Config):
+    import requests
+    class RawNotionClient:
+        def __init__(self, token, version):
+            self.session = requests.Session()
+            self.session.headers.update({
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": version,
+                "Content-Type": "application/json"
+            })
+            self.base_url = "https://api.notion.com/v1"
+            
+        def query_database(self, db_id, payload):
+            # Fallback logic for normal DBs or Data Sources
+            url = f"{self.base_url}/databases/{db_id}/query"
+            res = self.session.post(url, json=payload)
+            if res.status_code == 404:
+                url = f"{self.base_url}/data_sources/{db_id}/query"
+                res = self.session.post(url, json=payload)
+            res.raise_for_status()
+            return res.json()
+            
+        def update_page(self, page_id, properties):
+            url = f"{self.base_url}/pages/{page_id}"
+            res = self.session.patch(url, json={"properties": properties})
+            res.raise_for_status()
+            return res.json()
+            
+        def update_block(self, block_id, code_payload):
+            url = f"{self.base_url}/blocks/{block_id}"
+            res = self.session.patch(url, json={"code": code_payload})
+            res.raise_for_status()
+            return res.json()
+            
+    return RawNotionClient(cfg.notion_token, cfg.notion_version)
