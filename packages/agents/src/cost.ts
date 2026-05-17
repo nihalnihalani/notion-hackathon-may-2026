@@ -127,29 +127,30 @@ export function anthropicCostUsd(usage: AnthropicUsage, model: string): number {
 /**
  * Per-MTok prices for OpenAI models, in USD.
  *
- * `gpt-5-thinking-mini` is the August-2025 reasoning-tier mini model and is
- * the Forge default OpenAI fallback. Pricing for that SKU is still
- * provisional in this file — the OpenAI pricing page is blocked from our
- * automated fetcher (HTTP 403). Verify before billing the user from these
- * numbers.
+ * Verified against https://developers.openai.com/api/docs/pricing on
+ * 2026-05-17. The `gpt-5-thinking*` ids are the Forge-chosen routing keys for
+ * Vercel AI Gateway → OpenAI reasoning SKUs. Prices below match the closest
+ * standard OpenAI SKUs as of that date:
+ *
+ *   - `gpt-5-thinking-mini` ≈ gpt-5.4-mini ($0.75 / $4.50)
+ *   - `gpt-5-thinking`      ≈ gpt-5.5      ($5 / $30)
  *
  * `gpt-5` is intentionally NOT a key here: that bare id was never released
  * by OpenAI. Callers that hand it in will get `0` from {@link openaiCostUsd}
  * — a loud signal that the model id is wrong.
  */
 export const OPENAI_PRICES_USD_PER_MTOK = {
-  // TODO: verify pricing against openai.com once docs reachable.
-  // Placeholders chosen to bracket conservative real-world rates so we
-  // don't accidentally compute $0 cost.
+  // Routes to gpt-5.4-mini via Vercel AI Gateway. $0.75 in / $4.50 out per
+  // developers.openai.com/api/docs/pricing (verified 2026-05-17).
   'gpt-5-thinking-mini': {
-    input: 0.25,
-    output: 2,
+    input: 0.75,
+    output: 4.5,
   },
-  // TODO: verify pricing against openai.com once docs reachable.
-  // Same placeholder rationale as the mini SKU.
+  // Routes to gpt-5.5 via Vercel AI Gateway. $5 in / $30 out per
+  // developers.openai.com/api/docs/pricing (verified 2026-05-17).
   'gpt-5-thinking': {
     input: 5,
-    output: 15,
+    output: 30,
   },
   'gpt-4o': {
     input: 2.5,
@@ -166,15 +167,12 @@ export const OPENAI_PRICES_USD_PER_MTOK = {
 } as const satisfies Record<string, { input: number; output: number }>;
 
 /**
- * Model ids whose prices in {@link OPENAI_PRICES_USD_PER_MTOK} are
- * placeholders pending an authoritative refresh from openai.com. When
- * {@link openaiCostUsd} bills these, we emit a `console.warn` once per
- * process so the orchestrator sees the drift in logs.
+ * Model ids whose prices in {@link OPENAI_PRICES_USD_PER_MTOK} are still
+ * pending an authoritative refresh. Empty after the 2026-05-17 verification;
+ * keep the indirection so we can re-add ids without restoring the warning
+ * machinery from scratch.
  */
-const OPENAI_UNVERIFIED_PRICES: ReadonlySet<string> = new Set([
-  'gpt-5-thinking-mini',
-  'gpt-5-thinking',
-]);
+const OPENAI_UNVERIFIED_PRICES: ReadonlySet<string> = new Set();
 
 const OPENAI_UNVERIFIED_WARNED: Set<string> = new Set();
 

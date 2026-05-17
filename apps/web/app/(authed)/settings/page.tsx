@@ -13,7 +13,7 @@ import {
 
 import { ApiKeysCard, type ApiKeyRow } from '@/components/settings/api-keys-card';
 import { DangerZone } from '@/components/settings/danger-zone';
-import { ModelSelector } from '@/components/settings/model-selector';
+import { ModelSelector, type DefaultModel } from '@/components/settings/model-selector';
 import { ThemeToggle } from '@/components/settings/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -222,17 +222,25 @@ async function DefaultModelSection({
 }: {
   clerkUserId: string;
 }) {
-  // TODO(backend): wire up a real `defaultModel` column on Workspace.
-  // For now we read from a Workspace.metadata Json field if present, else
-  // default to "auto". Surface as a real preference once the schema lands.
   const dbUser = await prisma.user.findUnique({
     where: { clerkId: clerkUserId },
-    select: { workspaceId: true },
+    select: { workspace: { select: { defaultModel: true } } },
   });
-  if (!dbUser) {
-    return <ModelSelector initial="auto" />;
+  const initial = normalizeDefaultModel(dbUser?.workspace.defaultModel);
+  return <ModelSelector initial={initial} />;
+}
+
+const ALLOWED_DEFAULT_MODELS: ReadonlySet<DefaultModel> = new Set([
+  'auto',
+  'claude-opus-4-7',
+  'gpt-5-thinking-mini',
+]);
+
+function normalizeDefaultModel(value: string | null | undefined): DefaultModel {
+  if (value && (ALLOWED_DEFAULT_MODELS as ReadonlySet<string>).has(value)) {
+    return value as DefaultModel;
   }
-  return <ModelSelector initial="auto" />;
+  return 'auto';
 }
 
 async function ApiKeysSection({ clerkUserId }: { clerkUserId: string }) {
