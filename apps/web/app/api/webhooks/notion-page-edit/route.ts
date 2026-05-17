@@ -25,7 +25,11 @@
  * Upstash, return 200. The Cron job (not this PR) does the real work.
  */
 
-import { findWorkspaceByNotionId } from '@forge/db';
+import {
+  findWorkspaceByNotionId,
+  prisma,
+  recordAuditEvent,
+} from '@forge/db';
 import { verifyNotionWebhookSignature } from '@forge/notion-client';
 import { Redis } from '@upstash/redis';
 import * as Sentry from '@sentry/nextjs';
@@ -47,8 +51,19 @@ const pageEditPayloadSchema = z.object({
   userId: z.string().optional(),
 });
 
-function getWorkspaceWebhookSecret(_notionWorkspaceId: string): string {
-  return process.env['NOTION_WEBHOOK_SECRET'] ?? '';
+/**
+ * Resolve the per-workspace HMAC verification secret from PlanetScale.
+ * Returns `null` when the workspace is not installed or the column is empty;
+ * callers MUST treat both as "reject".
+ */
+async function getWorkspaceWebhookSecret(
+  notionWorkspaceId: string,
+): Promise<string | null> {
+  const ws = await prisma.workspace.findUnique({
+    where: { notionWorkspaceId },
+    select: { webhookSecret: true },
+  });
+  return ws?.webhookSecret ?? null;
 }
 
 let redisSingleton: Redis | null = null;
@@ -83,7 +98,35 @@ export const POST = withSentry(
       return apiError('validation', 'No workspace id in header or body.');
     }
 
-    const secret = getWorkspaceWebhookSecret(notionWorkspaceId);
+    const secret = await getWorkspaceWebhookSecret(notionWorkspaceId);
+    if (!secret) {
+      Sentry.captureMessage(
+        'notion-page-edit: no per-workspace webhook secret',
+        {
+          level: 'warning',
+          tags: { notionWorkspaceId },
+        },
+      );
+      try {
+        const ws = await prisma.workspace.findUnique({
+          where: { notionWorkspaceId },
+          select: { id: true },
+        });
+        if (ws) {
+          await recordAuditEvent({
+            workspaceId: ws.id,
+            userId: null,
+            action: 'webhook.signature_failure',
+            resourceType: 'webhook',
+            resourceId: 'notion-page-edit',
+            metadata: { endpoint: '/api/webhooks/notion-page-edit' },
+          });
+        }
+      } catch {
+        // best-effort
+      }
+      return apiError('unauthenticated', 'Invalid Notion signature.');
+    }
     const verify = await verifyNotionWebhookSignature({
       rawBody: raw,
       headers: req.headers,
@@ -94,6 +137,24 @@ export const POST = withSentry(
         level: 'warning',
         tags: { reason: verify.reason ?? 'unknown', notionWorkspaceId },
       });
+      try {
+        const ws = await prisma.workspace.findUnique({
+          where: { notionWorkspaceId },
+          select: { id: true },
+        });
+        if (ws) {
+          await recordAuditEvent({
+            workspaceId: ws.id,
+            userId: null,
+            action: 'webhook.signature_failure',
+            resourceType: 'webhook',
+            resourceId: 'notion-page-edit',
+            metadata: { endpoint: '/api/webhooks/notion-page-edit' },
+          });
+        }
+      } catch {
+        // best-effort
+      }
       return apiError('unauthenticated', 'Invalid Notion signature.');
     }
 

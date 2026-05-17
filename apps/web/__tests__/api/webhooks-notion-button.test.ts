@@ -13,15 +13,25 @@ import { makeCtx, makeRequest, readJson, stubSentryWrapper } from './_helpers';
 stubSentryWrapper();
 
 vi.mock('@forge/db', () => ({
-  prisma: { user: { findFirst: vi.fn() } },
+  prisma: {
+    user: { findFirst: vi.fn() },
+    workspace: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'ws_1',
+        webhookSecret: 's3cr3t',
+      }),
+    },
+  },
   createGeneration: vi.fn().mockResolvedValue({ id: 'gen_new' }),
   descriptionHash: vi.fn().mockResolvedValue('hash-abc'),
   findRecentByHash: vi.fn(),
   findWorkspaceByNotionId: vi.fn(),
+  recordAuditEvent: vi.fn(),
 }));
 
 vi.mock('@forge/notion-client', () => ({
   addComment: vi.fn().mockResolvedValue(undefined),
+  asBlockId: (s: string) => s,
   asPageId: (s: string) => s,
   getPage: vi.fn(),
   verifyNotionWebhookSignature: vi.fn(),
@@ -32,8 +42,8 @@ vi.mock('@/lib/notion', () => ({
   buildNotionConfig: () => ({ token: 'ntoken' }),
 }));
 
-vi.mock('@/lib/workflows', () => ({
-  publishGenerationRequested: vi.fn().mockResolvedValue({ workflowRunId: 'r1' }),
+vi.mock('@forge/workflows', () => ({
+  publishGenerationRequested: vi.fn().mockResolvedValue({ runId: 'r1' }),
 }));
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
@@ -42,6 +52,10 @@ beforeEach(async () => {
   vi.resetAllMocks();
   vi.resetModules();
   process.env['NOTION_WEBHOOK_SECRET'] = 's3cr3t';
+
+  // Re-prime the notion lib token resolver after resetAllMocks cleared it.
+  const ln = await import('@/lib/notion');
+  vi.mocked(ln.getNotionTokenForClerkUser).mockResolvedValue('ntoken');
 
   const nc = await import('@forge/notion-client');
   vi.mocked(nc.verifyNotionWebhookSignature).mockResolvedValue({ valid: true });
@@ -57,10 +71,16 @@ beforeEach(async () => {
   vi.mocked(db.findWorkspaceByNotionId).mockResolvedValue({
     id: 'ws_1',
     ownerUserId: 'clerk_owner',
+    notionWorkspaceId: 'nws_1',
+    forgeBuildLogBlockId: 'blk_log_1',
   } as never);
   vi.mocked(db.prisma.user.findFirst).mockResolvedValue({
     id: 'user_1',
     clerkId: 'clerk_owner',
+  } as never);
+  vi.mocked(db.prisma.workspace.findUnique).mockResolvedValue({
+    id: 'ws_1',
+    webhookSecret: 's3cr3t',
   } as never);
   vi.mocked(db.findRecentByHash).mockResolvedValue(null);
 });

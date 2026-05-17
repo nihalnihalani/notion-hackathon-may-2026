@@ -28,6 +28,8 @@ import {
   descriptionHash,
   findRecentByHash,
 } from '@forge/db';
+import { asBlockId } from '@forge/notion-client';
+import { publishGenerationRequested } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -37,7 +39,6 @@ import { apiError } from '@/lib/errors';
 import { capture } from '@/lib/posthog';
 import { checkRateLimit, limiters } from '@/lib/ratelimit';
 import { withSentry } from '@/lib/sentry';
-import { publishGenerationRequested } from '@/lib/workflows';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -97,7 +98,7 @@ export const POST = withSentry(
       if (cached && cached.agentId) {
         await capture({
           distinctId: user.id,
-          event: 'forge.trigger.cached',
+          event: 'forge.generation.cache_hit',
           workspaceId: workspace.id,
           properties: { generationId: cached.id, agentId: cached.agentId },
         });
@@ -112,6 +113,17 @@ export const POST = withSentry(
       }
     }
 
+    // The workflow trigger requires the workspace's Build Log block id +
+    // the Notion workspace id so the orchestrator can append progress lines
+    // and post clarification comments. If install never completed these are
+    // null — we 412 (Precondition Failed) so the UI can show "finish install".
+    if (!workspace.forgeBuildLogBlockId || !workspace.notionWorkspaceId) {
+      return apiError(
+        'forbidden',
+        'Workspace install incomplete — finish Notion install first.',
+      );
+    }
+
     const generation = await createGeneration({
       workspaceId: workspace.id,
       userId: user.id,
@@ -124,9 +136,14 @@ export const POST = withSentry(
       await publishGenerationRequested({
         generationId: generation.id,
         workspaceId: workspace.id,
+        notionWorkspaceId: workspace.notionWorkspaceId,
         userId: user.id,
+        userEmail: user.email,
         description,
         descriptionHash: hash,
+        force,
+        buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
+        notionRequestRowId: notionRowId,
       });
     } catch (err) {
       // Mark the row failed; we don't want a dangling `queued` row on enqueue failure.
@@ -141,7 +158,7 @@ export const POST = withSentry(
 
     await capture({
       distinctId: user.id,
-      event: 'forge.trigger.queued',
+      event: 'forge.generation.requested',
       workspaceId: workspace.id,
       properties: { generationId: generation.id, force },
     });

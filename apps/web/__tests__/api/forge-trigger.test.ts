@@ -29,8 +29,12 @@ vi.mock('@forge/db', () => ({
   createGeneration: vi.fn(),
 }));
 
-vi.mock('@/lib/workflows', () => ({
-  publishGenerationRequested: vi.fn().mockResolvedValue({ workflowRunId: 'r1' }),
+vi.mock('@forge/workflows', () => ({
+  publishGenerationRequested: vi.fn().mockResolvedValue({ runId: 'r1' }),
+}));
+
+vi.mock('@forge/notion-client', () => ({
+  asBlockId: (s: string) => s,
 }));
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
@@ -43,7 +47,15 @@ vi.mock('@/lib/ratelimit', () => ({
   },
 }));
 
-const fakeUser = { id: 'user_1', workspace: { id: 'ws_1' } };
+const fakeUser = {
+  id: 'user_1',
+  email: 'nihal@example.com',
+  workspace: {
+    id: 'ws_1',
+    notionWorkspaceId: 'nws_1',
+    forgeBuildLogBlockId: 'blk_log_1',
+  },
+};
 
 beforeEach(async () => {
   vi.resetAllMocks();

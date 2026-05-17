@@ -42,7 +42,7 @@
   },
   "peerDependencies": {
     "inngest": "^3.0.0",
-    "workflow": "^0.1.0"
+    "workflow": "*"
   },
   "peerDependenciesMeta": {
     "inngest": {

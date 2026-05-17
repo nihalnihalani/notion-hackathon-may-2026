@@ -194,6 +194,11 @@ export async function cancelInflight(
  * shape didn't drift between layers.
  */
 function validateRequestedPayload(p: GenerationRequestedEvent): void {
+  // `notionRequestRowId` is intentionally NOT required — dashboard-originated
+  // triggers pass an empty string because no Notion row exists yet (the
+  // orchestrator creates one in the Shipper step). Webhook-originated calls
+  // do populate it. Keep the type as `string` (not optional) so callers must
+  // make a conscious decision about whether to pass empty or not.
   const required = [
     'generationId',
     'workspaceId',
@@ -203,7 +208,6 @@ function validateRequestedPayload(p: GenerationRequestedEvent): void {
     'description',
     'descriptionHash',
     'buildLogBlockId',
-    'notionRequestRowId',
   ] as const;
   for (const key of required) {
     const value = (p as unknown as Record<string, unknown>)[key];

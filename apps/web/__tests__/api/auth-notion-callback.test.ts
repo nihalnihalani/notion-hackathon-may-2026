@@ -24,13 +24,46 @@ vi.mock('@clerk/nextjs/server', () => ({
 }));
 
 vi.mock('@forge/db', () => ({
-  prisma: { user: { upsert: vi.fn() } },
+  prisma: {
+    user: { upsert: vi.fn() },
+    // The installer adapter the callback builds calls these directly.
+    workspace: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue({}),
+    },
+  },
   upsertWorkspace: vi.fn().mockResolvedValue({ id: 'ws_1' }),
   recordAuditEvent: vi.fn(),
 }));
 
-vi.mock('@/lib/installer', () => ({
+// `InstallerError` is referenced by the route's `instanceof` check that
+// distinguishes "missing parent page" failures (→ redirect to picker) from
+// other installer errors (→ still redirect to /agents). The real export is a
+// class; we re-create a structurally identical one here so the instanceof
+// check is exercised by the test. Hoisted because `vi.mock` factories run
+// before module-top declarations.
+const { StubInstallerError } = vi.hoisted(() => {
+  class StubInstallerError extends Error {
+    step: string;
+    workspaceId: string;
+    constructor(
+      message: string,
+      init: { step: string; workspaceId: string; cause?: unknown },
+    ) {
+      super(
+        message,
+        init.cause === undefined ? undefined : { cause: init.cause },
+      );
+      this.name = 'InstallerError';
+      this.step = init.step;
+      this.workspaceId = init.workspaceId;
+    }
+  }
+  return { StubInstallerError };
+});
+vi.mock('@forge/installer', () => ({
   installForgePage: vi.fn(),
+  InstallerError: StubInstallerError,
 }));
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
@@ -52,11 +85,13 @@ beforeEach(async () => {
     data: [{ token: 'ntoken', workspaceId: 'nws_1', workspaceName: 'Acme' }],
   });
 
-  const installer = await import('@/lib/installer');
+  const installer = await import('@forge/installer');
   vi.mocked(installer.installForgePage).mockResolvedValue({
-    forgePageId: 'page_1',
-    forgeDbId: 'db_1',
+    pageId: 'page_1',
+    requestsDbId: 'db_1',
+    agentsDbId: 'db_agents_1',
     buildLogBlockId: 'block_1',
+    buttonBlockId: 'block_btn_1',
   });
 });
 
@@ -113,7 +148,7 @@ describe('POST /api/auth/notion/callback', () => {
   });
 
   it('still redirects when the installer throws', async () => {
-    const installer = await import('@/lib/installer');
+    const installer = await import('@forge/installer');
     vi.mocked(installer.installForgePage).mockRejectedValue(
       new Error('notion 500'),
     );
@@ -125,5 +160,24 @@ describe('POST /api/auth/notion/callback', () => {
       makeCtx({}),
     );
     expect(res.status).toBe(303);
+  });
+
+  it('redirects to /onboarding/pick-parent when installer fails on missing parent page', async () => {
+    const installer = await import('@forge/installer');
+    vi.mocked(installer.installForgePage).mockRejectedValue(
+      new StubInstallerError('parentPageId is required', {
+        step: 'create-root-page',
+        workspaceId: 'ws_1',
+      }),
+    );
+    const { POST } = await import('@/app/api/auth/notion/callback/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/auth/notion/callback', {
+        method: 'POST',
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('/onboarding/pick-parent');
   });
 });

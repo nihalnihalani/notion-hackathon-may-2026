@@ -414,7 +414,7 @@ async function runForgeOnInngest(args: {
       });
       config.posthog?.capture({
         distinctId: event.userId,
-        event: 'forge.generation.complete',
+        event: 'forge.generation.completed',
         properties: {
           generationId: event.generationId,
           workspaceId: event.workspaceId,
@@ -424,20 +424,12 @@ async function runForgeOnInngest(args: {
           totalLatencyMs,
         },
       });
-      if (config.shipper.resendClient !== undefined) {
-        try {
-          await config.shipper.resendClient.emails.send({
-            from: 'Forge <noreply@forge.dev>',
-            to: [event.userEmail],
-            subject: '✅ Your Forge agent is live',
-            html: `<p>Your Forge agent is deployed: <a href="${shipResult.output.deployUrl}">${shipResult.output.deployUrl}</a>.</p>`,
-          });
-        } catch (err) {
-          logger.error('inngest.resend.failed', {
-            err: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
+      // Email send removed — the Shipper sub-agent (see
+      // packages/agents/src/shipper.ts Step 12) already sends the
+      // deploy-success email atomically with the wire-up. Sending again
+      // here caused duplicate notifications. If a workflow-level digest
+      // ever becomes desirable, route it through the Shipper's email
+      // config or add a dedicated `emailDigest` flag.
       return {
         generationId: event.generationId,
         status: 'succeeded' as const,

@@ -18,14 +18,19 @@ import type { AuditEvent, AuditEventInput } from "../src/types.js";
 type AuditAction = AuditEventInput["action"];
 
 describe("AuditEventInput", () => {
-  it("union of `action` literals is exactly the 6 documented events", () => {
+  it("union of `action` literals matches the documented events", () => {
     expectTypeOf<AuditAction>().toEqualTypeOf<
       | "agent.deployed"
+      | "agent.paused"
+      | "agent.resumed"
       | "agent.deleted"
       | "oauth.granted"
+      | "oauth.revoked"
       | "agent.invoked"
       | "workspace.installed"
+      | "generation.cancelled"
       | "generation.failed"
+      | "webhook.signature_failure"
     >();
   });
 
@@ -34,16 +39,28 @@ describe("AuditEventInput", () => {
       switch (ev.action) {
         case "agent.deployed":
           return ev.metadata.ntnWorkerName;
+        case "agent.paused":
+          return ev.metadata.workerName;
+        case "agent.resumed":
+          return ev.metadata.workerName;
         case "agent.deleted":
-          return ev.metadata.reason;
+          return ev.metadata.workerName ?? ev.metadata.ntnWorkerName ?? "";
         case "oauth.granted":
+          return ev.metadata.provider;
+        case "oauth.revoked":
           return ev.metadata.provider;
         case "agent.invoked":
           return String(ev.metadata.success);
         case "workspace.installed":
           return ev.metadata.forgePageId;
+        case "generation.cancelled":
+          return ev.metadata.reason;
         case "generation.failed":
-          return ev.metadata.errorCode;
+          return "errorCode" in ev.metadata
+            ? ev.metadata.errorCode
+            : ev.metadata.errorMessage;
+        case "webhook.signature_failure":
+          return ev.metadata.endpoint;
         default:
           // If this line fails to compile, a new `action` literal was added
           // to the union without a matching switch case. Update both.

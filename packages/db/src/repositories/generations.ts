@@ -22,15 +22,27 @@ import type {
 export async function createGeneration(input: {
   workspaceId: string;
   userId: string;
-  notionRowId: string;
+  /**
+   * Notion Forge-Requests row id. Optional / nullable because dashboard-
+   * originated triggers don't have a Notion row at enqueue time — the
+   * Shipper creates it later and the workflow backfills via
+   * `updateGenerationStatus`. Empty strings are coerced to `null` so the
+   * NOT NULL constraint we removed in
+   * `20260517_nullable_notion_row_id` never sneaks back in via API.
+   */
+  notionRowId?: string | null;
   description: string;
   descriptionHash: string;
 }): Promise<Generation> {
+  const notionRowId =
+    input.notionRowId === undefined || input.notionRowId === ""
+      ? null
+      : input.notionRowId;
   return prisma.generation.create({
     data: {
       workspaceId: input.workspaceId,
       userId: input.userId,
-      notionRowId: input.notionRowId,
+      notionRowId,
       description: input.description,
       descriptionHash: input.descriptionHash,
       status: "queued",

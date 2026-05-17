@@ -83,7 +83,7 @@ export const DELETE = withSentry<{ id: string }>(
 
     await capture({
       distinctId: claims.user.id,
-      event: 'agent.deleted',
+      event: 'forge.agent.deleted',
       workspaceId: claims.workspace.id,
       properties: {
         agentId: id,

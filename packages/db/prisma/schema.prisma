@@ -36,6 +36,8 @@ model Workspace {
   forgeButtonBlockId     String? // ⚡ Forge this Agent button (or link block in fallback mode)
   forgeBuildLogBlockId   String? // 🧱 Build Log container (toggle / synced_block)
   webhookSecret          String? // 256-bit per-workspace secret for Notion webhook HMAC verification
+  stripeCustomerId       String? // Stripe customer id; null until first billing event
+  defaultModel           String?          @default("auto") // user's chosen model for Tool Coder ("auto" | "claude-opus-4-7" | "gpt-5" | ...)
   users                  User[]
   generations            Generation[]
   generatedAgents        GeneratedAgent[]
@@ -49,7 +51,25 @@ model User {
   workspaceId String
   workspace   Workspace    @relation(fields: [workspaceId], references: [id])
   generations Generation[]
+  apiKeys     UserApiKey[]
   createdAt   DateTime     @default(now())
+}
+
+// MCP-server API keys, hashed at rest. Plaintext is shown ONCE at mint
+// time via POST /api/settings/api-keys; we never store it.
+model UserApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  name       String
+  prefix     String // first 6-8 chars of the key, surfaced for UI ("fk_live_…")
+  lastFour   String // last 4 chars of the key, surfaced for UI
+  hashedKey  String    @unique // sha256(plaintext) hex
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
 }
 
 model Generation {
@@ -58,7 +78,7 @@ model Generation {
   workspace       Workspace        @relation(fields: [workspaceId], references: [id])
   userId          String
   user            User             @relation(fields: [userId], references: [id])
-  notionRowId     String // Forge Requests DB row in Notion
+  notionRowId     String? // Forge Requests DB row in Notion; null for dashboard-originated triggers (orchestrator backfills)
   description     String           @db.Text
   descriptionHash String           @db.VarChar(64) // for idempotency
   status          GenerationStatus

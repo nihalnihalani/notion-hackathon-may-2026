@@ -93,8 +93,7 @@ export const POST = withSentry(
           select: {
             id: true,
             ownerUserId: true,
-            forgePageId: true,
-            forgeDbId: true,
+            forgeBuildLogBlockId: true,
           },
         },
       },
@@ -104,10 +103,10 @@ export const POST = withSentry(
     }
 
     const ws = gen.workspace;
-    if (!ws.forgePageId) {
+    if (!ws.forgeBuildLogBlockId) {
       return apiError(
         'upstream_failure',
-        'Workspace has no installed Forge page — installer must run first.',
+        'Workspace has no installed Build Log block — installer must run first.',
       );
     }
 
@@ -126,12 +125,11 @@ export const POST = withSentry(
       );
     }
 
-    // The Build Log container block id is stored on the workspace at install
-    // time. PLAN §VII places it inside the Forge page; the installer
-    // records it on `Workspace.forgePageId` for now (block id == page id when
-    // the page itself is the container). When the installer evolves to a
-    // dedicated child block we wire its id here.
-    const buildLogBlockId = asBlockId(ws.forgePageId);
+    // The Build Log container block id is persisted on the workspace by the
+    // installer (`@forge/installer` step `create-build-log-block`). We use
+    // that dedicated block — NOT the parent page id — so each append lands
+    // inside the synced-block / toggle container, not directly on the page.
+    const buildLogBlockId = asBlockId(ws.forgeBuildLogBlockId);
 
     const config = buildNotionConfig(token);
     try {

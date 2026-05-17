@@ -77,17 +77,43 @@ export type AuditEventInput =
       };
     }
   | {
+      action: "agent.paused";
+      metadata: {
+        workerName: string;
+      };
+    }
+  | {
+      action: "agent.resumed";
+      metadata: {
+        workerName: string;
+      };
+    }
+  | {
       action: "agent.deleted";
       metadata: {
-        ntnWorkerName: string;
-        reason: "user_request" | "system_retraction" | "policy_violation";
+        // `workerName` for new call sites; `ntnWorkerName` for the
+        // legacy /api/agents DELETE handler. Either is allowed for
+        // backward compatibility — both refer to the same value.
+        workerName?: string;
+        ntnWorkerName?: string;
+        reason?:
+          | "user"
+          | "user_request"
+          | "system_retraction"
+          | "policy_violation";
       };
     }
   | {
       action: "oauth.granted";
       metadata: {
         provider: string; // "notion" | "github" | "linear" | ...
-        scopes: ReadonlyArray<string>;
+        scopes?: ReadonlyArray<string>;
+      };
+    }
+  | {
+      action: "oauth.revoked";
+      metadata: {
+        provider: string;
       };
     }
   | {
@@ -106,11 +132,28 @@ export type AuditEventInput =
       };
     }
   | {
-      action: "generation.failed";
+      action: "generation.cancelled";
       metadata: {
-        generationId: string;
-        failedStep: string;
-        errorCode: string;
+        reason: "user" | "timeout" | "admin";
+      };
+    }
+  | {
+      action: "generation.failed";
+      metadata:
+        | {
+            generationId: string;
+            failedStep: string;
+            errorCode: string;
+          }
+        | {
+            stage: string;
+            errorMessage: string;
+          };
+    }
+  | {
+      action: "webhook.signature_failure";
+      metadata: {
+        endpoint: string;
       };
     };
 

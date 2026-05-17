@@ -23,10 +23,11 @@ vi.mock('@forge/db', () => ({
     generation: { findUnique: vi.fn() },
   },
   updateGenerationStatus: vi.fn(),
+  recordAuditEvent: vi.fn(),
 }));
 
-vi.mock('@/lib/workflows', () => ({
-  cancelInflight: vi.fn().mockResolvedValue({ cancelled: true }),
+vi.mock('@forge/workflows', () => ({
+  cancelInflight: vi.fn().mockResolvedValue({ skipped: true }),
 }));
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));

@@ -39,6 +39,8 @@ const isPublicRoute = createRouteMatcher([
   // users can actually reach them.
   '/sign-in(.*)',
   '/sign-up(.*)',
+  // Marketing landing page — must be reachable for logged-out visitors.
+  '/',
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

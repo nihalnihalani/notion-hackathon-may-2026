@@ -8,7 +8,7 @@
  * Audit + analytics best-effort.
  */
 
-import { markAgentStatus } from '@forge/db';
+import { markAgentStatus, recordAuditEvent } from '@forge/db';
 import { pauseSync } from '@forge/ntn-wrapper';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
@@ -45,13 +45,22 @@ export const POST = withSentry<{ id: string }>(
 
     const updated = await markAgentStatus(id, 'paused');
 
-    // We do not have a dedicated `agent.paused` event in the AuditEventInput
-    // union. PostHog carries analytics; tracked in backlog "extend audit
-    // union with agent.paused / agent.resumed".
+    try {
+      await recordAuditEvent({
+        workspaceId: claims.workspace.id,
+        userId: claims.clerkId,
+        action: 'agent.paused',
+        resourceType: 'agent',
+        resourceId: id,
+        metadata: { workerName: agent.ntnWorkerName },
+      });
+    } catch (err) {
+      Sentry.captureException(err, { tags: { phase: 'audit.agent.paused' } });
+    }
 
     await capture({
       distinctId: claims.user.id,
-      event: 'agent.paused',
+      event: 'forge.agent.paused',
       workspaceId: claims.workspace.id,
       properties: { agentId: id, ntnWorkerName: agent.ntnWorkerName },
     });

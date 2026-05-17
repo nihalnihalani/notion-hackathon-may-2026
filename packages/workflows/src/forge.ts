@@ -411,7 +411,11 @@ async function finalize(args: {
   startedAt: number;
 }): Promise<WorkflowSuccess> {
   const { event, config, schema, shipResult, startedAt } = args;
-  const logger = config.logger ?? noopLogger;
+  // The previous workflow-level email send used a `logger` here; that
+  // send was removed (the Shipper now handles deploy-success emails
+  // atomically — see `packages/agents/src/shipper.ts` Step 12). Keep this
+  // function logger-free until a new failure path needs structured
+  // logging again.
 
   // We don't have a `listStepsForGeneration` helper on the structural db
   // interface (kept narrow), so we sum costs from the live timestamps we have
@@ -431,7 +435,7 @@ async function finalize(args: {
     totalCostUsd,
   });
 
-  capturePosthog(config, event.userId, 'forge.generation.complete', {
+  capturePosthog(config, event.userId, 'forge.generation.completed', {
     generationId: event.generationId,
     workspaceId: event.workspaceId,
     pattern: schema.pattern,
@@ -440,23 +444,12 @@ async function finalize(args: {
     totalLatencyMs,
   });
 
-  // Resend email — best-effort. The shipper already sends a deploy-success
-  // email; this one is a workflow-level "all done" digest. We skip if the
-  // Resend client isn't wired.
-  if (config.shipper.resendClient !== undefined) {
-    try {
-      await config.shipper.resendClient.emails.send({
-        from: 'Forge <noreply@forge.dev>',
-        to: [event.userEmail],
-        subject: `✅ Your Forge agent is live`,
-        html: `<p>Your Forge agent is deployed: <a href="${shipResult.deployUrl}">${shipResult.deployUrl}</a>.</p>`,
-      });
-    } catch (err) {
-      logger.error('workflow.resend.failed', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+  // Email send: the Shipper (`packages/agents/src/shipper.ts` Step 12)
+  // already sends the deploy-success email atomically with the rest of
+  // the wire-up so callers get a single notification. Sending again here
+  // produced duplicate emails — removed by the Integration Fixer phase.
+  // If a workflow-level "digest" ever becomes desirable, route it through
+  // the Shipper's email config or a dedicated `emailDigest` flag.
 
   await safeNotionLog(config, event.buildLogBlockId, {
     step: 'Finalize',

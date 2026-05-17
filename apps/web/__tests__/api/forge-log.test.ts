@@ -48,8 +48,7 @@ describe('POST /api/forge/log', () => {
       workspace: {
         id: 'ws_1',
         ownerUserId: 'clerk_owner',
-        forgePageId: 'page_1',
-        forgeDbId: 'db_1',
+        forgeBuildLogBlockId: 'blk_log_1',
       },
     } as never);
 

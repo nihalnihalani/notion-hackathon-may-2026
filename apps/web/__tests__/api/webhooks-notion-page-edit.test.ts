@@ -13,6 +13,15 @@ stubSentryWrapper();
 
 vi.mock('@forge/db', () => ({
   findWorkspaceByNotionId: vi.fn(),
+  recordAuditEvent: vi.fn(),
+  prisma: {
+    workspace: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: 'ws_1',
+        webhookSecret: 's3cr3t',
+      }),
+    },
+  },
 }));
 
 vi.mock('@forge/notion-client', () => ({

@@ -4,7 +4,7 @@
  * See pause/route.ts for the architecture comments.
  */
 
-import { markAgentStatus } from '@forge/db';
+import { markAgentStatus, recordAuditEvent } from '@forge/db';
 import { resumeSync } from '@forge/ntn-wrapper';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
@@ -41,9 +41,22 @@ export const POST = withSentry<{ id: string }>(
 
     const updated = await markAgentStatus(id, 'active');
 
+    try {
+      await recordAuditEvent({
+        workspaceId: claims.workspace.id,
+        userId: claims.clerkId,
+        action: 'agent.resumed',
+        resourceType: 'agent',
+        resourceId: id,
+        metadata: { workerName: agent.ntnWorkerName },
+      });
+    } catch (err) {
+      Sentry.captureException(err, { tags: { phase: 'audit.agent.resumed' } });
+    }
+
     await capture({
       distinctId: claims.user.id,
-      event: 'agent.resumed',
+      event: 'forge.agent.resumed',
       workspaceId: claims.workspace.id,
       properties: { agentId: id, ntnWorkerName: agent.ntnWorkerName },
     });

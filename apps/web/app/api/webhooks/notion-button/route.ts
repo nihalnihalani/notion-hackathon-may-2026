@@ -41,13 +41,16 @@ import {
   findRecentByHash,
   findWorkspaceByNotionId,
   prisma,
+  recordAuditEvent,
 } from '@forge/db';
 import {
   addComment,
+  asBlockId,
   asPageId,
   getPage,
   verifyNotionWebhookSignature,
 } from '@forge/notion-client';
+import { publishGenerationRequested } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -56,7 +59,6 @@ import { apiError } from '@/lib/errors';
 import { buildNotionConfig, getNotionTokenForClerkUser } from '@/lib/notion';
 import { capture } from '@/lib/posthog';
 import { withSentry } from '@/lib/sentry';
-import { publishGenerationRequested } from '@/lib/workflows';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,12 +71,21 @@ const buttonPayloadSchema = z.object({
 });
 
 /**
- * Resolve the workspace's HMAC verification secret. v1: a single env-wide
- * secret. The schema needs a per-workspace column (`notionWebhookSecret`) for
- * proper isolation; tracked for v1.1.
+ * Resolve the per-workspace HMAC verification secret from PlanetScale.
+ *
+ * The installer mints a 256-bit secret on first install and stores it on the
+ * `Workspace` row (`webhookSecret` column). We look it up by Notion-side
+ * workspace id. Returns `null` if no workspace is installed yet OR if the
+ * column is empty (pre-installer row); callers MUST treat both as "reject".
  */
-function getWorkspaceWebhookSecret(_notionWorkspaceId: string): string {
-  return process.env['NOTION_WEBHOOK_SECRET'] ?? '';
+async function getWorkspaceWebhookSecret(
+  notionWorkspaceId: string,
+): Promise<string | null> {
+  const ws = await prisma.workspace.findUnique({
+    where: { notionWorkspaceId },
+    select: { webhookSecret: true },
+  });
+  return ws?.webhookSecret ?? null;
 }
 
 /**
@@ -146,7 +157,38 @@ export const POST = withSentry(
       return apiError('validation', 'No workspace id in header or body.');
     }
 
-    const secret = getWorkspaceWebhookSecret(notionWorkspaceId);
+    const secret = await getWorkspaceWebhookSecret(notionWorkspaceId);
+    if (!secret) {
+      // No installed workspace OR the installer never set a secret. Either
+      // way the request cannot be authenticated. Audit the failure (without
+      // PII) so we can spot misconfigurations.
+      Sentry.captureMessage(
+        'notion-button: no per-workspace webhook secret',
+        {
+          level: 'warning',
+          tags: { notionWorkspaceId },
+        },
+      );
+      try {
+        const ws = await prisma.workspace.findUnique({
+          where: { notionWorkspaceId },
+          select: { id: true },
+        });
+        if (ws) {
+          await recordAuditEvent({
+            workspaceId: ws.id,
+            userId: null,
+            action: 'webhook.signature_failure',
+            resourceType: 'webhook',
+            resourceId: 'notion-button',
+            metadata: { endpoint: '/api/webhooks/notion-button' },
+          });
+        }
+      } catch {
+        // best-effort
+      }
+      return apiError('unauthenticated', 'Invalid Notion signature.');
+    }
     const verify = await verifyNotionWebhookSignature({
       rawBody: raw,
       headers: req.headers,
@@ -157,6 +199,24 @@ export const POST = withSentry(
         level: 'warning',
         tags: { reason: verify.reason ?? 'unknown', notionWorkspaceId },
       });
+      try {
+        const ws = await prisma.workspace.findUnique({
+          where: { notionWorkspaceId },
+          select: { id: true },
+        });
+        if (ws) {
+          await recordAuditEvent({
+            workspaceId: ws.id,
+            userId: null,
+            action: 'webhook.signature_failure',
+            resourceType: 'webhook',
+            resourceId: 'notion-button',
+            metadata: { endpoint: '/api/webhooks/notion-button' },
+          });
+        }
+      } catch {
+        // best-effort
+      }
       return apiError('unauthenticated', 'Invalid Notion signature.');
     }
 
@@ -246,9 +306,13 @@ export const POST = withSentry(
       }
       await capture({
         distinctId: localUser.clerkId,
-        event: 'forge.button.cached',
+        event: 'forge.generation.cache_hit',
         workspaceId: workspace.id,
-        properties: { generationId: cached.id, agentId: cached.agentId },
+        properties: {
+          generationId: cached.id,
+          agentId: cached.agentId,
+          source: 'notion-button',
+        },
       });
       return NextResponse.json({ ok: true, status: 'cached', generationId: cached.id });
     }
@@ -261,13 +325,31 @@ export const POST = withSentry(
       descriptionHash: hash,
     });
 
+    if (!workspace.forgeBuildLogBlockId) {
+      Sentry.captureMessage(
+        'notion-button: workspace has no Build Log block — install incomplete',
+        {
+          level: 'error',
+          tags: { workspaceId: workspace.id },
+        },
+      );
+      return NextResponse.json({ ok: true, ignored: 'install_incomplete' });
+    }
     try {
       await publishGenerationRequested({
         generationId: generation.id,
         workspaceId: workspace.id,
+        notionWorkspaceId,
         userId: localUser.id,
+        // The webhook does not know the Clerk user's email (the click is by
+        // a Notion user we may not have mapped to Clerk). Fall back to the
+        // owner's address via Clerk; if missing, use a no-op so the email
+        // step is skipped.
+        userEmail: `${workspace.ownerUserId}@noemail.local`,
         description,
         descriptionHash: hash,
+        buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
+        notionRequestRowId: pageId,
       });
     } catch (err) {
       Sentry.captureException(err, {
@@ -278,9 +360,9 @@ export const POST = withSentry(
 
     await capture({
       distinctId: localUser.clerkId,
-      event: 'forge.button.queued',
+      event: 'forge.generation.requested',
       workspaceId: workspace.id,
-      properties: { generationId: generation.id },
+      properties: { generationId: generation.id, source: 'notion-button' },
     });
 
     return NextResponse.json({

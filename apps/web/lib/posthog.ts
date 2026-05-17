@@ -10,6 +10,43 @@
  *
  * We never call `posthog.identify` for end users — analytics IDs are the Clerk
  * userId only, and we attach `$set` properties (workspace id) on each event.
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * CANONICAL EVENT REGISTRY
+ * ────────────────────────────────────────────────────────────────────────────
+ *
+ * Naming convention: `forge.<area>.<verb>` where `<verb>` is snake_case.
+ * Every event captured anywhere in `apps/web/`, `packages/workflows/`, or
+ * `packages/agents/` MUST appear in this table. Adding a new event without
+ * adding it here is a review-block.
+ *
+ * Distinct id rules:
+ *   - User-initiated events  → `clerkUserId` (i.e. `User.clerkId`)
+ *   - System / workflow events → `workspaceId`
+ *
+ * `workspaceId` is ALWAYS attached as the `workspace` group identifier so
+ * funnels in PostHog can be sliced per tenant.
+ *
+ * Payload schemas (all properties are optional unless marked required):
+ *
+ *   forge.workspace.installed       { forgePageId: string }
+ *   forge.workspace.uninstalled     { reason?: 'user_request' | 'admin' }
+ *   forge.generation.requested      { generationId: string; force?: boolean; source?: 'dashboard' | 'notion-button' | 'mcp' }
+ *   forge.generation.completed      { generationId: string; pattern: string; totalCostUsd: number; totalLatencyMs: number; cacheHit?: false }
+ *   forge.generation.cache_hit      { generationId: string; agentId: string; source?: 'dashboard' | 'notion-button' | 'mcp' }
+ *   forge.generation.cancelled      { generationId: string; reason: 'user' | 'timeout' | 'admin' }
+ *   forge.generation.failed         { generationId: string; failedStep: string; errorCode: string }
+ *   forge.generation.needs_clarification { generationId: string; question: string }
+ *   forge.agent.deleted             { agentId: string; ntnWorkerName: string; reason?: 'user_request' | 'system_retraction' | 'policy_violation' }
+ *   forge.agent.paused              { agentId: string; ntnWorkerName: string }
+ *   forge.agent.resumed             { agentId: string; ntnWorkerName: string }
+ *   forge.agent.redeployed          { agentId: string; ntnWorkerName: string }
+ *   forge.settings.api_key_created  { keyId: string; prefix: string }
+ *   forge.settings.api_key_revoked  { keyId: string }
+ *   forge.settings.default_model_changed { from: string; to: string }
+ *
+ * Legacy aliases (DO NOT use; kept here only so search picks them up):
+ *   forge.cache.hit                 → forge.generation.cache_hit
  */
 
 import { PostHog } from 'posthog-node';

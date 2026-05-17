@@ -15,7 +15,12 @@
  * `/api/forge/generations/:id` to see the final state.
  */
 
-import { updateGenerationStatus, prisma } from '@forge/db';
+import {
+  prisma,
+  recordAuditEvent,
+  updateGenerationStatus,
+} from '@forge/db';
+import { cancelInflight } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 
@@ -24,7 +29,6 @@ import { apiError } from '@/lib/errors';
 import { capture } from '@/lib/posthog';
 import { checkRateLimit, limiters } from '@/lib/ratelimit';
 import { withSentry } from '@/lib/sentry';
-import { cancelInflight } from '@/lib/workflows';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,9 +45,13 @@ export const POST = withSentry<{ id: string }>(
       return apiError('rate_limited', 'Too many cancel requests.');
     }
 
-    // Workflow cancel — log failures but don't fail the request.
+    // Workflow cancel — log failures but don't fail the request. The real
+    // cancellation requires a stored hook token (see @forge/workflows
+    // README). v1 does not yet persist that token; the call returns
+    // { skipped: true } and we still mark the row cancelled below, which the
+    // workflow notices on the next step boundary via its abort-signal guard.
     try {
-      await cancelInflight(id);
+      await cancelInflight(id, 'user');
     } catch (err) {
       Sentry.captureException(err, {
         tags: { phase: 'workflow.cancel', generationId: id },
@@ -64,14 +72,25 @@ export const POST = withSentry<{ id: string }>(
 
     await capture({
       distinctId: user.id,
-      event: 'forge.cancel',
+      event: 'forge.generation.cancelled',
       workspaceId: workspace.id,
       properties: { generationId: id, priorStatus: current?.status ?? 'unknown' },
     });
 
-    // We do NOT write an AuditLog row for cancel — the AuditEventInput union
-    // doesn't include `generation.cancelled` and we must not widen it from a
-    // peripheral PR. Tracked in the backlog.
+    try {
+      await recordAuditEvent({
+        workspaceId: workspace.id,
+        userId: auth.ctx.clerkId,
+        action: 'generation.cancelled',
+        resourceType: 'generation',
+        resourceId: id,
+        metadata: { reason: 'user' },
+      });
+    } catch (err) {
+      Sentry.captureException(err, {
+        tags: { phase: 'audit.generation.cancelled' },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   },
