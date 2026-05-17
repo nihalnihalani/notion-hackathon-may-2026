@@ -46,6 +46,10 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from src.config import build_client, load_config  # noqa: E402
 from src.markdown_to_notion import chunk_blocks, markdown_to_blocks  # noqa: E402
+from src.openclaw_screens_sync import (  # noqa: E402
+    link_tasks_page_to_command_center,
+    sync_openclaw_screens,
+)
 from src.state_store import StateStore  # noqa: E402
 
 
@@ -873,6 +877,22 @@ def main() -> int:
 
     for key, title, body in PROMPTS:
         _ensure_content_page(client, prompts_parent, f"prompt_{key}", title, body, store)
+
+    # Wire the Tasks page to the live Command Center database.
+    db_id = (
+        config.notion_command_center_database_id
+        or config.notion_command_center_data_source_id
+    )
+    if db_id:
+        if link_tasks_page_to_command_center(client, db_id, store):
+            print("\n[ok]   Tasks page linked to Command Center database")
+        else:
+            print("\n[skip] Tasks page already linked to Command Center database")
+
+    # Seed the 4 live screens with their first live snapshot.
+    print("\nSeeding live data on Memory / Docs / Team / Calendar screens...")
+    n = sync_openclaw_screens(client, config.warroom_path, store)
+    print(f"[ok]   {n} screen(s) populated with live data")
 
     print("\n--- Done ---")
     print(f"Mission Control root: {mc_parent_id}")

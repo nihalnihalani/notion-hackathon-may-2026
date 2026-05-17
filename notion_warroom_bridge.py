@@ -23,6 +23,7 @@ from src.dispatch_sync import sync_dispatch
 from src.knowledge_base_sync import sync_knowledge_base
 from src.log_archive import attach_file_logger
 from src.mission_control_sync import sync_mission_control
+from src.openclaw_screens_sync import sync_openclaw_screens
 from src.result_sync import sync_results
 from src.skill_inbox_sync import sync_skill_inbox
 from src.state_store import StateStore
@@ -72,6 +73,10 @@ def _one_cycle(notion, config, store: StateStore) -> None:
         notion, config.notion_dashboard_page_id, config.warroom_path, store
     )
     log.info("Mission control dashboard blocks synced")
+
+    screens_pushed = sync_openclaw_screens(notion, config.warroom_path, store)
+    if screens_pushed:
+        log.info("refreshed %d OpenClaw screen(s)", screens_pushed)
 
     # Phase-two optional syncs: only fire when the corresponding parent
     # page id is configured. Missing config = the feature stays off.
