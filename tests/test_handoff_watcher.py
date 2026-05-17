@@ -25,6 +25,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WATCHER_PATH = REPO_ROOT / "scripts" / "handoff_watcher.py"
+ORCHESTRATOR_PATH = REPO_ROOT / "scripts" / "warroom_orchestrator.py"
 
 
 def _load_watcher(monkeypatch, warroom: Path):
@@ -38,6 +39,13 @@ def _load_watcher(monkeypatch, warroom: Path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_legacy_orchestrator_delegates_to_handoff_watcher():
+    text = ORCHESTRATOR_PATH.read_text(encoding="utf-8")
+    assert "from handoff_watcher import main" in text
+    assert "subprocess" not in text
+    assert "threading" not in text
 
 
 # ---- CLI handlers --------------------------------------------------------
