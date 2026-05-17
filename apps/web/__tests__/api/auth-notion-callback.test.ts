@@ -46,14 +46,8 @@ const { StubInstallerError } = vi.hoisted(() => {
   class StubInstallerError extends Error {
     step: string;
     workspaceId: string;
-    constructor(
-      message: string,
-      init: { step: string; workspaceId: string; cause?: unknown },
-    ) {
-      super(
-        message,
-        init.cause === undefined ? undefined : { cause: init.cause },
-      );
+    constructor(message: string, init: { step: string; workspaceId: string; cause?: unknown }) {
+      super(message, init.cause === undefined ? undefined : { cause: init.cause });
       this.name = 'InstallerError';
       this.step = init.step;
       this.workspaceId = init.workspaceId;
@@ -71,7 +65,12 @@ vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
 beforeEach(async () => {
   vi.resetAllMocks();
   vi.resetModules();
+  vi.unstubAllGlobals();
   process.env['NEXT_PUBLIC_APP_URL'] = 'http://localhost:3000';
+  process.env['CLERK_SECRET_KEY'] = 'sk_test_secret_for_token_encryption';
+  process.env['NOTION_OAUTH_CLIENT_ID'] = 'notion_client_1';
+  process.env['NOTION_OAUTH_CLIENT_SECRET'] = 'notion_secret_1';
+  process.env['NOTION_OAUTH_REDIRECT_URI'] = 'http://localhost/api/auth/notion/callback';
 
   const clerk = await import('@clerk/nextjs/server');
   vi.mocked(clerk.auth).mockResolvedValue({ userId: 'clerk_1' } as never);
@@ -103,6 +102,38 @@ beforeEach(async () => {
 });
 
 describe('POST /api/auth/notion/callback', () => {
+  it('handles direct Notion OAuth GET callback and redirects to the parent picker', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            access_token: 'ntoken',
+            workspace_id: 'nws_1',
+            workspace_name: 'Acme',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const { NextRequest } = await import('next/server');
+    const { GET } = await import('@/app/api/auth/notion/callback/route');
+    const res = await GET(
+      new NextRequest('http://localhost/api/auth/notion/callback?code=code_1&state=state_1', {
+        headers: { cookie: 'forge_notion_oauth_state=state_1' },
+      }) as never,
+      makeCtx({}),
+    );
+
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toContain('/onboarding/pick-parent');
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.notion.com/v1/oauth/token',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('redirects to /agents on happy path', async () => {
     const { POST } = await import('@/app/api/auth/notion/callback/route');
     const res = await POST(
@@ -156,9 +187,7 @@ describe('POST /api/auth/notion/callback', () => {
 
   it('still redirects when the installer throws', async () => {
     const installer = await import('@forge/installer');
-    vi.mocked(installer.installForgePage).mockRejectedValue(
-      new Error('notion 500'),
-    );
+    vi.mocked(installer.installForgePage).mockRejectedValue(new Error('notion 500'));
     const { POST } = await import('@/app/api/auth/notion/callback/route');
     const res = await POST(
       makeRequest('http://localhost/api/auth/notion/callback', {

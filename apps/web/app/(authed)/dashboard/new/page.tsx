@@ -71,7 +71,15 @@ export default async function NewAgentPage() {
             <CardTitle>Describe</CardTitle>
             <CardDescription>Plain English — the orchestrator handles the rest.</CardDescription>
           </CardHeader>
-          <CardContent>{installComplete ? <NewAgentForm /> : <FinishInstallNotice />}</CardContent>
+          <CardContent>
+            {installComplete ? (
+              <NewAgentForm />
+            ) : (
+              <FinishInstallNotice
+                href={dbUser ? '/onboarding/pick-parent' : '/api/auth/notion/start'}
+              />
+            )}
+          </CardContent>
         </Card>
 
         <div className="space-y-4">
@@ -139,16 +147,15 @@ function Tip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function FinishInstallNotice() {
+function FinishInstallNotice({ href }: { href: string }) {
   return (
     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4 text-sm">
       <p className="font-medium">Finish installing Forge first</p>
       <p className="text-muted-foreground">
-        Forge needs to know about your Notion workspace before it can build agents for you. Re-run
-        the Notion install from Settings.
+        Forge needs to know about your Notion workspace before it can build agents for you.
       </p>
       <Button asChild size="sm">
-        <Link href="/settings">Go to Settings</Link>
+        <Link href={href}>{href.startsWith('/api/') ? 'Connect Notion' : 'Finish install'}</Link>
       </Button>
     </div>
   );

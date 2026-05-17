@@ -25,10 +25,13 @@ import { InstallerError, installForgePage } from '@forge/installer';
 import type { InstallerDbClient, WorkspaceForgeRecord } from '@forge/installer';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 import { requireUser } from '@/lib/auth';
 import { apiError } from '@/lib/errors';
+import { exchangeNotionAuthorizationCode, NOTION_OAUTH_STATE_COOKIE } from '@/lib/notion-oauth';
 import { capture } from '@/lib/posthog';
+import { sealSecret } from '@/lib/secret-seal';
 import { withSentry } from '@/lib/sentry';
 
 /**
@@ -85,6 +88,10 @@ function buildInstallerDbAdapter(): InstallerDbClient {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function appUrl(): string {
+  return process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+}
+
 interface ClerkOauthAccount {
   token: string;
   provider: string;
@@ -94,6 +101,93 @@ interface ClerkOauthAccount {
   workspaceId?: string;
   workspaceName?: string;
 }
+
+async function bindNotionWorkspaceToUser(input: {
+  clerkUserId: string;
+  email: string | null;
+  notionToken: string;
+  notionWorkspaceId: string;
+  notionWorkspaceName: string;
+}) {
+  const workspace = await upsertWorkspace({
+    notionWorkspaceId: input.notionWorkspaceId,
+    name: input.notionWorkspaceName,
+    ownerUserId: input.clerkUserId,
+  });
+
+  await prisma.workspace.update({
+    where: { id: workspace.id },
+    data: {
+      notionAccessTokenCiphertext: sealSecret(input.notionToken),
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { clerkId: input.clerkUserId },
+    create: {
+      clerkId: input.clerkUserId,
+      email: input.email ?? `${input.clerkUserId}@noemail.local`,
+      workspaceId: workspace.id,
+    },
+    update: {
+      workspaceId: workspace.id,
+      ...(input.email && { email: input.email }),
+    },
+  });
+
+  return workspace;
+}
+
+export const GET = withSentry(
+  async (req: NextRequest) => {
+    const r = await requireUser();
+    if (!r.ok) return r.response;
+    const { userId: clerkUserId, email } = r;
+
+    const url = new URL(req.url);
+    const error = url.searchParams.get('error');
+    if (error) {
+      return apiError('forbidden', `Notion OAuth was not completed: ${error}`);
+    }
+
+    const code = url.searchParams.get('code');
+    if (!code) {
+      return apiError('validation', 'Missing Notion OAuth code.');
+    }
+
+    const expectedState = req.cookies.get(NOTION_OAUTH_STATE_COOKIE)?.value;
+    const actualState = url.searchParams.get('state');
+    if (!expectedState || !actualState || expectedState !== actualState) {
+      return apiError('validation', 'Invalid Notion OAuth state. Re-run the Notion install.');
+    }
+
+    let token;
+    try {
+      token = await exchangeNotionAuthorizationCode(code);
+    } catch (exchangeError) {
+      const message =
+        exchangeError instanceof Error ? exchangeError.message : 'Notion OAuth failed.';
+      return apiError('upstream_failure', message);
+    }
+
+    const workspace = await bindNotionWorkspaceToUser({
+      clerkUserId,
+      email,
+      notionToken: token.accessToken,
+      notionWorkspaceId: token.workspaceId,
+      notionWorkspaceName: token.workspaceName,
+    });
+
+    const target = new URL(
+      workspace.forgePageId ? '/dashboard' : '/onboarding/pick-parent',
+      appUrl(),
+    );
+    const response = NextResponse.redirect(target, { status: 303 });
+    response.cookies.delete(NOTION_OAUTH_STATE_COOKIE);
+    return response;
+  },
+  { routeName: 'auth.notion.callback.get' },
+);
 
 export const POST = withSentry(
   async () => {
@@ -139,24 +233,12 @@ export const POST = withSentry(
       return apiError('upstream_failure', 'Notion OAuth response did not include a workspace id.');
     }
 
-    const workspace = await upsertWorkspace({
+    const workspace = await bindNotionWorkspaceToUser({
+      clerkUserId,
+      email,
+      notionToken: account.token,
       notionWorkspaceId,
-      name: notionWorkspaceName,
-      ownerUserId: clerkUserId,
-    });
-
-    // Materialize the local `User` row if absent, and bind to workspace.
-    await prisma.user.upsert({
-      where: { clerkId: clerkUserId },
-      create: {
-        clerkId: clerkUserId,
-        email: email ?? `${clerkUserId}@noemail.local`,
-        workspaceId: workspace.id,
-      },
-      update: {
-        workspaceId: workspace.id,
-        ...(email && { email }),
-      },
+      notionWorkspaceName,
     });
 
     // Short-circuit: if Forge is already installed for this workspace, skip
@@ -170,10 +252,7 @@ export const POST = withSentry(
     // only when a user actually opens the dashboard, so a hidden bit-rot
     // condition surfaces there rather than here on every callback.
     if (workspace.forgePageId) {
-      const dashboard = new URL(
-        '/dashboard',
-        process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
-      );
+      const dashboard = new URL('/dashboard', appUrl());
       return NextResponse.redirect(dashboard, { status: 303 });
     }
 
@@ -189,7 +268,7 @@ export const POST = withSentry(
     // the install retry on the next page load.
     const parentPageId =
       (account.publicMetadata?.['parent_page_id'] as string | undefined) ?? undefined;
-    const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+    const publicAppUrl = appUrl();
 
     try {
       const result = await installForgePage(
@@ -198,7 +277,7 @@ export const POST = withSentry(
           workspaceId: workspace.id,
           notionWorkspaceId,
           ...(parentPageId ? { parentPageId } : {}),
-          appUrl,
+          appUrl: publicAppUrl,
         },
         buildInstallerDbAdapter(),
       );
@@ -259,19 +338,13 @@ export const POST = withSentry(
       const isMissingParent =
         error instanceof InstallerError && error.step === 'create-root-page' && !parentPageId;
       if (isMissingParent) {
-        const pickerUrl = new URL(
-          '/onboarding/pick-parent',
-          process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
-        );
+        const pickerUrl = new URL('/onboarding/pick-parent', appUrl());
         return NextResponse.redirect(pickerUrl, { status: 303 });
       }
     }
 
     // 303 ensures the browser issues a GET to /agents (POST→GET semantic).
-    const target = new URL(
-      '/agents',
-      process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
-    );
+    const target = new URL('/agents', appUrl());
     return NextResponse.redirect(target, { status: 303 });
   },
   { routeName: 'auth.notion.callback' },

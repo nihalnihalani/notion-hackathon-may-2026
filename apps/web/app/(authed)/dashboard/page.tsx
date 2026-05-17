@@ -48,10 +48,18 @@ export default async function OverviewPage() {
   if (!user) redirect('/');
   const dbUser = await prisma.user.findUnique({
     where: { clerkId: user.id },
-    select: { workspaceId: true },
+    select: {
+      workspaceId: true,
+      workspace: {
+        select: { forgeBuildLogBlockId: true, notionWorkspaceId: true },
+      },
+    },
   });
   if (!dbUser) {
-    return <PendingInstallNotice />;
+    return <PendingInstallNotice href="/api/auth/notion/start" />;
+  }
+  if (!dbUser.workspace.forgeBuildLogBlockId || !dbUser.workspace.notionWorkspaceId) {
+    return <PendingInstallNotice href="/onboarding/pick-parent" />;
   }
   const workspaceId = dbUser.workspaceId;
 
@@ -399,16 +407,15 @@ function TableSkeleton({ rows }: { rows: number }) {
   );
 }
 
-function PendingInstallNotice() {
+function PendingInstallNotice({ href }: { href: string }) {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Finish installing Forge</h1>
       <p className="max-w-prose text-muted-foreground">
-        Your Notion workspace isn&apos;t linked yet. Open Settings and re-trigger the install flow
-        to get started.
+        Your Notion workspace isn&apos;t fully linked yet. Finish the install flow to get started.
       </p>
       <Button asChild>
-        <Link href="/settings">Go to Settings</Link>
+        <Link href={href}>{href.startsWith('/api/') ? 'Connect Notion' : 'Finish install'}</Link>
       </Button>
     </div>
   );

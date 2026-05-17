@@ -90,29 +90,9 @@ export default async function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {OAUTH_PROVIDERS.map((p) => {
-              const alwaysOn = 'alwaysOn' in p && p.alwaysOn;
-              return (
-                <li
-                  key={p.id}
-                  className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
-                >
-                  <span className="flex items-center gap-2 font-medium">
-                    {p.label}
-                    {alwaysOn ? <Badge variant="success">Connected</Badge> : null}
-                  </span>
-                  {alwaysOn ? (
-                    <span className="text-xs text-muted-foreground">Required</span>
-                  ) : (
-                    <Button asChild variant="outline" size="sm">
-                      <a href={`/api/oauth/${p.id}/start`}>Connect</a>
-                    </Button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <Suspense fallback={<Skeleton className="h-28 w-full" />}>
+            <ConnectedProvidersSection clerkUserId={user.id} />
+          </Suspense>
         </CardContent>
       </Card>
 
@@ -185,6 +165,71 @@ export default async function SettingsPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+async function ConnectedProvidersSection({ clerkUserId }: { clerkUserId: string }) {
+  const dbUser = await prisma.user.findUnique({
+    where: { clerkId: clerkUserId },
+    select: {
+      workspace: {
+        select: {
+          forgeBuildLogBlockId: true,
+          notionWorkspaceId: true,
+        },
+      },
+    },
+  });
+
+  const notionLinked = Boolean(dbUser?.workspace.notionWorkspaceId);
+  const notionInstalled = Boolean(
+    dbUser?.workspace.notionWorkspaceId && dbUser.workspace.forgeBuildLogBlockId,
+  );
+  const notionHref = notionLinked ? '/onboarding/pick-parent' : '/api/auth/notion/start';
+
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {OAUTH_PROVIDERS.map((p) => {
+        if (p.id === 'notion') {
+          return (
+            <li
+              key={p.id}
+              className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                {p.label}
+                {notionInstalled ? (
+                  <Badge variant="success">Installed</Badge>
+                ) : notionLinked ? (
+                  <Badge variant="warning">Setup needed</Badge>
+                ) : (
+                  <Badge variant="muted">Not connected</Badge>
+                )}
+              </span>
+              {notionInstalled ? (
+                <span className="text-xs text-muted-foreground">Required</span>
+              ) : (
+                <Button asChild variant="outline" size="sm">
+                  <a href={notionHref}>{notionLinked ? 'Finish install' : 'Connect'}</a>
+                </Button>
+              )}
+            </li>
+          );
+        }
+
+        return (
+          <li
+            key={p.id}
+            className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
+          >
+            <span className="flex items-center gap-2 font-medium">{p.label}</span>
+            <Button asChild variant="outline" size="sm">
+              <a href={`/api/oauth/${p.id}/start`}>Connect</a>
+            </Button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 async function DefaultModelSection({ clerkUserId }: { clerkUserId: string }) {
   const dbUser = await prisma.user.findUnique({
@@ -280,7 +325,14 @@ async function WorkspaceSection({ clerkUserId }: { clerkUserId: string }) {
     include: { workspace: true },
   });
   if (!dbUser) {
-    return <p className="text-sm text-muted-foreground">Workspace not bound yet.</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">Workspace not bound yet.</p>
+        <Button asChild size="sm">
+          <a href="/api/auth/notion/start">Connect Notion</a>
+        </Button>
+      </div>
+    );
   }
   const ws = dbUser.workspace;
   const forgePageUrl = ws.forgePageId

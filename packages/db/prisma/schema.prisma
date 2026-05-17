@@ -25,23 +25,24 @@ generator client {
 }
 
 model Workspace {
-  id                   String           @id @default(cuid())
-  notionWorkspaceId    String           @unique // from Notion OAuth
-  name                 String
-  ownerUserId          String
-  installedAt          DateTime         @default(now())
-  forgePageId          String? // the installed Forge page in their workspace
-  forgeDbId            String? // the installed Forge Requests DB
-  forgeAgentsDbId      String? // the installed Forge Agents DB
-  forgeButtonBlockId   String? // ⚡ Forge this Agent button (or link block in fallback mode)
-  forgeBuildLogBlockId String? // 🧱 Build Log container (toggle / synced_block)
-  webhookSecret        String? // 256-bit per-workspace secret for Notion webhook HMAC verification
-  stripeCustomerId     String? // Stripe customer id; null until first billing event
-  defaultModel         String?          @default("auto") // user's chosen primary model for paid sub-agents ("auto" | "gpt-5.5" | "gpt-5.4-mini" | "claude-opus-4-7" | ...)
-  users                User[]
-  generations          Generation[]
-  generatedAgents      GeneratedAgent[]
-  usage                UsageMeter[]
+  id                          String           @id @default(cuid())
+  notionWorkspaceId           String           @unique // from Notion OAuth
+  name                        String
+  ownerUserId                 String
+  installedAt                 DateTime         @default(now())
+  forgePageId                 String? // the installed Forge page in their workspace
+  forgeDbId                   String? // the installed Forge Requests DB
+  forgeAgentsDbId             String? // the installed Forge Agents DB
+  forgeButtonBlockId          String? // ⚡ Forge this Agent button (or link block in fallback mode)
+  forgeBuildLogBlockId        String? // 🧱 Build Log container (toggle / synced_block)
+  webhookSecret               String? // 256-bit per-workspace secret for Notion webhook HMAC verification
+  notionAccessTokenCiphertext String? // encrypted Notion OAuth access token for workspace operations
+  stripeCustomerId            String? // Stripe customer id; null until first billing event
+  defaultModel                String?          @default("auto") // user's chosen primary model for paid sub-agents ("auto" | "gpt-5.5" | "gpt-5.4-mini" | "claude-opus-4-7" | ...)
+  users                       User[]
+  generations                 Generation[]
+  generatedAgents             GeneratedAgent[]
+  usage                       UsageMeter[]
 }
 
 model User {

@@ -13,6 +13,9 @@ import { createPacer, type NotionClientConfig } from '@forge/notion-client';
 import { clerkClient } from '@clerk/nextjs/server';
 import { Redis } from '@upstash/redis';
 
+import { prisma } from '@/lib/db';
+import { unsealSecret } from '@/lib/secret-seal';
+
 const TOKEN_TTL_SECONDS = 300; // 5 min
 const TOKEN_KEY_PREFIX = 'forge:notion-token:';
 
@@ -39,27 +42,54 @@ export async function getNotionTokenForClerkUser(clerkUserId: string): Promise<s
   const cacheKey = `${TOKEN_KEY_PREFIX}${clerkUserId}`;
 
   if (redis) {
-    const cached = await redis.get<string>(cacheKey);
-    if (cached) return cached;
+    try {
+      const cached = await redis.get<string>(cacheKey);
+      if (cached) return cached;
+    } catch {
+      // Redis is a cache, not the source of truth. Continue to Clerk/DB.
+    }
   }
 
   // Clerk's OAuth proxy stores third-party tokens against the user. The exact
   // call shape is `users.getUserOauthAccessToken(userId, provider)` in
   // @clerk/nextjs >= 7. The provider key for Notion is `oauth_notion`.
-  const cc = await clerkClient();
-  // The Clerk SDK signature varies across major versions; cast to any here is
-  // intentional and isolated. Validate at runtime.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const list = (await (cc.users as any).getUserOauthAccessToken(clerkUserId, 'oauth_notion')) as
-    | { data: { token: string }[] }
-    | { token: string }[];
+  let token: string | null = null;
+  try {
+    const cc = await clerkClient();
+    // The Clerk SDK signature varies across major versions; cast to any here is
+    // intentional and isolated. Validate at runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list = (await (cc.users as any).getUserOauthAccessToken(clerkUserId, 'oauth_notion')) as
+      | { data: { token: string }[] }
+      | { token: string }[];
 
-  const arr = Array.isArray(list) ? list : list.data;
-  const token = arr[0]?.token;
+    const arr = Array.isArray(list) ? list : list.data;
+    token = arr[0]?.token ?? null;
+  } catch {
+    token = null;
+  }
+
+  if (!token) {
+    const row = await prisma.user.findUnique({
+      where: { clerkId: clerkUserId },
+      select: {
+        workspace: {
+          select: { notionAccessTokenCiphertext: true },
+        },
+      },
+    });
+    const sealed = row?.workspace.notionAccessTokenCiphertext;
+    token = sealed ? unsealSecret(sealed) : null;
+  }
+
   if (!token) return null;
 
   if (redis) {
-    await redis.set(cacheKey, token, { ex: TOKEN_TTL_SECONDS });
+    try {
+      await redis.set(cacheKey, token, { ex: TOKEN_TTL_SECONDS });
+    } catch {
+      // Best-effort cache write only.
+    }
   }
   return token;
 }
