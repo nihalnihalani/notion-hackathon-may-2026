@@ -11,7 +11,8 @@ def test_active_lock_conflict():
 
 def test_sync_dispatch_no_tasks(tmp_path):
     client = MagicMock()
-    client.query_database.return_value = {"results": [], "has_more": False}
-    
-    dispatched = sync_dispatch(client, "db_123", tmp_path)
+    client.query_data_source.return_value = {"results": [], "has_more": False}
+
+    dispatched = sync_dispatch(client, "ds_123", tmp_path)
     assert dispatched == 0
+    client.query_data_source.assert_called_once()

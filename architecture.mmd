@@ -1,0 +1,66 @@
+graph TD
+    subgraph Notion_Cloud ["Notion Cloud (Control Plane)"]
+        NDB[("Notion Database\n(Tasks & Commands)")]
+        NDash["Notion Page\n(Mission Control Dashboard)"]
+        API["Notion API"]
+        
+        NDB <--> API
+        NDash <--> API
+    end
+
+    subgraph Local_Environment ["Local Workspace"]
+        subgraph Bridge ["Python Bridge Daemon"]
+            direction TB
+            SD["dispatch_sync.py\n(Fetch Tasks)"]
+            SR["result_sync.py\n(Push Results)"]
+            PO["state_observer.py\n(Update Dashboard)"]
+            SS[("StateStore\n(Idempotency & Locks)")]
+        end
+
+        subgraph WarRoom ["WarRoom File System (~/WarRoom/)"]
+            HF["HANDOFFS.md"]
+            CS["CURRENT_STATE.md"]
+            BS[".bridge_state.json"]
+        end
+
+        subgraph Agents ["Local Background AI Agents"]
+            direction LR
+            H["Hermes"]
+            OC["OpenClaw"]
+        end
+
+        %% Connections Notion API <-> Bridge
+        API -- "1. Fetch Pending Tasks\n(Status=Pending)" --> SD
+        SR -- "4. Push Task Results\n(Status=Completed)" --> API
+        PO -- "6. Upsert State Blocks" --> API
+
+        %% Connections Bridge <-> WarRoom
+        SD -- "2. Append Task" --> HF
+        HF -- "3. Read Completed Task" --> SR
+        CS -- "5. Read State" --> PO
+        
+        %% State Store linkages
+        SD -. "Check/Set Hashes" .-> SS
+        SR -. "Check/Set Hashes" .-> SS
+        PO -. "Check/Set Hashes" .-> SS
+        SS <--> BS
+
+        %% Connections Agents <-> WarRoom
+        H -- "Monitor / Execute / Update" <--> HF
+        H -- "Monitor / Execute / Update" <--> CS
+        OC -- "Monitor / Execute / Update" <--> HF
+        OC -- "Monitor / Execute / Update" <--> CS
+
+    end
+    
+    %% Styling
+    classDef cloud fill:#f9f2f4,stroke:#333,stroke-width:2px,color:#000;
+    classDef local fill:#f0f8ff,stroke:#333,stroke-width:2px,color:#000;
+    classDef python fill:#e1f5fe,stroke:#0277bd,stroke-width:2px,color:#000;
+    classDef file fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000;
+    classDef agent fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000;
+
+    class NDB,NDash,API cloud;
+    class Bridge,SD,SR,PO local;
+    class HF,CS,BS file;
+    class H,OC agent;
