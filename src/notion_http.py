@@ -210,6 +210,35 @@ class NotionHTTPClient:
             json=dict(payload),
         )
 
+    def create_page(
+        self,
+        parent_page_id: str,
+        title: str,
+        children: Optional[list[dict]] = None,
+    ) -> dict[str, Any]:
+        """POST /v1/pages to create a child page under another page.
+
+        Builds the standard parent/properties envelope and forwards `children`
+        verbatim. Notion caps a single create-page call at 100 children, so
+        callers that may exceed that limit should pass a small initial set
+        and follow up with `append_block_children` in chunks.
+        """
+        if not parent_page_id:
+            raise ValueError("parent_page_id is required")
+        safe_title = title if isinstance(title, str) and title else "Untitled"
+        body: dict[str, Any] = {
+            "parent": {"page_id": parent_page_id},
+            "properties": {
+                "title": {
+                    "title": [
+                        {"type": "text", "text": {"content": safe_title}}
+                    ]
+                }
+            },
+            "children": list(children) if children else [],
+        }
+        return self._request("POST", "/pages", json=body)
+
     # ---- Internals -----------------------------------------------------------
 
     def _request(

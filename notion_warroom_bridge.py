@@ -19,8 +19,11 @@ from pathlib import Path
 from typing import Optional
 
 from src.config import build_client, load_config
-from src.mission_control_sync import sync_mission_control
 from src.dispatch_sync import sync_dispatch
+from src.log_archive import attach_file_logger
+from src.mission_control_sync import sync_mission_control
+from src.knowledge_sync import sync_knowledge_base
+from src.skill_watcher import sync_skills_to_notion
 from src.result_sync import sync_results
 from src.state_store import StateStore
 
@@ -69,6 +72,15 @@ def _one_cycle(notion, config, store: StateStore) -> None:
         notion, config.notion_dashboard_page_id, config.warroom_path, store
     )
     log.info("Mission control dashboard blocks synced")
+    
+    # Phase Two Optional Capabilities
+    kb_synced = sync_knowledge_base(notion, getattr(config, 'notion_knowledge_base_db_id', None), config.warroom_path)
+    if kb_synced:
+        log.info("synced %d new docs to KnowledgeBase", kb_synced)
+        
+    skills_synced = sync_skills_to_notion(notion, getattr(config, 'notion_runbook_db_id', None), config.warroom_path)
+    if skills_synced:
+        log.info("registered %d new skills to Notion Runbooks", skills_synced)
 
 
 def main() -> int:
@@ -99,8 +111,15 @@ def main() -> int:
     notion = build_client(config)
     store = StateStore(config.warroom_path)
 
-    log.info("starting bridge; poll_seconds=%s warroom=%s",
-             config.poll_seconds, config.warroom_path)
+    log_path = attach_file_logger(
+        config.warroom_path,
+        level=getattr(logging, args.log_level.upper(), logging.INFO),
+    )
+
+    log.info(
+        "starting bridge; poll_seconds=%s warroom=%s log=%s",
+        config.poll_seconds, config.warroom_path, log_path,
+    )
 
     try:
         while True:

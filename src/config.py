@@ -31,6 +31,8 @@ class Config:
     notion_memory_block_id: Optional[str]
     notion_protocol_block_id: Optional[str]
     notion_roles_block_id: Optional[str]
+    notion_knowledge_base_db_id: Optional[str]
+    notion_runbook_db_id: Optional[str]
     warroom_path: Path
     poll_seconds: int
 
@@ -108,6 +110,8 @@ def load_config(
         notion_memory_block_id=get("NOTION_MEMORY_BLOCK_ID"),
         notion_protocol_block_id=get("NOTION_PROTOCOL_BLOCK_ID"),
         notion_roles_block_id=get("NOTION_ROLES_BLOCK_ID"),
+        notion_knowledge_base_db_id=get("NOTION_KNOWLEDGE_BASE_DB_ID"),
+        notion_runbook_db_id=get("NOTION_RUNBOOK_DB_ID"),
         warroom_path=warroom_path,
         poll_seconds=poll_seconds,
     )
