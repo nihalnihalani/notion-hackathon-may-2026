@@ -58,8 +58,10 @@ def sanitize_inline(text: str, limit: int = MAX_FIELD_LEN) -> str:
 
 
 def sanitize_text_field(text: str, limit: int = MAX_FIELD_LEN) -> str:
-    """Strip shell metacharacters from a single-line field."""
+    """Strip shell metacharacters and fake field injections from a single-line field."""
     cleaned = sanitize_inline(text, limit)
+    # Strip keywords that could trigger parser errors or fake fields
+    cleaned = re.sub(r"(?i)\b(Status|Result|Task|Owner|Files Touched|Next Action):", "", cleaned)
     return re.sub(r"[\$`|&;<>]+", "", cleaned)
 
 
