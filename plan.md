@@ -1,6 +1,6 @@
-# Notion OS / Agentic Mission Control Implementation Plan - V5.2 Final
+# Notion OS / Agentic Mission Control Implementation Plan - V6 Final Reviewed
 
-> **For Hermes/Codex/Claude Code:** Use this document as the single source of truth. The filename may still contain `v4` for old link stability, but the content is V5.2 Final.
+> **For Hermes/OpenClaw/Codex/Claude Code:** Use this document as the single source of truth. This V6 file is the reviewed canonical plan; the old V4 path is kept only as a compatibility pointer if present.
 
 **Goal:** Build a Notion-backed Mission Control for local AI agents where Notion is the control/observability surface and `~/WarRoom/` remains the trusted execution/data plane.
 
@@ -77,13 +77,13 @@ The bridge sanitizes all Notion-derived fields before writing to War Room files:
 
 ## 3. Notion API Decision
 
-Use the current Notion API version:
+Pin the data-source-capable Notion API version for MVP stability:
 
 ```text
 Notion-Version: 2025-09-03
 ```
 
-Reason: Notion split databases into **database containers** and **data sources**. Query operations now target data sources.
+Reason: Notion split databases into **database containers** and **data sources** starting with `2025-09-03`. Current docs may list newer API versions, but this pin keeps MVP behavior stable while still using data-source endpoints. Upgrade only after a smoke test, not mid-hackathon because the API-version goblin looked shiny.
 
 ### Client choice
 
@@ -502,7 +502,7 @@ Files:
 
 Requirements:
 
-Loop every `POLL_SECONDS`:
+Loop every `POLL_SECONDS` by default:
 
 1. Resolve data source ID.
 2. Run dispatch sync.
@@ -510,6 +510,12 @@ Loop every `POLL_SECONDS`:
 4. Run dashboard sync.
 5. Log errors and continue.
 6. Do not crash the daemon for one bad task.
+
+CLI requirements:
+
+- `python3 notion_warroom_bridge.py` starts the polling daemon.
+- `python3 notion_warroom_bridge.py --once` runs one full dispatch/result/dashboard cycle and exits. Use this for tests and demos so nobody has to background a process like a raccoon with a keyboard.
+- `python3 notion_warroom_bridge.py --log-level INFO` controls logging verbosity.
 
 No subprocess. No Telegram. No direct agent invocation.
 
@@ -523,12 +529,16 @@ Files:
 Demo acceptance criteria:
 
 1. Create Notion task with `Status = Pending`.
-2. Within one poll, task appears in `HANDOFFS.md` in exact protocol format.
-3. Notion task becomes `Dispatched` and shows `War Room Key`.
-4. Manually or via agent update handoff to `Status: COMPLETED` and add `Result`.
-5. Within one poll, Notion task becomes `Completed` and `Result Summary` updates.
-6. `CURRENT_STATE.md` edit updates the same dashboard block in place.
-7. Restart bridge; no duplicate handoff or duplicate result block appears.
+2. Run `python3 notion_warroom_bridge.py --once`.
+3. Task appears in `HANDOFFS.md` in exact protocol format.
+4. Notion task becomes `Dispatched` and shows `War Room Key`.
+5. Manually or via agent update handoff to `Status: COMPLETED` and add `Result`.
+6. Run `python3 notion_warroom_bridge.py --once` again.
+7. Notion task becomes `Completed` and `Result Summary` updates.
+8. Edit `CURRENT_STATE.md`, run `--once`, and verify the same dashboard block updates in place.
+9. Run `--once` twice more; no duplicate handoff, dashboard block, or result block appears.
+
+`scripts/demo_check.py` should print each check as PASS/FAIL and exit non-zero on failure. It may ask the human to do the Notion UI-only steps, but all local assertions must be automated.
 
 ---
 
@@ -548,7 +558,7 @@ The visual message for judges: **Notion is not just a wiki. It is the control pl
 
 ## 9. Final Vetting Notes
 
-This V5.2 plan supersedes V1-V5.1. It includes the fixes from Hermes, Little Bot/OpenClaw, and Claude Code:
+This V6 reviewed plan supersedes V1-V5.2. It includes the fixes from Hermes, Little Bot/OpenClaw, and Claude Code:
 
 - Correct Notion 2025-09-03 data source model.
 - Explicit raw HTTP wrapper instead of SDK ambiguity.
@@ -563,133 +573,94 @@ This V5.2 plan supersedes V1-V5.1. It includes the fixes from Hermes, Little Bot
 
 Claude Code was invoked after authentication succeeded. Its useful additions were retained: unsafe import guard tests, stronger dashboard upsert framing, and clearer SDK/API risk notes. Its suggested legacy API pinning and reintroduced phase-two sync modules were rejected for the final plan because they conflict with the current Notion platform and MVP scope.
 
----
-
-### Task 8: Unit Tests & Safety Guardrails
-
-**Files:**
-- Create: `tests/test_dispatch_format.py`
-- Create: `tests/test_result_parser.py`
-- Create: `tests/test_no_unsafe_imports.py`
-
-**Implementation:**
-```python
-# tests/test_dispatch_format.py
-import os
-from src.dispatch_sync import append_handoff_entry, NOTION_ID_MARKER_FMT
-
-def test_handoff_has_six_fields(tmp_path):
-    warroom = str(tmp_path)
-    os.makedirs(warroom, exist_ok=True)
-    open(os.path.join(warroom, "HANDOFFS.md"), "w").close()
-    
-    append_handoff_entry(
-        task_id="abc12345-0000-0000-0000-000000000000",
-        title="Demo Task",
-        assignee="Hermes",
-        context="hello world",
-        files_touched="src/foo.py",
-        work_dir="projects/foo",
-        next_action="run tests",
-        warroom_path=warroom,
-    )
-    text = open(os.path.join(warroom, "HANDOFFS.md")).read()
-    
-    assert NOTION_ID_MARKER_FMT.format(task_id="abc12345-0000-0000-0000-000000000000") in text
-    for field in ("- Task:", "Owner:", "Files Touched:", "Status:", "Result:", "Next Action:"):
-        assert field in text
-
-def test_owner_defaults_to_hermes_on_invalid(tmp_path):
-    warroom = str(tmp_path)
-    os.makedirs(warroom, exist_ok=True)
-    open(os.path.join(warroom, "HANDOFFS.md"), "w").close()
-    
-    append_handoff_entry("id-1", "T", "Gremlin", "", "", "", "", warroom)
-    text = open(os.path.join(warroom, "HANDOFFS.md")).read()
-    assert "Owner: Hermes" in text
-```
-
-```python
-# tests/test_result_parser.py
-from src.result_sync import _parse_entries
-
-def test_parses_completed_entry():
-    text = """
-<!-- ID: 11111111-2222-3333-4444-555555555555 -->
-- Task: Do thing
-  Owner: Hermes
-  Files Touched: a.py
-  Status: COMPLETED
-  Result: All green.
-  Next Action: None.
-"""
-    entries = list(_parse_entries(text))
-    assert len(entries) == 1
-    task_id, fields = entries[0]
-    assert task_id == "11111111-2222-3333-4444-555555555555"
-    assert fields["Status"] == "COMPLETED"
-    assert fields["Result"] == "All green."
-```
-
-```python
-# tests/test_no_unsafe_imports.py
-"""Guardrail: the bridge must be a courier, not an executor or messenger."""
-import pathlib
-
-BANNED = ("subprocess", "os.system", "os.popen", "pexpect", "pty",
-          "telegram", "slack_sdk", "paramiko")
-ROOTS = ("src", "notion_warroom_bridge.py")
-
-def test_no_banned_imports():
-    root = pathlib.Path(__file__).resolve().parents[1]
-    files = []
-    for r in ROOTS:
-        p = root / r
-        if p.is_file():
-            files.append(p)
-        elif p.is_dir():
-            files.extend(p.rglob("*.py"))
-            
-    offenders = []
-    for f in files:
-        if not f.exists(): continue
-        text = f.read_text()
-        for banned in BANNED:
-            # Simple substring check (sufficient for guardrail)
-            if banned in text:
-                offenders.append((str(f), banned))
-                
-    assert not offenders, f"banned references found: {offenders}"
-```
 
 ---
 
-### Task 9: The Demo Smoke Script
+## 10. Implementation Payload Appendix
 
-**Files:**
-- Create: `scripts/demo_smoke.sh`
+Use these exact shapes so the implementer does not have to divine Notion JSON from goat entrails.
 
-**Implementation:**
+### Pending task query
+
+```json
+{
+  "filter": {
+    "property": "Status",
+    "status": {
+      "equals": "Pending"
+    }
+  },
+  "page_size": 100
+}
+```
+
+### Mark task dispatched
+
+```json
+{
+  "properties": {
+    "Status": {"status": {"name": "Dispatched"}},
+    "War Room Key": {"rich_text": [{"type": "text", "text": {"content": "wrb_abcd1234"}}]},
+    "Last Synced At": {"date": {"start": "2026-05-17T12:00:00Z"}},
+    "Last Sync Hash": {"rich_text": [{"type": "text", "text": {"content": "sha256..."}}]}
+  }
+}
+```
+
+### Mark result synced
+
+```json
+{
+  "properties": {
+    "Status": {"status": {"name": "Completed"}},
+    "Result Summary": {"rich_text": [{"type": "text", "text": {"content": "short local result"}}]},
+    "Next Action": {"rich_text": [{"type": "text", "text": {"content": "None"}}]},
+    "Last Synced At": {"date": {"start": "2026-05-17T12:00:00Z"}},
+    "Last Sync Hash": {"rich_text": [{"type": "text", "text": {"content": "sha256..."}}]}
+  }
+}
+```
+
+### Dashboard code block payload
+
+Use one code block and update it in place:
+
+```json
+{
+  "type": "code",
+  "code": {
+    "rich_text": [
+      {"type": "text", "text": {"content": "dashboard text under 2000 chars"}}
+    ],
+    "language": "plain text"
+  }
+}
+```
+
+### Exact verification commands
+
+Run from `/home/alhinai/projects/notion-warroom-bridge/`:
+
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
-echo "1) Create a Pending task in your Notion Command Center DB titled 'SMOKE'."
-read -r -p " Press Enter once created..."
-
-python3 notion_warroom_bridge.py &
-BRIDGE_PID=$!
-trap "kill $BRIDGE_PID 2>/dev/null || true" EXIT
-
-sleep 20
-echo "2) Verifying HANDOFFS.md got the six-field entry..."
-grep -q "Task: SMOKE" ~/WarRoom/HANDOFFS.md
-grep -q "Status: PENDING" ~/WarRoom/HANDOFFS.md
-grep -q "ID:" ~/WarRoom/HANDOFFS.md
-
-echo "3) Now go flip that entry's Status to COMPLETED and add a Result line."
-read -r -p " Press Enter once done..."
-
-sleep 20
-echo "4) Verifying Notion task is now Completed (manual check in the Notion UI)."
-echo "OK - Smoke Test Passed!"
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 -m pytest -q
+python3 notion_warroom_bridge.py --once
+python3 scripts/demo_check.py
 ```
+
+The final acceptance bar is not “it ran once on my machine, ship it, champ.” The bar is: `pytest` passes, `--once` is idempotent, Notion status/result sync works twice without duplicate blocks, and the bridge never invokes agent CLIs or messaging APIs.
+
+---
+
+## 11. Hermes Post-OpenClaw Review
+
+Reviewed after OpenClaw edits on 2026-05-17. Removed an obsolete appended duplicate Task 8/Task 9 addendum because it conflicted with the canonical plan:
+
+- It used `<!-- ID: ... -->` markers instead of the approved `[wrb_*]` task-key convention.
+- It defaulted invalid owners to `Hermes`; the vetted behavior is to block invalid owners in Notion with a clear reason.
+- It duplicated safety/demo tasks already covered by Tasks 9 and 11.
+- It added a bash smoke script with manual background-process handling, while the canonical deliverable is `scripts/demo_check.py` plus the bridge daemon's own controlled lifecycle.
+
+Status: ready for implementation after Notion provisioning.
