@@ -23,10 +23,14 @@ const optionalNonEmptyString = z.preprocess(
   z.string().trim().min(1).optional(),
 );
 
-// When FORGE_PRIMARY_PROVIDER=openai the Anthropic path is never reached, so
-// ANTHROPIC_API_KEY becomes optional. In every other case (default = anthropic
-// primary) we keep the strict regex so misconfig is loud.
-const PROVIDER = process.env['FORGE_PRIMARY_PROVIDER'] === 'openai' ? 'openai' : 'anthropic';
+const primaryProviderSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.enum(['openai', 'anthropic']).default('openai'),
+);
+
+// OpenAI is the default primary path. Anthropic is opt-in via
+// FORGE_PRIMARY_PROVIDER=anthropic, and only then do we require its key.
+const PROVIDER = process.env['FORGE_PRIMARY_PROVIDER'] === 'anthropic' ? 'anthropic' : 'openai';
 
 const anthropicKeySchema =
   PROVIDER === 'openai'
@@ -40,7 +44,10 @@ const envSchema = z.object({
   // App
   NEXT_PUBLIC_APP_URL: z.string().url('must be a valid URL'),
 
-  // Anthropic — required by default; optional when FORGE_PRIMARY_PROVIDER=openai.
+  // Provider routing
+  FORGE_PRIMARY_PROVIDER: primaryProviderSchema,
+
+  // Anthropic — optional by default; required when FORGE_PRIMARY_PROVIDER=anthropic.
   ANTHROPIC_API_KEY: anthropicKeySchema,
 
   // OpenAI

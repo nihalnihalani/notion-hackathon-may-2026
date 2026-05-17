@@ -27,10 +27,7 @@ export {
 
 // ─── Shipper helpers (also usable standalone) ──────────────────────────────
 export { wireCustomAgent } from './custom-agent-wiring.js';
-export type {
-  WireCustomAgentArgs,
-  WireCustomAgentResult,
-} from './custom-agent-wiring.js';
+export type { WireCustomAgentArgs, WireCustomAgentResult } from './custom-agent-wiring.js';
 export { deriveAvatarPrompt } from './avatar-prompt.js';
 export { formatReleaseNotes } from './release-notes.js';
 export type { FormatReleaseNotesArgs } from './release-notes.js';
@@ -44,18 +41,12 @@ export {
   webhookTriggerTemplate,
   type WebhookTriggerTemplateArgs,
 } from './templates/webhook-trigger.js';
-export {
-  syncSourceTemplate,
-  type SyncSourceTemplateArgs,
-} from './templates/sync-source.js';
+export { syncSourceTemplate, type SyncSourceTemplateArgs } from './templates/sync-source.js';
 export {
   externalApiCallTemplate,
   type ExternalApiCallTemplateArgs,
 } from './templates/external-api-call.js';
-export {
-  multiStepTemplate,
-  type MultiStepTemplateArgs,
-} from './templates/multi-step.js';
+export { multiStepTemplate, type MultiStepTemplateArgs } from './templates/multi-step.js';
 
 // ─── Few-shot catalog (system-prompt content + evaluation fixtures) ─────────
 export { FEW_SHOT_EXAMPLES, type FewShotExample } from './few-shot/index.js';
@@ -67,6 +58,19 @@ export {
   type ParseGeneratedTsResult,
 } from './ts-validation.js';
 export { deriveWorkerName, validateWorkerName } from './worker-name.js';
+
+// ─── Model defaults ────────────────────────────────────────────────────────
+export {
+  DEFAULT_ANTHROPIC_FALLBACK_MODEL,
+  DEFAULT_ANTHROPIC_PRIMARY_MODEL,
+  DEFAULT_OPENAI_FALLBACK_MODEL,
+  DEFAULT_OPENAI_PRIMARY_MODEL,
+  DEFAULT_PRIMARY_PROVIDER,
+  defaultFallbackModelForProvider,
+  defaultPrimaryModelForProvider,
+  resolvePrimaryProvider,
+  type PrimaryProvider,
+} from './model-defaults.js';
 
 // ─── Inspector sandbox runners ──────────────────────────────────────────────
 export { createVercelSandbox, createInProcessSandbox } from './sandbox.js';

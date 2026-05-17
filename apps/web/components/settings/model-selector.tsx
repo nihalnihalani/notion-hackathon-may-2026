@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export type DefaultModel = 'claude-opus-4-7' | 'gpt-5-thinking-mini' | 'auto';
+export type DefaultModel = 'gpt-5.5' | 'gpt-5.4-mini' | 'claude-opus-4-7' | 'auto';
 
 interface ModelSelectorProps {
   initial: DefaultModel;
@@ -25,8 +25,9 @@ interface ModelSelectorProps {
 
 const OPTIONS: readonly { value: DefaultModel; label: string }[] = [
   { value: 'auto', label: 'Auto (Forge picks)' },
+  { value: 'gpt-5.5', label: 'GPT-5.5' },
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini' },
   { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
-  { value: 'gpt-5-thinking-mini', label: 'GPT-5 thinking mini' },
 ];
 
 export function ModelSelector({ initial }: ModelSelectorProps) {

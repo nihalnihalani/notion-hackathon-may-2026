@@ -197,8 +197,9 @@ async function DefaultModelSection({ clerkUserId }: { clerkUserId: string }) {
 
 const ALLOWED_DEFAULT_MODELS: ReadonlySet<DefaultModel> = new Set([
   'auto',
+  'gpt-5.5',
+  'gpt-5.4-mini',
   'claude-opus-4-7',
-  'gpt-5-thinking-mini',
 ]);
 
 function normalizeDefaultModel(value: string | null | undefined): DefaultModel {

@@ -20,6 +20,11 @@ if printf '%s' "${base_sha}" | grep -Eq '^0+$'; then
   base_sha="$(git rev-list --max-parents=0 "${head_sha}" | tail -n 1)"
 fi
 
+if [ -n "${base_sha}" ] && ! git rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
+  echo "::warning::Base commit '${base_sha}' is not available in this checkout; falling back to '${head_sha}^'."
+  base_sha="$(git rev-parse "${head_sha}^" 2>/dev/null || true)"
+fi
+
 if [ -z "${base_sha}" ] || ! git rev-parse --verify "${base_sha}^{commit}" >/dev/null 2>&1; then
   echo "::error::Could not resolve a base commit for changed-file format check."
   echo "base='${base_sha}' head='${head_sha}'"

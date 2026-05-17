@@ -67,25 +67,25 @@ describe('PATCH /api/settings/default-model', () => {
     const res = await PATCH(
       makeRequest('http://localhost/api/settings/default-model', {
         method: 'PATCH',
-        body: { model: 'claude-opus-4-7' },
+        body: { model: 'gpt-5.5' },
       }) as never,
       makeCtx({}),
     );
     expect(res.status).toBe(200);
     const body = await readJson<{ ok: boolean; model: string }>(res);
-    expect(body).toEqual({ ok: true, model: 'claude-opus-4-7' });
+    expect(body).toEqual({ ok: true, model: 'gpt-5.5' });
 
     const db = await import('@forge/db');
     expect(db.prisma.workspace.update).toHaveBeenCalledWith({
       where: { id: 'ws_1' },
-      data: { defaultModel: 'claude-opus-4-7' },
+      data: { defaultModel: 'gpt-5.5' },
     });
     expect(db.recordAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'workspace.default_model_changed',
         metadata: expect.objectContaining({
           previousModel: 'auto',
-          newModel: 'claude-opus-4-7',
+          newModel: 'gpt-5.5',
         }),
       }),
     );
@@ -133,7 +133,7 @@ describe('PATCH /api/settings/default-model', () => {
     const res = await POST(
       makeRequest('http://localhost/api/settings/default-model', {
         method: 'POST',
-        body: { model: 'gpt-5-thinking-mini' },
+        body: { model: 'gpt-5.4-mini' },
       }) as never,
       makeCtx({}),
     );

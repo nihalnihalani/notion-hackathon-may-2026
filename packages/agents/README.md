@@ -23,11 +23,12 @@ Every sub-agent accepts a `SubAgentConfig`:
 
 ```ts
 interface SubAgentConfig {
-  anthropicApiKey: string; // required (primary provider)
+  primaryProvider?: 'openai' | 'anthropic'; // default 'openai'
+  anthropicApiKey?: string; // required only when primaryProvider='anthropic'
   aiGatewayUrl?: string; // when set, routes via Vercel AI Gateway
-  openaiApiKey?: string; // required to enable the fallback path
-  primaryModel?: string; // default 'claude-opus-4-7'
-  fallbackModel?: string; // default 'gpt-5'
+  openaiApiKey: string; // required by default and for fallback
+  primaryModel?: string; // default 'gpt-5.5'
+  fallbackModel?: string; // default 'gpt-5.4-mini'
   logger?: SubAgentLogger; // default noopLogger
   abortSignal?: AbortSignal; // propagated into every HTTP call
   anthropicClient?: AnthropicClientLike; // pre-built (testing); overrides key
@@ -37,8 +38,8 @@ interface SubAgentConfig {
 
 Defaults:
 
-- Primary model: **`claude-opus-4-7`** via Anthropic direct or Vercel AI Gateway.
-- Fallback: **`gpt-5`** via OpenAI, triggered on Anthropic 5xx / rate-limit.
+- Primary model: **`gpt-5.5`** via OpenAI direct or Vercel AI Gateway.
+- Fallback: **`gpt-5.4-mini`** via OpenAI, triggered on primary-provider 5xx / rate-limit.
 - Prompt caching: the Schema Smith system prompt is marked `cache_control: { type: 'ephemeral' }` so repeated calls within 5min hit the cache.
 
 ## Error hierarchy

@@ -9,8 +9,8 @@
  *
  * Production behavior:
  *
- *  1. Call Anthropic Messages (Opus 4.7 by default) via either the direct API
- *     or the Vercel AI Gateway (`aiGatewayUrl`).
+ *  1. Call the primary LLM provider (OpenAI GPT-5.5 by default) via either
+ *     the direct API or the Vercel AI Gateway (`aiGatewayUrl`).
  *
  *  2. The system prompt is sent as TWO blocks: the first (static) block
  *     — role, output contract, JSchemaSpec reference, pattern hints, scope
@@ -31,9 +31,8 @@
  *     appended (counts against the same retry budget).
  *
  *  5. Fallback: if the primary provider throws a `RateLimitError` or a 5xx,
- *     auto-fall-back to OpenAI (`gpt-5-thinking-mini` by default — the
- *     August-2025 reasoning mini SKU; the bare `gpt-5` id is not a real
- *     model). Same prompt, same parsing. Both providers failing →
+ *     auto-fall-back to OpenAI (`gpt-5.4-mini` by default). Same prompt,
+ *     same parsing. Both providers failing →
  *     {@link ProviderFallbackError}.
  *
  *  6. Cost + latency are emitted via `logger.info('schema-smith.complete', …)`
@@ -56,6 +55,11 @@ import { RateLimitError, ConnectorError } from '@forge/connectors';
 import { SchemaSmithError, ProviderFallbackError } from './errors.js';
 import { validateJSchema } from './schema/j-spec.js';
 import { anthropicCostUsd, openaiCostUsd } from './cost.js';
+import {
+  defaultFallbackModelForProvider,
+  defaultPrimaryModelForProvider,
+  resolvePrimaryProvider,
+} from './model-defaults.js';
 import {
   ALL_AGENT_PATTERNS,
   noopLogger,
@@ -97,11 +101,9 @@ export async function schemaSmith(input: SchemaSmithInput): Promise<SchemaSmithO
   const startedAt = Date.now();
   const logger = input.config.logger ?? noopLogger;
   const primaryProvider = resolvePrimaryProvider(input.config.primaryProvider);
-  const primaryModel =
-    input.config.primaryModel ??
-    (primaryProvider === 'openai' ? 'gpt-5-thinking-mini' : 'claude-opus-4-7');
+  const primaryModel = input.config.primaryModel ?? defaultPrimaryModelForProvider(primaryProvider);
   const fallbackModel =
-    input.config.fallbackModel ?? (primaryProvider === 'openai' ? 'gpt-4o' : 'gpt-5-thinking-mini');
+    input.config.fallbackModel ?? defaultFallbackModelForProvider(primaryProvider);
 
   const staticSystem = buildStaticSystemPrompt();
   const workspaceSystem = buildWorkspaceContextPrompt(input.workspaceContext);
@@ -162,26 +164,6 @@ export async function schemaSmith(input: SchemaSmithInput): Promise<SchemaSmithO
       detail: { primaryModel },
     });
   }
-}
-
-/**
- * Resolve which provider runs the primary attempt. Precedence:
- *   1. Explicit `config.primaryProvider` if set.
- *   2. `FORGE_PRIMARY_PROVIDER=openai` env var.
- *   3. Default: `'anthropic'` (matches PLAN.md).
- *
- * Env-read lives here rather than in a shared config builder so that
- * deployments without Anthropic credits can opt in with a single env var
- * without touching app code.
- */
-function resolvePrimaryProvider(
-  explicit: SubAgentConfig['primaryProvider'],
-): 'anthropic' | 'openai' {
-  if (explicit !== undefined) return explicit;
-  if (typeof process !== 'undefined' && process.env['FORGE_PRIMARY_PROVIDER'] === 'openai') {
-    return 'openai';
-  }
-  return 'anthropic';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -271,8 +253,8 @@ async function runWithOpenai(ctx: RunContext): Promise<SchemaSmithOutput> {
     ctx.input.config.openaiClient ?? maybeBuildOpenaiClient(ctx.input.config);
   if (!client) {
     throw new SchemaSmithError(
-      'Schema Smith fallback unavailable: no OpenAI client + no openaiApiKey',
-      { detail: { fallbackModel: ctx.model } },
+      'Schema Smith OpenAI path unavailable: no OpenAI client + no openaiApiKey',
+      { detail: { model: ctx.model } },
     );
   }
 
@@ -335,7 +317,7 @@ function buildAnthropicClient(config: SubAgentConfig): AnthropicClient {
   if (!config.anthropicApiKey) {
     throw new SchemaSmithError(
       'Schema Smith primary path requires anthropicApiKey (or pre-built anthropicClient). ' +
-        'Set primaryProvider: "openai" (or FORGE_PRIMARY_PROVIDER=openai) to skip the Anthropic path entirely.',
+        'Unset the Anthropic override or set primaryProvider: "openai" to skip the Anthropic path entirely.',
       { detail: { primaryProvider: 'anthropic' } },
     );
   }

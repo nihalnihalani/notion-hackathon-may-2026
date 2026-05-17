@@ -17,7 +17,9 @@
  */
 
 import {
+  defaultPrimaryModelForProvider,
   inspector,
+  resolvePrimaryProvider,
   schemaSmith,
   shipper,
   toolCoder,
@@ -73,7 +75,7 @@ export async function runSchemaSmith(
     generationId,
     agent: 'schema_smith',
     attempt,
-    modelUsed: config.subAgent.primaryModel ?? 'claude-opus-4-7',
+    modelUsed: resolveModelUsed(config),
     inputJson: {
       description,
       databaseCount: workspaceContext.databases.length,
@@ -172,7 +174,7 @@ export async function runToolCoder(
     generationId,
     agent: 'tool_coder',
     attempt,
-    modelUsed: config.subAgent.primaryModel ?? 'claude-opus-4-7',
+    modelUsed: resolveModelUsed(config),
     inputJson: {
       description,
       schemaPattern: schema.pattern,
@@ -541,6 +543,13 @@ export async function discoverContext(args: DiscoverContextArgs): Promise<Discov
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+function resolveModelUsed(config: WorkflowConfig): string {
+  return (
+    config.subAgent.primaryModel ??
+    defaultPrimaryModelForProvider(resolvePrimaryProvider(config.subAgent.primaryProvider))
+  );
+}
 
 /**
  * Append a Build Log entry, swallowing transport errors so a Notion outage

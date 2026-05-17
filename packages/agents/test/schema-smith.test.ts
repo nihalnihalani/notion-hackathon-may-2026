@@ -6,7 +6,7 @@
  * test pattern for sibling sub-agents.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { schemaSmith } from '../src/schema-smith.js';
 import { RateLimitError } from '@forge/connectors';
 import { SchemaSmithError, ProviderFallbackError } from '../src/errors.js';
@@ -51,6 +51,14 @@ const SAMPLE_OUTPUT: SchemaSmithOutput = {
   rationale: 'Reads the existing bug database filtered by severity.',
 };
 
+beforeEach(() => {
+  vi.stubEnv('FORGE_PRIMARY_PROVIDER', 'anthropic');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 function fakeAnthropicOk(
   body: string,
   usage = {
@@ -72,9 +80,9 @@ function fakeAnthropicOk(
 
 function fakeOpenaiOk(body: string): OpenaiClientLike {
   return {
-    complete: vi.fn(async () => ({
+    complete: vi.fn(async (params) => ({
       id: 'cmpl_1',
-      model: 'gpt-5-thinking-mini',
+      model: params.model,
       choices: [
         {
           index: 0,
@@ -88,6 +96,24 @@ function fakeOpenaiOk(body: string): OpenaiClientLike {
 }
 
 describe('schemaSmith — happy path', () => {
+  it('defaults to OpenAI GPT-5.5 without requiring an Anthropic key', async () => {
+    vi.unstubAllEnvs();
+    const openaiClient = fakeOpenaiOk(JSON.stringify(SAMPLE_OUTPUT));
+    const out = await schemaSmith({
+      description: 'List me open bugs in my Bugs DB by severity',
+      workspaceContext: EMPTY_WORKSPACE,
+      config: {
+        openaiApiKey: 'sk-test',
+        openaiClient,
+      },
+    });
+    expect(out).toEqual(SAMPLE_OUTPUT);
+    expect(openaiClient.complete).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-5.5' }),
+      undefined,
+    );
+  });
+
   it('parses a valid Anthropic response into SchemaSmithOutput', async () => {
     const anthropicClient = fakeAnthropicOk(JSON.stringify(SAMPLE_OUTPUT));
     const out = await schemaSmith({

@@ -37,7 +37,7 @@ model Workspace {
   forgeBuildLogBlockId String? // 🧱 Build Log container (toggle / synced_block)
   webhookSecret        String? // 256-bit per-workspace secret for Notion webhook HMAC verification
   stripeCustomerId     String? // Stripe customer id; null until first billing event
-  defaultModel         String?          @default("auto") // user's chosen model for Tool Coder ("auto" | "claude-opus-4-7" | "gpt-5" | ...)
+  defaultModel         String?          @default("auto") // user's chosen model for Tool Coder ("auto" | "gpt-5.5" | "gpt-5.4-mini" | "claude-opus-4-7" | ...)
   users                User[]
   generations          Generation[]
   generatedAgents      GeneratedAgent[]
@@ -101,7 +101,7 @@ model GenerationStep {
   agent            AgentName // schema_smith | tool_coder | inspector | shipper
   attempt          Int
   status           StepStatus
-  modelUsed        String? // claude-opus-4-7 | gpt-5 | n/a
+  modelUsed        String? // gpt-5.5 | gpt-5.4-mini | claude-opus-4-7 | n/a
   promptTokens     Int?
   completionTokens Int?
   cacheReadTokens  Int?

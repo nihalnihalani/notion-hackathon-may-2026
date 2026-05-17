@@ -9,8 +9,8 @@
  *
  * Production behavior:
  *
- *  1. Call Anthropic Messages (Opus 4.7 by default). The system prompt is
- *     LARGE — it carries the Worker-template reference + the j-builder
+ *  1. Call the primary LLM provider (OpenAI GPT-5.5 by default). The system
+ *     prompt is LARGE — it carries the Worker-template reference + the j-builder
  *     cheatsheet + all eight {@link FEW_SHOT_EXAMPLES} — and is sent as
  *     an explicit one-block system array with
  *     `cache_control: { type: 'ephemeral' }` on that block. Per-call
@@ -34,10 +34,9 @@
  *     (see `./ts-validation`). On parse failure retry ONCE. After 2
  *     retries throw {@link ToolCoderError}.
  *
- *  5. Fallback: on Anthropic RateLimitError or 5xx, switch to OpenAI
- *     (`config.fallbackModel ?? 'gpt-5-thinking-mini'` — the August-2025
- *     reasoning mini SKU; the bare `gpt-5` id is not a real model).
- *     Extended thinking is NOT requested on the fallback — the OpenAI
+ *  5. Fallback: on primary-provider RateLimitError or 5xx, switch to OpenAI
+ *     (`config.fallbackModel ?? 'gpt-5.4-mini'`). Extended thinking is NOT
+ *     requested on the fallback — the OpenAI
  *     reasoning surface differs. Both providers failing →
  *     {@link ProviderFallbackError}.
  *
@@ -66,6 +65,11 @@ import { createOpenaiClient, type OpenaiClient } from '@forge/connectors/openai'
 import { RateLimitError, ConnectorError } from '@forge/connectors';
 import { ToolCoderError, ProviderFallbackError } from './errors.js';
 import { anthropicCostUsd, openaiCostUsd } from './cost.js';
+import {
+  defaultFallbackModelForProvider,
+  defaultPrimaryModelForProvider,
+  resolvePrimaryProvider,
+} from './model-defaults.js';
 import { extractTsCodeFromResponse, parseGeneratedTs } from './ts-validation.js';
 import { deriveWorkerName } from './worker-name.js';
 import { FEW_SHOT_EXAMPLES, type FewShotExample } from './few-shot/index.js';
@@ -114,11 +118,9 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
   const startedAt = Date.now();
   const logger = input.config.logger ?? noopLogger;
   const primaryProvider = resolvePrimaryProvider(input.config.primaryProvider);
-  const primaryModel =
-    input.config.primaryModel ??
-    (primaryProvider === 'openai' ? 'gpt-5-thinking-mini' : 'claude-opus-4-7');
+  const primaryModel = input.config.primaryModel ?? defaultPrimaryModelForProvider(primaryProvider);
   const fallbackModel =
-    input.config.fallbackModel ?? (primaryProvider === 'openai' ? 'gpt-4o' : 'gpt-5-thinking-mini');
+    input.config.fallbackModel ?? defaultFallbackModelForProvider(primaryProvider);
 
   const workerName = deriveWorkerName(input.description);
 
@@ -182,22 +184,6 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
       detail: { primaryModel },
     });
   }
-}
-
-/**
- * Resolve which provider runs the primary attempt. Precedence:
- *   1. Explicit `config.primaryProvider` if set.
- *   2. `FORGE_PRIMARY_PROVIDER=openai` env var.
- *   3. Default: `'anthropic'` (matches PLAN.md).
- */
-function resolvePrimaryProvider(
-  explicit: SubAgentConfig['primaryProvider'],
-): 'anthropic' | 'openai' {
-  if (explicit !== undefined) return explicit;
-  if (typeof process !== 'undefined' && process.env['FORGE_PRIMARY_PROVIDER'] === 'openai') {
-    return 'openai';
-  }
-  return 'anthropic';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,8 +271,8 @@ async function runWithOpenai(ctx: RunContext): Promise<ToolCoderOutput> {
     ctx.input.config.openaiClient ?? maybeBuildOpenaiClient(ctx.input.config);
   if (!client) {
     throw new ToolCoderError(
-      'Tool Coder fallback unavailable: no OpenAI client + no openaiApiKey',
-      { detail: { fallbackModel: ctx.model } },
+      'Tool Coder OpenAI path unavailable: no OpenAI client + no openaiApiKey',
+      { detail: { model: ctx.model } },
     );
   }
 
@@ -448,7 +434,7 @@ function buildAnthropicClient(config: SubAgentConfig): AnthropicClient {
   if (!config.anthropicApiKey) {
     throw new ToolCoderError(
       'Tool Coder primary path requires anthropicApiKey (or pre-built anthropicClient). ' +
-        'Set primaryProvider: "openai" (or FORGE_PRIMARY_PROVIDER=openai) to skip the Anthropic path entirely.',
+        'Unset the Anthropic override or set primaryProvider: "openai" to skip the Anthropic path entirely.',
       { detail: { primaryProvider: 'anthropic' } },
     );
   }

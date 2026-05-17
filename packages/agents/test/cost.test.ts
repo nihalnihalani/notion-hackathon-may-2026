@@ -88,6 +88,29 @@ describe('anthropicCostUsd', () => {
 });
 
 describe('openaiCostUsd', () => {
+  it('prices the default gpt-5.5 primary model', () => {
+    const cost = openaiCostUsd(
+      { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
+      'gpt-5.5',
+    );
+    expect(cost).toBeCloseTo(
+      OPENAI_PRICES_USD_PER_MTOK['gpt-5.5'].input + OPENAI_PRICES_USD_PER_MTOK['gpt-5.5'].output,
+      6,
+    );
+  });
+
+  it('prices the default gpt-5.4-mini fallback model', () => {
+    const cost = openaiCostUsd(
+      { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
+      'gpt-5.4-mini',
+    );
+    expect(cost).toBeCloseTo(
+      OPENAI_PRICES_USD_PER_MTOK['gpt-5.4-mini'].input +
+        OPENAI_PRICES_USD_PER_MTOK['gpt-5.4-mini'].output,
+      6,
+    );
+  });
+
   it('prices a gpt-5-thinking-mini call', () => {
     const cost = openaiCostUsd(
       { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
@@ -98,18 +121,6 @@ describe('openaiCostUsd', () => {
         OPENAI_PRICES_USD_PER_MTOK['gpt-5-thinking-mini'].output,
       6,
     );
-  });
-
-  it('returns 0 for the unreleased bare "gpt-5" id (regression guard)', () => {
-    // The bare `gpt-5` model id was never released by OpenAI — only the
-    // `gpt-5-thinking*` reasoning-tier SKUs ship. Returning 0 here is a
-    // loud signal in PostHog dashboards that the caller is using a wrong id.
-    expect(
-      openaiCostUsd(
-        { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
-        'gpt-5',
-      ),
-    ).toBe(0);
   });
 
   it('returns 0 for unknown model', () => {

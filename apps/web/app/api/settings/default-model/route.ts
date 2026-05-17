@@ -3,11 +3,11 @@
  *
  * The dashboard `/settings` page lets the user pick which model Tool Coder
  * should default to. Value is stored on `Workspace.defaultModel` (TEXT,
- * default "auto"). Accepted values today are `auto`, `claude-opus-4-7`,
- * and `gpt-5-thinking-mini`; new entries can land by extending the union
+ * default "auto"). Accepted values today are `auto`, `gpt-5.5`,
+ * `gpt-5.4-mini`, and `claude-opus-4-7`; new entries can land by extending the union
  * below without a migration.
  *
- * Body: `{ model: 'claude-opus-4-7' | 'gpt-5-thinking-mini' | 'auto' }`
+ * Body: `{ model: 'gpt-5.5' | 'gpt-5.4-mini' | 'claude-opus-4-7' | 'auto' }`
  * Response: `{ ok: true, model: string }`
  *
  * We also export `POST` as an alias because the original `<ModelSelector />`
@@ -30,7 +30,7 @@ import { withSentry } from '@/lib/sentry';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ALLOWED_MODELS = ['claude-opus-4-7', 'gpt-5-thinking-mini', 'auto'] as const;
+const ALLOWED_MODELS = ['gpt-5.5', 'gpt-5.4-mini', 'claude-opus-4-7', 'auto'] as const;
 
 const bodySchema = z.object({
   model: z.enum(ALLOWED_MODELS),

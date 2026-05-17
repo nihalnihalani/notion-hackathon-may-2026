@@ -39,7 +39,7 @@
 │         │                └────────────────┘                        │                      │
 │         │                                                          │                      │
 │         │ models via Vercel AI Gateway                             │                      │
-│         │   primary: claude-opus-4-7   fallback: gpt-5             │                      │
+│         │   primary: gpt-5.5           fallback: gpt-5.4-mini      │                      │
 │         │                                                          │                      │
 │         │      Vercel Sandbox (per-generation Firecracker VM)      │                      │
 │         │      runs: AST safety · tsc --noEmit · ntn workers exec  │                      │
@@ -97,13 +97,13 @@ The headline path: **button click → workflow → deploy**, end-to-end.
 
 > See [`PLAN.md` Part IV](../PLAN.md#part-iv--sub-agent-specifications) for the canonical spec.
 
-| Sub-agent | Job | Model | Key invariant |
-|---|---|---|---|
-| **Schema Smith** | English + workspace context → `{pattern, inputSchema, outputSchema, requiredScopes, requiredOAuth}` | Claude Opus 4.7 (extended thinking off) | Output must round-trip through the `j` builder; ambiguity returns `pattern: null` + clarification |
-| **Tool Coder** | Schema Smith output + description → `src/index.ts` | Claude Opus 4.7 (extended thinking on, 4K budget) | AST-parses cleanly; `package.json` deps are on the allowlist |
-| **Inspector** | Prove the generated code compiles and runs | No model — sandboxed orchestration | AST safety → `tsc` → `ntn workers deploy --dry-run` → `ntn workers exec` against synthetic input |
-| **Shipper** | Promote staging deploy + wire Custom Agent + archive + notify | No model — pure orchestration | Idempotent on retries; failures surface in the Build Log, never crash the workflow |
-| **Orchestrator (Manager)** | Sequence the above with durable retries + cancellation + idempotency | n/a | One in-flight generation per `descriptionHash` per workspace; concurrency limit 3 per workspace |
+| Sub-agent                  | Job                                                                                                 | Model                                   | Key invariant                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Schema Smith**           | English + workspace context → `{pattern, inputSchema, outputSchema, requiredScopes, requiredOAuth}` | GPT-5.5 default; Claude Opus 4.7 opt-in | Output must round-trip through the `j` builder; ambiguity returns `pattern: null` + clarification |
+| **Tool Coder**             | Schema Smith output + description → `src/index.ts`                                                  | GPT-5.5 default; Claude Opus 4.7 opt-in | AST-parses cleanly; `package.json` deps are on the allowlist                                      |
+| **Inspector**              | Prove the generated code compiles and runs                                                          | No model — sandboxed orchestration      | AST safety → `tsc` → `ntn workers deploy --dry-run` → `ntn workers exec` against synthetic input  |
+| **Shipper**                | Promote staging deploy + wire Custom Agent + archive + notify                                       | No model — pure orchestration           | Idempotent on retries; failures surface in the Build Log, never crash the workflow                |
+| **Orchestrator (Manager)** | Sequence the above with durable retries + cancellation + idempotency                                | n/a                                     | One in-flight generation per `descriptionHash` per workspace; concurrency limit 3 per workspace   |
 
 Every step writes a `GenerationStep` row with `attempt`, `status`, `modelUsed`, `promptTokens`, `cacheReadTokens`, `costUsd`, `inputJson`, `outputJson`, `errorJson`, `latencyMs`.
 
@@ -126,14 +126,14 @@ Evaluation   (per-agent Promptfoo run results)
 
 Lifecycle of one generation in the DB:
 
-| Step | Table writes |
-|---|---|
-| Trigger received | `Generation` (`status: queued`), `AuditLog` (`forge.trigger`) |
-| Workflow starts | `Generation.status: running` |
-| Each sub-agent runs | `GenerationStep` (insert with `status: running`, then update with `succeeded` / `failed` / `retrying`) |
-| Tool Coder retry | New `GenerationStep` row with `attempt: 2` |
-| Shipper deploys | `GeneratedAgent` insert, `Generation.agentId` set, `AuditLog` (`agent.deployed`) |
-| Finalize | `Generation.status: succeeded`, `Generation.completedAt`, `UsageMeter` upsert for today |
+| Step                        | Table writes                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Trigger received            | `Generation` (`status: queued`), `AuditLog` (`forge.trigger`)                                           |
+| Workflow starts             | `Generation.status: running`                                                                            |
+| Each sub-agent runs         | `GenerationStep` (insert with `status: running`, then update with `succeeded` / `failed` / `retrying`)  |
+| Tool Coder retry            | New `GenerationStep` row with `attempt: 2`                                                              |
+| Shipper deploys             | `GeneratedAgent` insert, `Generation.agentId` set, `AuditLog` (`agent.deployed`)                        |
+| Finalize                    | `Generation.status: succeeded`, `Generation.completedAt`, `UsageMeter` upsert for today                 |
 | Idempotent re-run within 1h | Lookup hit on `(workspaceId, descriptionHash)` → returns existing `GeneratedAgent` without any new rows |
 
 **Audit log is append-only by policy.** No `UPDATE` or `DELETE` is permitted at the application level; the table has a DB-level constraint enforcing this post-hackathon.

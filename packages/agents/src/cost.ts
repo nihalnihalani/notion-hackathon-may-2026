@@ -6,7 +6,7 @@
  * `logger.info('<agent>.complete', { costUsd, … })` trace event.
  *
  * VERIFY: prices below are sourced from Anthropic + OpenAI public docs as of
- * 2026-01-15. Rate-check on first invocation in production — pricing changes
+ * 2026-05-17. Rate-check on first invocation in production — pricing changes
  * are silent. A drift here under-bills the user (acceptable) or over-warns
  * (cosmetic), but never affects correctness.
  */
@@ -23,15 +23,16 @@
  * "cacheRead" = tokens served from the cache this request
  * "output" = completion tokens
  *
- * Opus 4.7 is the Forge primary model; the Sonnet/Haiku entries exist so the
- * gateway can route to a cheaper SKU without our cost helper returning 0.
+ * Opus 4.7 is the supported Anthropic primary override; the Sonnet/Haiku
+ * entries exist so the gateway can route to a cheaper SKU without our cost
+ * helper returning 0.
  *
  * Pricing sourced from https://www.anthropic.com/pricing#anthropic-api as of
  * 2026-05. Opus 4.x family is $5/$25 with 5-minute ephemeral cache at $6.25
  * write / $0.50 read; Sonnet 4.x family is $3/$15 with $3.75 / $0.30.
  */
 export const ANTHROPIC_PRICES_USD_PER_MTOK = {
-  // Opus 4.7 — primary generation model. Do NOT collapse these into Sonnet's
+  // Opus 4.7 — Anthropic primary override. Do NOT collapse these into Sonnet's
   // prices; the previous commit had this row at Sonnet values, which silently
   // under-charged by ~40% on every Tool Coder call.
   'claude-opus-4-7': {
@@ -128,18 +129,23 @@ export function anthropicCostUsd(usage: AnthropicUsage, model: string): number {
  * Per-MTok prices for OpenAI models, in USD.
  *
  * Verified against https://developers.openai.com/api/docs/pricing on
- * 2026-05-17. The `gpt-5-thinking*` ids are the Forge-chosen routing keys for
- * Vercel AI Gateway → OpenAI reasoning SKUs. Prices below match the closest
- * standard OpenAI SKUs as of that date:
- *
- *   - `gpt-5-thinking-mini` ≈ gpt-5.4-mini ($0.75 / $4.50)
- *   - `gpt-5-thinking`      ≈ gpt-5.5      ($5 / $30)
- *
- * `gpt-5` is intentionally NOT a key here: that bare id was never released
- * by OpenAI. Callers that hand it in will get `0` from {@link openaiCostUsd}
- * — a loud signal that the model id is wrong.
+ * 2026-05-17. Prices below match standard OpenAI model ids as of that date.
+ * The legacy `gpt-5-thinking*` ids remain priced for backwards-compatible
+ * Vercel AI Gateway routing keys.
  */
 export const OPENAI_PRICES_USD_PER_MTOK = {
+  // Current OpenAI primary default. $5 in / $30 out per
+  // developers.openai.com/api/docs/models/gpt-5.5 (verified 2026-05-17).
+  'gpt-5.5': {
+    input: 5,
+    output: 30,
+  },
+  // Current OpenAI fallback default. $0.75 in / $4.50 out per
+  // developers.openai.com/api/docs/models/gpt-5.4-mini (verified 2026-05-17).
+  'gpt-5.4-mini': {
+    input: 0.75,
+    output: 4.5,
+  },
   // Routes to gpt-5.4-mini via Vercel AI Gateway. $0.75 in / $4.50 out per
   // developers.openai.com/api/docs/pricing (verified 2026-05-17).
   'gpt-5-thinking-mini': {
@@ -151,6 +157,11 @@ export const OPENAI_PRICES_USD_PER_MTOK = {
   'gpt-5-thinking': {
     input: 5,
     output: 30,
+  },
+  // Previous GPT-5 model retained for explicit overrides.
+  'gpt-5': {
+    input: 1.25,
+    output: 10,
   },
   'gpt-4o': {
     input: 2.5,

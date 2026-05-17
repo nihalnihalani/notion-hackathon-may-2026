@@ -5,15 +5,11 @@
  * interception. Mirrors the Schema Smith test style.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RateLimitError } from '@forge/connectors';
 import { toolCoder } from '../src/tool-coder.js';
 import { ToolCoderError, ProviderFallbackError } from '../src/errors.js';
-import type {
-  AnthropicClientLike,
-  OpenaiClientLike,
-  SchemaSmithOutput,
-} from '../src/types.js';
+import type { AnthropicClientLike, OpenaiClientLike, SchemaSmithOutput } from '../src/types.js';
 
 const SAMPLE_SCHEMA: SchemaSmithOutput = {
   pattern: 'database-query',
@@ -59,6 +55,14 @@ worker.tool({
 
 const VALID_BODY = '```typescript\n' + VALID_TS + '\n```';
 
+beforeEach(() => {
+  vi.stubEnv('FORGE_PRIMARY_PROVIDER', 'anthropic');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 function fakeAnthropic(
   responses: string[],
   usage = {
@@ -67,7 +71,9 @@ function fakeAnthropic(
     cache_read_input_tokens: 12000,
     cache_creation_input_tokens: 0,
   },
-): AnthropicClientLike & { calls: Array<{ system: unknown; messages: Array<{ content: string }> }> } {
+): AnthropicClientLike & {
+  calls: Array<{ system: unknown; messages: Array<{ content: string }> }>;
+} {
   const calls: Array<{ system: unknown; messages: Array<{ content: string }> }> = [];
   let idx = 0;
   const client: AnthropicClientLike = {
@@ -86,7 +92,9 @@ function fakeAnthropic(
   return Object.assign(client, { calls });
 }
 
-function fakeOpenai(responses: string[]): OpenaiClientLike & { calls: Array<{ messages: Array<{ content: string | null }> }> } {
+function fakeOpenai(
+  responses: string[],
+): OpenaiClientLike & { calls: Array<{ messages: Array<{ content: string | null }> }> } {
   const calls: Array<{ messages: Array<{ content: string | null }> }> = [];
   let idx = 0;
   const client: OpenaiClientLike = {
@@ -112,6 +120,21 @@ function fakeOpenai(responses: string[]): OpenaiClientLike & { calls: Array<{ me
 }
 
 describe('toolCoder — happy path', () => {
+  it('defaults to OpenAI GPT-5.5 without requiring an Anthropic key', async () => {
+    vi.unstubAllEnvs();
+    const openaiClient = fakeOpenai([VALID_BODY]);
+    const out = await toolCoder({
+      description: 'List pages from a Notion database',
+      schema: SAMPLE_SCHEMA,
+      config: { openaiApiKey: 'sk-test', openaiClient },
+    });
+    expect(out.source).toContain('worker.tool({');
+    expect(openaiClient.complete).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-5.5' }),
+      undefined,
+    );
+  });
+
   it('returns ToolCoderOutput with parseable source', async () => {
     const anthropicClient = fakeAnthropic([VALID_BODY]);
     const out = await toolCoder({
@@ -179,10 +202,7 @@ describe('toolCoder — happy path', () => {
 
 describe('toolCoder — parse retry path', () => {
   it('retries once on malformed TS, succeeds on attempt 2', async () => {
-    const anthropicClient = fakeAnthropic([
-      '```typescript\nthis is { not valid\n```',
-      VALID_BODY,
-    ]);
+    const anthropicClient = fakeAnthropic(['```typescript\nthis is { not valid\n```', VALID_BODY]);
     const out = await toolCoder({
       description: 'desc',
       schema: SAMPLE_SCHEMA,
