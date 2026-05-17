@@ -4,3 +4,7 @@
 .state_hash
 __pycache__/
 *.lock
+.pytest_cache/
+*.py[cod]
+venv/
+*.log

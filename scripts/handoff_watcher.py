@@ -30,19 +30,19 @@ test fails — that is intentional.
 - stdout+stderr stream to a per-handoff log under
   ~/WarRoom/.handoff_watcher_logs/<key>.log so you can audit.
 - A sidecar state file ~/WarRoom/.handoff_watcher_state.json tracks
-  which handoff keys we've already dispatched so re-runs are idempotent.
+  which handoff keys we've already executed so re-runs are idempotent.
 
 ## Flow
 
     1. Acquire the shared bridge lock (~/WarRoom/.notion_bridge.lock).
     2. Parse HANDOFFS.md via `src.warroom_format.parse_handoffs`.
-    3. For each PENDING entry whose key we haven't dispatched yet:
+    3. For each PENDING entry whose key we haven't executed yet:
        a. Pick the CLI handler for the Owner.
        b. Update HANDOFFS.md → Status: IN PROGRESS (atomic).
        c. Release lock.
        d. subprocess.run(cmd, timeout=...).
        e. Re-acquire lock; update Status: COMPLETED (rc=0) or FAILED.
-       f. Persist state.
+       f. Persist state. Dry-run mode never writes dispatch state.
     4. The bridge daemon's next tick picks up the new status and
        syncs it back to the Notion card.
 
@@ -80,6 +80,7 @@ from src.warroom_format import parse_handoffs  # noqa: E402
 
 
 WARROOM_PATH = Path(os.environ.get("WARROOM_PATH", "~/WarRoom")).expanduser().resolve()
+OPENCLAW_AGENT_ID = os.environ.get("OPENCLAW_AGENT_ID", "main")
 HANDOFFS_FILE = WARROOM_PATH / "HANDOFFS.md"
 LOCK_FILE = WARROOM_PATH / ".notion_bridge.lock"
 STATE_FILE = WARROOM_PATH / ".handoff_watcher_state.json"
@@ -105,23 +106,39 @@ CliHandler = Callable[[str, Path, dict], list[str]]
 
 
 def _hermes_handler(title: str, context_path: Path, fields: dict) -> list[str]:
-    return ["hermes", "run", "--task", title, "--context-file", str(context_path)]
+    prompt = _agent_prompt(title, context_path, fields)
+    return ["hermes", "chat", "-Q", "-q", prompt, "--max-turns", "100", "--yolo"]
 
 
 def _openclaw_handler(title: str, context_path: Path, fields: dict) -> list[str]:
-    return ["openclaw", "run", title, "--context", str(context_path)]
+    prompt = _agent_prompt(title, context_path, fields)
+    return [
+        "openclaw",
+        "agent",
+        "--agent",
+        OPENCLAW_AGENT_ID,
+        "--message",
+        prompt,
+        "--thinking",
+        "high",
+        "--timeout",
+        str(DEFAULT_TIMEOUT),
+        "--json",
+    ]
 
 
 def _codex_handler(title: str, context_path: Path, fields: dict) -> list[str]:
-    return ["codex", "--quiet", title]
+    prompt = _agent_prompt(title, context_path, fields)
+    return [
+        "codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        prompt,
+    ]
 
 
 def _claude_handler(title: str, context_path: Path, fields: dict) -> list[str]:
-    prompt = (
-        f"Read the handoff context at {context_path} and act on the task. "
-        f"Task title: {title}. Files Touched: {fields.get('Files Touched', '')}. "
-        "Update HANDOFFS.md with Status COMPLETED or FAILED when done."
-    )
+    prompt = _agent_prompt(title, context_path, fields)
     return [
         "claude",
         "--dangerously-skip-permissions",
@@ -129,9 +146,15 @@ def _claude_handler(title: str, context_path: Path, fields: dict) -> list[str]:
         "bypassPermissions",
         "-p",
         prompt,
-        "--max-turns",
-        "100",
     ]
+
+
+def _agent_prompt(title: str, context_path: Path, fields: dict) -> str:
+    return (
+        f"Read the handoff context at {context_path} and act on the task. "
+        f"Task title: {title}. Files Touched: {fields.get('Files Touched', '')}. "
+        "Update HANDOFFS.md with Status COMPLETED or FAILED when done."
+    )
 
 
 AGENT_CLIS: dict[str, CliHandler] = {
@@ -190,12 +213,20 @@ def _update_handoff_status(
 
     # Optionally append the result suffix to the Result line.
     if result_suffix:
+        def append_result_suffix(match: re.Match) -> str:
+            existing = match.group(1).rstrip()
+            if result_suffix in existing:
+                return "  Result:" + existing
+            return (
+                "  Result:"
+                + (existing if existing.strip() else "")
+                + (" " if existing.strip() else " ")
+                + result_suffix
+            )
+
         new_body = re.sub(
             r"^  Result:(.*)$",
-            lambda m: "  Result:"
-            + (m.group(1).rstrip() if m.group(1).strip() else "")
-            + (" " if m.group(1).strip() else " ")
-            + result_suffix,
+            append_result_suffix,
             new_body,
             count=1,
             flags=re.MULTILINE,
@@ -365,7 +396,8 @@ def _cycle(
         status = (fields.get("Status") or "").strip().upper()
         if status != "PENDING":
             continue
-        if key in seen:
+        previous = seen.get(key)
+        if previous and (not execute or previous.get("outcome") != "dry_run"):
             continue
         owner = (fields.get("Owner") or "").strip()
         if owners is not None and owner not in owners:
@@ -373,13 +405,14 @@ def _cycle(
 
         outcome = _dispatch_one(key, fields, lock, execute=execute, timeout=timeout)
 
-        entry = {
-            "outcome": outcome,
-            "owner": owner,
-            "started_at": _now_iso(),
-        }
-        state.setdefault("handoffs", {})[key] = entry
-        _save_state(state)
+        if execute:
+            entry = {
+                "outcome": outcome,
+                "owner": owner,
+                "started_at": _now_iso(),
+            }
+            state.setdefault("handoffs", {})[key] = entry
+            _save_state(state)
         actions += 1
 
     return actions

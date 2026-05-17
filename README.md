@@ -49,6 +49,23 @@ Run a single pass for testing or cron-jobs (exits immediately after one sync cyc
 python3 notion_warroom_bridge.py --once
 ```
 
+### Testing
+
+The default pytest configuration is scoped to the production bridge suite under
+`tests/`; tracked `arena/` experiments are intentionally excluded from normal
+collection.
+
+```bash
+pytest
+# or
+make test
+```
+
+The current suite covers config loading, Notion HTTP behavior, War Room parsing,
+dispatch sync, result sync, Mission Control/dashboard sync, OpenClaw screen sync,
+KnowledgeBase and Skill Inbox optional syncs, state locking, markdown conversion,
+activity rendering, log archive helpers, and the no-execution safety guardrails.
+
 ## Demo Script
 
 To verify that the system works perfectly and meets all hackathon acceptance criteria, you can run the interactive demo script:
@@ -72,7 +89,11 @@ This script guides you through the full lifecycle:
 - `src/state_store.py`: Atomic JSON sidecar state for idempotency and file locks.
 - `src/dispatch_sync.py`: Syncs Notion tasks -> War Room `HANDOFFS.md`.
 - `src/result_sync.py`: Syncs War Room `HANDOFFS.md` -> Notion task completion.
-- `src/state_observer.py`: Syncs War Room `CURRENT_STATE.md` -> Notion dashboard block.
+- `src/mission_control_sync.py`: Syncs Mission Control sections to stable Notion child pages or legacy dashboard blocks.
+- `src/openclaw_screens_sync.py`: Syncs OpenClaw screen definitions and backlog views.
+- `src/knowledge_base_sync.py`: Optional sync for `KnowledgeBase` markdown docs when `NOTION_KNOWLEDGE_BASE_DB_ID` is configured.
+- `src/skill_inbox_sync.py`: Optional sync for `Skill_Inbox` runbooks when `NOTION_RUNBOOK_DB_ID` is configured.
+- `src/state_observer.py`: Legacy helper for syncing War Room `CURRENT_STATE.md` to a Notion dashboard block.
 
 ## License
 

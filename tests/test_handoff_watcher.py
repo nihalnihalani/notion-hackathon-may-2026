@@ -47,21 +47,36 @@ def test_hermes_handler_emits_argv_list(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
     cmd = mod._hermes_handler("inspect health", tmp_path / "ctx.md", {})
     assert cmd[0] == "hermes"
-    assert "inspect health" in cmd
-    assert str(tmp_path / "ctx.md") in cmd
+    assert cmd[1] == "chat"
+    assert "-Q" in cmd
+    assert "-q" in cmd
+    prompt = cmd[cmd.index("-q") + 1]
+    assert "inspect health" in prompt
+    assert str(tmp_path / "ctx.md") in prompt
 
 
 def test_openclaw_handler_emits_argv_list(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
     cmd = mod._openclaw_handler("plan demo", tmp_path / "ctx.md", {})
     assert cmd[0] == "openclaw"
-    assert "plan demo" in cmd
+    assert cmd[1] == "agent"
+    assert "--agent" in cmd
+    assert cmd[cmd.index("--agent") + 1] == "main"
+    assert "--message" in cmd
+    prompt = cmd[cmd.index("--message") + 1]
+    assert "plan demo" in prompt
+    assert str(tmp_path / "ctx.md") in prompt
 
 
 def test_codex_handler_emits_argv_list(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
     cmd = mod._codex_handler("write fn", tmp_path / "ctx.md", {})
     assert cmd[0] == "codex"
+    assert cmd[1] == "exec"
+    assert "--dangerously-bypass-approvals-and-sandbox" in cmd
+    prompt_idx = cmd.index("--dangerously-bypass-approvals-and-sandbox") + 1
+    assert "write fn" in cmd[prompt_idx]
+    assert str(tmp_path / "ctx.md") in cmd[prompt_idx]
 
 
 def test_claude_handler_uses_alhinai_posture(monkeypatch, tmp_path):
@@ -77,6 +92,7 @@ def test_claude_handler_uses_alhinai_posture(monkeypatch, tmp_path):
     prompt_idx = cmd.index("-p") + 1
     assert "audit security" in cmd[prompt_idx]
     assert str(tmp_path / "ctx.md") in cmd[prompt_idx]
+    assert "--max-turns" not in cmd
 
 
 def test_unknown_owner_has_no_handler(monkeypatch, tmp_path):
@@ -162,6 +178,26 @@ def test_update_handoff_status_appends_result_suffix(monkeypatch, tmp_path):
     assert "Result: exit=0 (see wrb_aaaaaaaaaaaa.log)" in text
 
 
+def test_update_handoff_status_does_not_duplicate_result_suffix(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(
+        HANDOFF_TEXT.replace(
+            "  Result:",
+            "  Result: agent already wrote exit=0 (see wrb_aaaaaaaaaaaa.log)",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    mod._update_handoff_status(
+        "wrb_aaaaaaaaaaaa", "COMPLETED", "exit=0 (see wrb_aaaaaaaaaaaa.log)"
+    )
+
+    text = mod.HANDOFFS_FILE.read_text(encoding="utf-8")
+    assert text.count("exit=0 (see wrb_aaaaaaaaaaaa.log)") == 1
+
+
 def test_update_handoff_status_returns_false_for_missing_key(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
     mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -205,11 +241,7 @@ def test_cycle_dry_run_does_not_invoke_subprocess(monkeypatch, tmp_path):
     )
 
     assert actions == 2  # both PENDING handoffs counted
-    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
-    assert "wrb_aaaaaaaaaaaa" in state["handoffs"]
-    assert "wrb_bbbbbbbbbbbb" in state["handoffs"]
-    for entry in state["handoffs"].values():
-        assert entry["outcome"] == "dry_run"
+    assert not mod.STATE_FILE.exists()
 
 
 def test_cycle_skips_keys_already_in_state(monkeypatch, tmp_path):
@@ -231,6 +263,29 @@ def test_cycle_skips_keys_already_in_state(monkeypatch, tmp_path):
     assert actions == 0
 
 
+def test_cycle_does_not_let_old_dry_run_state_block_execute(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+    mod._save_state(
+        {
+            "handoffs": {
+                "wrb_aaaaaaaaaaaa": {"outcome": "dry_run", "owner": "Hermes"},
+                "wrb_bbbbbbbbbbbb": {"outcome": "completed", "owner": "OpenClaw"},
+            }
+        }
+    )
+    monkeypatch.setattr(mod, "_binary_exists", lambda name: False)
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=True, owners=None, timeout=10)
+
+    assert actions == 1
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert state["handoffs"]["wrb_aaaaaaaaaaaa"]["outcome"] == "missing_binary"
+    assert state["handoffs"]["wrb_bbbbbbbbbbbb"]["outcome"] == "completed"
+
+
 def test_cycle_respects_owners_whitelist(monkeypatch, tmp_path):
     mod = _load_watcher(monkeypatch, tmp_path)
     mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -241,9 +296,7 @@ def test_cycle_respects_owners_whitelist(monkeypatch, tmp_path):
         lock, execute=False, owners={"Hermes"}, timeout=10
     )
     assert actions == 1
-    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
-    assert "wrb_aaaaaaaaaaaa" in state["handoffs"]
-    assert "wrb_bbbbbbbbbbbb" not in state["handoffs"]
+    assert not mod.STATE_FILE.exists()
 
 
 def test_cycle_ignores_non_pending_handoffs(monkeypatch, tmp_path):
@@ -279,8 +332,5 @@ def test_cycle_skips_owners_without_handler(monkeypatch, tmp_path):
 
     lock = mod.FileLock(str(mod.LOCK_FILE))
     actions = mod._cycle(lock, execute=False, owners=None, timeout=10)
-    # The cycle records it (so it's not retried forever), but the outcome
-    # is no_handler — no shell invocation occurred.
     assert actions == 1
-    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
-    assert state["handoffs"]["wrb_eeeeeeeeeeee"]["outcome"] == "no_handler"
+    assert not mod.STATE_FILE.exists()
