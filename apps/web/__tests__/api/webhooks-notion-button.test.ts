@@ -4,6 +4,10 @@
  *   200 + ignored on unknown workspace
  *   200 + cached when an existing successful generation matches
  *   200 + queued on the happy path
+ *   400 on stale envelope timestamp (>5min old)
+ *   400 on future envelope timestamp (>1min in the future)
+ *   400 on missing envelope id/timestamp
+ *   200 + duplicate on Redis dedupe hit (handler NOT invoked)
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +15,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCtx, makeRequest, readJson, stubSentryWrapper } from './_helpers';
 
 stubSentryWrapper();
+
+vi.mock('@/lib/webhook-dedup', () => ({
+  checkWebhookReplay: vi.fn(),
+}));
 
 vi.mock('@forge/db', () => ({
   prisma: {
@@ -83,10 +91,18 @@ beforeEach(async () => {
     webhookSecret: 's3cr3t',
   } as never);
   vi.mocked(db.findRecentByHash).mockResolvedValue(null);
+
+  const dedup = await import('@/lib/webhook-dedup');
+  vi.mocked(dedup.checkWebhookReplay).mockResolvedValue({
+    ok: true,
+    duplicate: false,
+  });
 });
 
-function payload() {
+function payload(over: Partial<{ id: string; timestamp: string }> = {}) {
   return {
+    id: over.id ?? 'evt_1',
+    timestamp: over.timestamp ?? new Date().toISOString(),
     pageId: 'page_1',
     blockId: 'block_1',
     userId: 'notion_user_1',
@@ -161,5 +177,93 @@ describe('POST /api/webhooks/notion-button', () => {
     const body = await readJson<{ status: string; generationId: string }>(res);
     expect(body.status).toBe('cached');
     expect(body.generationId).toBe('gen_old');
+  });
+
+  it('returns 400 on stale envelope timestamp (>5 min old)', async () => {
+    const dedup = await import('@/lib/webhook-dedup');
+    vi.mocked(dedup.checkWebhookReplay).mockResolvedValue({
+      ok: false,
+      reason: 'stale',
+    });
+    const db = await import('@forge/db');
+    const { POST } = await import('@/app/api/webhooks/notion-button/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/webhooks/notion-button', {
+        method: 'POST',
+        body: payload({ timestamp: new Date(Date.now() - 6 * 60_000).toISOString() }),
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(400);
+    // Business-logic side effects MUST NOT fire on a rejected envelope.
+    expect(db.createGeneration).not.toHaveBeenCalled();
+    expect(db.findRecentByHash).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 on future envelope timestamp (>1 min skew)', async () => {
+    const dedup = await import('@/lib/webhook-dedup');
+    vi.mocked(dedup.checkWebhookReplay).mockResolvedValue({
+      ok: false,
+      reason: 'future_skew',
+    });
+    const db = await import('@forge/db');
+    const { POST } = await import('@/app/api/webhooks/notion-button/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/webhooks/notion-button', {
+        method: 'POST',
+        body: payload({ timestamp: new Date(Date.now() + 120_000).toISOString() }),
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(400);
+    expect(db.createGeneration).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when envelope is missing id/timestamp', async () => {
+    const db = await import('@forge/db');
+    const { POST } = await import('@/app/api/webhooks/notion-button/route');
+    // Drop both `id` and `timestamp` from the envelope.
+    const { id: _id, timestamp: _ts, ...stripped } = payload();
+    void _id;
+    void _ts;
+    const res = await POST(
+      makeRequest('http://localhost/api/webhooks/notion-button', {
+        method: 'POST',
+        body: stripped,
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(400);
+    expect(db.createGeneration).not.toHaveBeenCalled();
+    // Envelope validation happens before the dedupe Redis call.
+    const dedup = await import('@/lib/webhook-dedup');
+    expect(dedup.checkWebhookReplay).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 + duplicate on dedupe hit and does NOT invoke business logic', async () => {
+    const dedup = await import('@/lib/webhook-dedup');
+    vi.mocked(dedup.checkWebhookReplay).mockResolvedValue({
+      ok: true,
+      duplicate: true,
+      eventId: 'evt_1',
+    });
+    const db = await import('@forge/db');
+    const wf = await import('@forge/workflows');
+    const { POST } = await import('@/app/api/webhooks/notion-button/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/webhooks/notion-button', {
+        method: 'POST',
+        body: payload(),
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson<{ status: string; eventId: string }>(res);
+    expect(body.status).toBe('duplicate');
+    expect(body.eventId).toBe('evt_1');
+    // Critical: handler must NOT have done any work on a duplicate.
+    expect(db.createGeneration).not.toHaveBeenCalled();
+    expect(db.findRecentByHash).not.toHaveBeenCalled();
+    expect(wf.publishGenerationRequested).not.toHaveBeenCalled();
   });
 });

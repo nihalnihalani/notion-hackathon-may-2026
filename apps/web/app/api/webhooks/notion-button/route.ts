@@ -59,6 +59,7 @@ import { apiError } from '@/lib/errors';
 import { buildNotionConfig, getNotionTokenForClerkUser } from '@/lib/notion';
 import { capture } from '@/lib/posthog';
 import { withSentry } from '@/lib/sentry';
+import { checkWebhookReplay } from '@/lib/webhook-dedup';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -69,6 +70,22 @@ const buttonPayloadSchema = z.object({
   userId: z.string().min(1),
   workspaceId: z.string().min(1),
 });
+
+/**
+ * Notion webhook envelope — every delivery carries a top-level `id` (UUID)
+ * and `timestamp` (ISO 8601) used for replay protection (PLAN §VI replay
+ * protection task). The Forge button payload fields live alongside these on
+ * the same root object. We intentionally `passthrough` so the button payload
+ * keys survive the parse.
+ *
+ * Source: https://developers.notion.com/reference/webhooks-events-delivery
+ */
+const envelopeSchema = z
+  .object({
+    id: z.string().min(1),
+    timestamp: z.string().min(1),
+  })
+  .passthrough();
 
 /**
  * Resolve the per-workspace HMAC verification secret from PlanetScale.
@@ -218,6 +235,55 @@ export const POST = withSentry(
         // best-effort
       }
       return apiError('unauthenticated', 'Invalid Notion signature.');
+    }
+
+    // ── Replay protection ────────────────────────────────────────────────
+    // After signature verify succeeds, validate the envelope's `id` +
+    // `timestamp` (5 min past / 1 min future skew) and SETNX-dedupe on the
+    // event id. A duplicate delivery returns 200 so Notion stops retrying —
+    // a 4xx would loop the retry queue.
+    let envelope: z.infer<typeof envelopeSchema> | null = null;
+    try {
+      envelope = envelopeSchema.parse(JSON.parse(raw));
+    } catch {
+      return apiError(
+        'validation',
+        'Webhook envelope is missing required id/timestamp fields.',
+      );
+    }
+    let replay;
+    try {
+      replay = await checkWebhookReplay('notion-button', envelope);
+    } catch (err) {
+      // Redis unavailable — fail open on dedupe (still safer than retry
+      // storm) but capture so we can spot the outage. Stale-timestamp +
+      // signature verify still protect us from replay attacks.
+      Sentry.captureException(err, {
+        tags: { phase: 'webhook-dedup', source: 'notion-button' },
+      });
+      replay = { ok: true as const, duplicate: false as const };
+    }
+    if (!replay.ok) {
+      Sentry.captureMessage(`notion-button: envelope rejected (${replay.reason})`, {
+        level: 'warning',
+        tags: { reason: replay.reason, notionWorkspaceId },
+      });
+      const message =
+        replay.reason === 'stale'
+          ? 'Event timestamp is older than the replay window.'
+          : replay.reason === 'future_skew'
+            ? 'Event timestamp is too far in the future.'
+            : replay.reason === 'missing_id'
+              ? 'Webhook envelope is missing the id field.'
+              : replay.reason === 'missing_timestamp'
+                ? 'Webhook envelope is missing the timestamp field.'
+                : 'Webhook envelope timestamp is malformed.';
+      return apiError('validation', message);
+    }
+    if (replay.duplicate) {
+      // 200 (NOT 4xx) — a non-2xx tells Notion to retry, which is exactly
+      // the loop dedupe is meant to break.
+      return NextResponse.json({ ok: true, status: 'duplicate', eventId: replay.eventId });
     }
 
     if (!parsedPayload) {
