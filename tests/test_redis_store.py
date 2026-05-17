@@ -156,6 +156,23 @@ def test_render_handoffs_md_matches_protocol(store):
     assert "  Next Action: Review inbox" in md
 
 
+def test_render_handoffs_md_strips_embedded_bridge_keys_from_task(store):
+    store.upsert_handoff(
+        "wrb_aaaaaaaaaaaa",
+        task="Inspect health [wrb_aaaaaaaaaaaa] [wrb_aaaaaaaaaaaa]",
+        owner="Hermes",
+        files_touched="/wr/**",
+        status="PENDING",
+        result="",
+        next_action="Review inbox",
+    )
+
+    md = store.render_handoffs_md()
+
+    assert "- Task: Inspect health [wrb_aaaaaaaaaaaa]" in md
+    assert md.count("[wrb_aaaaaaaaaaaa]") == 1
+
+
 def test_render_handoffs_md_round_trips_through_parse_handoffs(store):
     """The Redis-materialised text must be parseable by the existing parser."""
     from src.warroom_format import parse_handoffs
