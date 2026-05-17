@@ -168,6 +168,24 @@ export const POST = withSentry(
       },
     });
 
+    // Short-circuit: if Forge is already installed for this workspace, skip
+    // the installer entirely and route straight to the dashboard. Without
+    // this guard, every sign-in (e.g. token refresh / OAuth re-grant) re-runs
+    // the installer's pre-check + Notion roundtrip, which is wasteful even
+    // if it's a no-op.
+    //
+    // We accept the workspace as installed once `forgePageId` is set; the
+    // installer's deeper "is the page still alive in Notion?" check runs
+    // only when a user actually opens the dashboard, so a hidden bit-rot
+    // condition surfaces there rather than here on every callback.
+    if (workspace.forgePageId) {
+      const dashboard = new URL(
+        '/dashboard',
+        process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
+      );
+      return NextResponse.redirect(dashboard, { status: 303 });
+    }
+
     // Fire-and-log installer; failures must NOT block the callback. The
     // installer is idempotent — if `parentPageId` is missing on first run
     // (the user hasn't picked a page yet) it throws; the dashboard's

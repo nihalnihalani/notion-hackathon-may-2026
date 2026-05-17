@@ -128,7 +128,10 @@ export async function handleMcpHttpRequest(
     resolve = r;
   });
 
-  const targetId = isRequest ? body.id : null;
+  // `isRequest` narrows the JSON-RPC union, but the SDK's discriminated union
+   // types don't propagate that narrowing here — re-extract via `extractId`
+   // which already knows how to read the id off any shape.
+  const targetId = isRequest ? extractId(body) : null;
 
   clientSide.onmessage = (message) => {
     collected.push(message);
@@ -172,10 +175,16 @@ export async function handleMcpHttpRequest(
   await done;
   await safeClose(server, clientSide);
 
-  const response = collected.find((m) => isJsonRpcResponseMatching(m, targetId));
+  // We've already returned 202 above when `!isRequest`, so by here `targetId`
+  // is non-null. Narrow explicitly for the compiler.
+  if (targetId === null) {
+    return jsonRpcInternalError(null, 'Unexpected null request id');
+  }
+  const matchId = targetId;
+  const response = collected.find((m) => isJsonRpcResponseMatching(m, matchId));
   if (!response) {
     return jsonRpcInternalError(
-      targetId,
+      matchId,
       'Server completed without producing a JSON-RPC response',
     );
   }

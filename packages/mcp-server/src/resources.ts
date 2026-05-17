@@ -46,7 +46,7 @@ export async function readForgeAgentsResource(
   context: ForgeMcpContext,
   config: ForgeMcpConfig,
 ): Promise<{
-  contents: ReadonlyArray<{
+  contents: Array<{
     uri: string;
     mimeType: string;
     text: string;

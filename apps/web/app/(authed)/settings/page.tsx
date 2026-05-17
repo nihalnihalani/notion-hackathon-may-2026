@@ -13,7 +13,7 @@ import {
 
 import { ApiKeysCard, type ApiKeyRow } from '@/components/settings/api-keys-card';
 import { DangerZone } from '@/components/settings/danger-zone';
-import { ModelSelector, type DefaultModel } from '@/components/settings/model-selector';
+import { ModelSelector } from '@/components/settings/model-selector';
 import { ThemeToggle } from '@/components/settings/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -115,28 +115,31 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <ul className="grid gap-2 sm:grid-cols-2">
-            {OAUTH_PROVIDERS.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  {p.label}
-                  {p.alwaysOn ? (
-                    <Badge variant="success">Connected</Badge>
-                  ) : null}
-                </span>
-                {p.alwaysOn ? (
-                  <span className="text-xs text-muted-foreground">
-                    Required
+            {OAUTH_PROVIDERS.map((p) => {
+              const alwaysOn = 'alwaysOn' in p && p.alwaysOn === true;
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
+                >
+                  <span className="flex items-center gap-2 font-medium">
+                    {p.label}
+                    {alwaysOn ? (
+                      <Badge variant="success">Connected</Badge>
+                    ) : null}
                   </span>
-                ) : (
-                  <Button asChild variant="outline" size="sm">
-                    <a href={`/api/oauth/${p.id}/start`}>Connect</a>
-                  </Button>
-                )}
-              </li>
-            ))}
+                  {alwaysOn ? (
+                    <span className="text-xs text-muted-foreground">
+                      Required
+                    </span>
+                  ) : (
+                    <Button asChild variant="outline" size="sm">
+                      <a href={`/api/oauth/${p.id}/start`}>Connect</a>
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </CardContent>
       </Card>

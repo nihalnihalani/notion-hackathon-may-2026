@@ -17,7 +17,7 @@ import { prisma } from '@forge/db';
 import type { User, Workspace } from '@forge/db';
 import type { NextResponse } from 'next/server';
 
-import { apiError } from './errors.js';
+import { apiError } from './errors';
 
 export interface ResolvedUser {
   /** The Clerk-managed user id (NOT our DB `User.id`). */

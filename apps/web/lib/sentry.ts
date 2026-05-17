@@ -22,7 +22,7 @@
 import * as Sentry from '@sentry/nextjs';
 import { type NextRequest, NextResponse } from 'next/server';
 
-import { type ApiErrorBody, apiError } from './errors.js';
+import { type ApiErrorBody, apiError } from './errors';
 
 export type ApiRouteContext<TParams = Record<string, string>> = {
   params: Promise<TParams>;

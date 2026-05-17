@@ -115,7 +115,7 @@ async function main(): Promise<void> {
       const resultsPath = resolve(resultsDir, 'results.json');
       const result = JSON.parse(readFileSync(resultsPath, 'utf8')) as EvalRunResult;
       const runId = flagAsString(flags, 'run-id') ?? process.env['GITHUB_RUN_ID'] ?? null;
-      const updated: Baseline = writeBaseline(result, { runId: runId ?? undefined });
+      const updated: Baseline = writeBaseline(result, runId ? { runId } : {});
       process.stdout.write(JSON.stringify({ ok: true, baseline: updated }, null, 2) + '\n');
       return;
     }

@@ -44,9 +44,12 @@ import { noopLogger } from './types.js';
  * structured content SHOULD also return the serialized JSON in a TextContent
  * block". Clients that ignore structuredContent still get the data.
  */
+// MCP SDK ≥1.29 widens `structuredContent` to `Record<string, unknown>`.
+// We intersect with that so concrete view interfaces (which lack the string
+// index signature) still satisfy the structural target.
 type ToolSuccess<T> = {
-  content: ReadonlyArray<{ type: 'text'; text: string }>;
-  structuredContent: T;
+  content: Array<{ type: 'text'; text: string }>;
+  structuredContent: T & Record<string, unknown>;
 };
 
 type ToolResult<T> =
@@ -59,7 +62,10 @@ function ok<T>(structured: T, summary: string): ToolSuccess<T> {
       { type: 'text', text: summary },
       { type: 'text', text: JSON.stringify(structured, null, 2) },
     ],
-    structuredContent: structured,
+    // The SDK widens `structuredContent` to a record. Our view types are
+    // structurally compatible (all keys are strings); cast to add the index
+    // signature without copying.
+    structuredContent: structured as T & Record<string, unknown>,
   };
 }
 

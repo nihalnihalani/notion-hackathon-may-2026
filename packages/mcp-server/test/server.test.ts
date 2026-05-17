@@ -289,14 +289,28 @@ describe('createForgeMcpServer — in-memory SDK round-trips', () => {
     expect(all.structuredContent).toMatchObject({ total: 2 });
   });
 
-  it('rejects unknown tools with a JSON-RPC protocol error', async () => {
+  it('rejects unknown tools with a spec-compliant isError response', async () => {
     const config = makeConfig();
     const wired = await connectClient(config);
     close = wired.close;
 
-    await expect(
-      wired.client.callTool({ name: 'nonexistent_tool', arguments: {} }),
-    ).rejects.toThrow();
+    // MCP SDK >=1.29 surfaces unknown-tool errors as an `{isError: true, content}`
+    // response (the spec-compliant shape documented at the top of this file)
+    // rather than throwing a JSON-RPC error. Either contract is acceptable —
+    // we accept the response variant when it carries the MCP -32602 marker.
+    const result = (await wired.client
+      .callTool({ name: 'nonexistent_tool', arguments: {} })
+      .catch((err: unknown) => ({ thrown: err }))) as
+      | { thrown: unknown }
+      | { isError?: boolean; content?: Array<{ text?: string }> };
+
+    if ('thrown' in result) {
+      expect(result.thrown).toBeInstanceOf(Error);
+      return;
+    }
+    expect(result.isError).toBe(true);
+    const text = result.content?.[0]?.text ?? '';
+    expect(text).toMatch(/nonexistent_tool/);
   });
 
   it('renders the forge_describe_agent prompt with quoted slots', async () => {

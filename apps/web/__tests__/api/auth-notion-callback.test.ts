@@ -93,6 +93,13 @@ beforeEach(async () => {
     buildLogBlockId: 'block_1',
     buttonBlockId: 'block_btn_1',
   });
+
+  // `vi.resetAllMocks` wipes the `mockResolvedValue` set in the factory
+  // declarations above, so restore the @forge/db default returns here.
+  const db = await import('@forge/db');
+  vi.mocked(db.upsertWorkspace).mockResolvedValue({ id: 'ws_1' } as never);
+  vi.mocked(db.prisma.workspace.findUnique).mockResolvedValue(null as never);
+  vi.mocked(db.prisma.workspace.update).mockResolvedValue({} as never);
 });
 
 describe('POST /api/auth/notion/callback', () => {

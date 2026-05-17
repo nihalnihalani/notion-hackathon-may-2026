@@ -172,12 +172,12 @@ export type AuditEvent = AuditEventBase & AuditEventInput;
  * All are non-negative deltas applied to today's row (UTC date), upserted.
  */
 export interface UsageMeterFields {
-  generationsCount?: number;
-  deploysCount?: number;
-  invocationsCount?: number;
+  generationsCount?: number | undefined;
+  deploysCount?: number | undefined;
+  invocationsCount?: number | undefined;
   /** USD; Decimal in the DB. Pass as `number` for ergonomics, we coerce. */
-  totalLlmCostUsd?: number;
-  totalSandboxSeconds?: number;
+  totalLlmCostUsd?: number | undefined;
+  totalSandboxSeconds?: number | undefined;
 }
 
 /**

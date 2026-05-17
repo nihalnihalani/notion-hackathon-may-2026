@@ -106,7 +106,7 @@ export class InvalidInputError extends ForgeMcpError {
  */
 export function toMcpErrorContent(err: unknown): {
   isError: true;
-  content: ReadonlyArray<{ type: 'text'; text: string }>;
+  content: Array<{ type: 'text'; text: string }>;
   structuredContent: { error: { code: ForgeMcpErrorCode; message: string; metadata: Record<string, unknown> } };
 } {
   const wrapped = err instanceof ForgeMcpError ? err : toGenericForgeError(err);

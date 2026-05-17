@@ -43,8 +43,32 @@ const isPublicRoute = createRouteMatcher([
   '/',
 ]);
 
+/**
+ * Authed onboarding surfaces — explicitly enumerated for clarity even though
+ * the catch-all below already protects them. Keeping this list documents the
+ * intent so a future "make /onboarding public" PR has to consciously remove
+ * the route from here rather than silently flipping behavior.
+ *
+ * Routes:
+ *   - /onboarding/pick-parent  → the page-picker UI
+ *   - /api/onboarding/pages    → Notion search proxy used by the picker
+ *   - /api/onboarding/install  → installer trigger
+ */
+const isAuthedOnboardingRoute = createRouteMatcher([
+  '/onboarding/(.*)',
+  '/api/onboarding/(.*)',
+]);
+
 export default clerkMiddleware(async (auth, req) => {
   if (isPublicRoute(req)) {
+    return;
+  }
+  // Onboarding routes must NEVER be matched by `isPublicRoute` — they require
+  // a Clerk session to bind the user to their workspace. The check below is
+  // a no-op if the route is unrelated; for onboarding routes it forces auth
+  // up front so the route handler can safely call `requireWorkspace`.
+  if (isAuthedOnboardingRoute(req)) {
+    await auth.protect();
     return;
   }
   await auth.protect();

@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import {
   SignInButton,
-  SignedIn,
-  SignedOut,
+  Show,
   UserButton,
 } from '@clerk/nextjs';
 import {
@@ -49,13 +48,13 @@ export default function LandingPage() {
             className="flex items-center gap-2 text-sm"
             aria-label="Primary"
           >
-            <SignedIn>
+            <Show when="signed-in">
               <Button asChild variant="ghost" size="sm">
                 <Link href="/dashboard">Dashboard</Link>
               </Button>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-            <SignedOut>
+              <UserButton />
+            </Show>
+            <Show when="signed-out">
               <Button asChild variant="ghost" size="sm">
                 <a
                   href="https://github.com/nihalnihalani/notion-hackathon-may-2026"
@@ -70,7 +69,7 @@ export default function LandingPage() {
                   Sign in with Notion
                 </Button>
               </SignInButton>
-            </SignedOut>
+            </Show>
           </nav>
         </div>
       </header>
@@ -78,22 +77,22 @@ export default function LandingPage() {
       <Hero
         cta={
           <>
-            <SignedOut>
+            <Show when="signed-out">
               <SignInButton mode="modal">
                 <Button size="lg" variant="forge" className="gap-2">
                   Sign in with Notion
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </SignInButton>
-            </SignedOut>
-            <SignedIn>
+            </Show>
+            <Show when="signed-in">
               <Button asChild size="lg" variant="forge" className="gap-2">
                 <Link href="/dashboard">
                   Open dashboard
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </Link>
               </Button>
-            </SignedIn>
+            </Show>
             <Button asChild size="lg" variant="outline">
               <a
                 href="https://github.com/nihalnihalani/notion-hackathon-may-2026"

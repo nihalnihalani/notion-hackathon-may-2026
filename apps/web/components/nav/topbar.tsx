@@ -74,7 +74,7 @@ export function Topbar({ workspaceName, forgePageUrl }: TopbarProps) {
             </a>
           </Button>
         ) : null}
-        <UserButton afterSignOutUrl="/" />
+        <UserButton />
       </div>
     </header>
   );
