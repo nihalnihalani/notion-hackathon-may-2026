@@ -37,6 +37,7 @@ from src.mission_control_renderers import (
     render_agent_history,
     render_bridge_stats,
     render_knowledge_base_index,
+    render_live_state,
     render_protocol_and_roles,
     render_shared_memory,
     render_skill_registry,
@@ -62,42 +63,30 @@ def _sections(warroom: Path) -> _Sections:
     """
     return [
         (
-            "agent_history",
-            "Agent History",
-            lambda w: render_agent_history(w / "HANDOFFS.md"),
-        ),
-        (
-            "activity_timeline",
-            "Activity Timeline",
-            lambda w: render_activity_timeline(
-                w / "HANDOFFS.md", w / ".notion_bridge_state.json"
-            ),
-        ),
-        (
-            "shared_memory",
-            "Shared Memory",
-            lambda w: render_shared_memory(w / "SHARED_MEMORY.md"),
+            "live_state",
+            "📊 Live State",
+            lambda w: render_live_state(w / "CURRENT_STATE.md"),
         ),
         (
             "knowledge_base",
-            "Knowledge Base",
+            "📚 Knowledge Base",
             lambda w: render_knowledge_base_index(w / "KnowledgeBase"),
         ),
         (
             "skill_registry",
-            "Skill Registry",
+            "🛠 Skill Registry",
             lambda w: render_skill_registry(w / "SKILL_REGISTRY.md"),
         ),
         (
             "protocol_and_roles",
-            "Protocol & Roles",
+            "📋 Protocol and Roles",
             lambda w: render_protocol_and_roles(
                 w / "PROTOCOL.md", w / "AGENT_ROLES.md"
             ),
         ),
         (
             "bridge_stats",
-            "Bridge Stats",
+            "📈 Bridge Stats",
             lambda w: render_bridge_stats(w / ".notion_bridge_state.json"),
         ),
     ]

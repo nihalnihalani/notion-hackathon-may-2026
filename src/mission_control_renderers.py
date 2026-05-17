@@ -282,3 +282,12 @@ def render_bridge_stats(state_path: Path) -> str:
         lines.append("- (none)")
 
     return _truncate("\n".join(lines))
+
+def render_live_state(state_path: Path) -> str:
+    """Pass-through CURRENT_STATE.md contents, truncated."""
+    text = _safe_read_text(state_path)
+    if text is None:
+        return "(no live state yet)"
+    if not text.strip():
+        return "(no live state yet)"
+    return _truncate(text)
