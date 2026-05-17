@@ -110,7 +110,15 @@ pnpm verify:env
 ### Run the dev stack
 
 ```bash
-pnpm dev
+./run.sh dev
+```
+
+`run.sh` creates a timestamped log under `logs/`, verifies prerequisites,
+loads `.env`, and can run local checks with CI-shaped stub values:
+
+```bash
+./run.sh check --ci-env
+./run.sh dev --debug
 ```
 
 The Next.js dashboard comes up on `http://localhost:3000`. Sign in with Notion → the installer creates the **Forge** page + **Forge Requests** DB in your workspace → describe an agent → click **⚡ Forge this Agent** → watch the Build Log.
