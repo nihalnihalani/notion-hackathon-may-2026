@@ -61,7 +61,10 @@ fi
 
 # ---- 5. Install workspace dependencies ------------------------------------
 info "Installing workspace dependencies with pnpm..."
-pnpm install --frozen-lockfile=false
+# Respect the committed lockfile so every dev gets the exact resolution CI
+# tests against. If you intentionally need to update a package, run
+# `pnpm add <pkg>` (or `pnpm up`) — never bypass the lockfile here.
+pnpm install
 ok "Dependencies installed"
 
 # ---- 6. ntn doctor ---------------------------------------------------------
@@ -70,7 +73,17 @@ if ! ntn doctor; then
   warn "ntn doctor reported issues. Resolve them before running the full Forge stack."
 fi
 
-# ---- 7. Next steps banner --------------------------------------------------
+# ---- 7. verify env (only if .env exists & has been filled in) -------------
+if [ -f ".env" ]; then
+  info "Running 'pnpm verify:env' against the existing .env..."
+  if ! pnpm verify:env; then
+    warn ".env has missing or malformed values. Fix them before 'pnpm dev'."
+  fi
+else
+  warn "No .env file present, skipping env verification."
+fi
+
+# ---- 8. Next steps banner --------------------------------------------------
 cat <<EOF
 
 ${BOLD}${GREEN}Forge is ready.${RESET}

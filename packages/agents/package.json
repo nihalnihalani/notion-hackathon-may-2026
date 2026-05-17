@@ -11,16 +11,44 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./schema-smith": {
+      "types": "./dist/schema-smith.d.ts",
+      "default": "./dist/schema-smith.js"
+    },
+    "./tool-coder": {
+      "types": "./dist/tool-coder.d.ts",
+      "default": "./dist/tool-coder.js"
+    },
+    "./inspector": {
+      "types": "./dist/inspector.d.ts",
+      "default": "./dist/inspector.js"
+    },
+    "./shipper": {
+      "types": "./dist/shipper.d.ts",
+      "default": "./dist/shipper.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@forge/connectors": "workspace:*",
+    "@forge/db": "workspace:*",
+    "@forge/ntn-wrapper": "workspace:*",
+    "@forge/safety": "workspace:*",
+    "@typescript-eslint/parser": "8.16.0",
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

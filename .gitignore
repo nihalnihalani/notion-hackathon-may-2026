@@ -11,6 +11,7 @@ out/
 .env
 .env.local
 .env.*.local
+.env.vault
 
 # Turborepo
 .turbo/
@@ -22,6 +23,8 @@ pnpm-debug.log*
 
 # Test / coverage
 coverage/
+playwright-report/
+test-results/
 
 # Editor
 .DS_Store
@@ -33,5 +36,17 @@ coverage/
 # Vercel
 .vercel/
 
+# Sentry CLI rc (project / org bound)
+.sentryclirc
+
+# TLS / signing material
+*.pem
+
 # TypeScript build info
 *.tsbuildinfo
+
+# Prisma — DO commit migrations (`packages/db/prisma/migrations/**`); they
+# are part of the source of truth. The negation below makes that explicit so
+# nothing accidentally ignores them via a broader rule.
+!packages/db/prisma/migrations/
+!packages/db/prisma/migrations/**

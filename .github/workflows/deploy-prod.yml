@@ -1,0 +1,23 @@
+name: Deploy (production)
+
+# The Vercel GitHub integration (Project → Settings → Git) is what actually
+# builds and deploys production from `main`; this workflow file is reserved
+# for *additional* CI steps that should run *after* the production deploy
+# completes — e.g. release tagging, Sentry release marker, Slack #ship-it,
+# or invalidating downstream caches.
+#
+# Kept as a no-op stub for now so the workflow filename + intent are checked
+# into source control alongside the matching preview workflow.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  post-deploy-actions:
+    name: Post-deploy actions (placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reminder
+        run: |
+          echo "The actual production deploy is performed by the Vercel GitHub integration."
+          echo "Add post-deploy steps (release tag, Sentry release, Slack notify) as new steps here."

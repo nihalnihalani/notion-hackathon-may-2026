@@ -1,0 +1,23 @@
+name: Deploy (preview)
+
+# The Vercel GitHub integration (Project → Settings → Git) is what actually
+# builds and deploys the preview for every PR; this workflow file is reserved
+# for *additional* CI steps that should run *after* the preview URL is live —
+# e.g. smoke tests, Lighthouse, axe-core a11y scans, or a Slack notification.
+#
+# Until we wire those up, this workflow is intentionally a no-op so the file
+# exists alongside `deploy-prod.yml` and the GitHub Actions tab clearly
+# documents where each deploy stage lives.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  post-deploy-smoke:
+    name: Post-deploy smoke (placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reminder
+        run: |
+          echo "The actual preview deploy is performed by the Vercel GitHub integration."
+          echo "Add post-deploy checks (smoke tests, Lighthouse, etc.) as new steps here."

@@ -14,6 +14,10 @@ env:
   NODE_VERSION: '20'
   PNPM_VERSION: '9'
 
+# NOTE: a CodeQL workflow is intentionally NOT included here yet — it will be
+# added as a separate file (`.github/workflows/codeql.yml`) once the repo flips
+# public, since CodeQL on a private repo eats Actions minutes fast.
+
 jobs:
   setup:
     name: Install dependencies
@@ -67,7 +71,28 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      # `--max-warnings=0` upgrades any ESLint warning into a build-breaking
+      # failure. Kept on the CLI (rather than in eslint config) so engineers
+      # see *why* lint failed in the CI log without diffing config.
+      - run: pnpm lint -- --max-warnings=0
+
+  format:
+    name: Format (Prettier)
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
 
   typecheck:
     name: Typecheck
@@ -86,6 +111,81 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+
+  verify-env:
+    name: Verify env shape (fake env from .env.example)
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Stub values that satisfy verify-env's regex/prefix refinements without
+    # exposing any real secrets. This catches drift between .env.example and
+    # verify-env.ts on every PR.
+    env:
+      NEXT_PUBLIC_APP_URL: https://forge.example.com
+      ANTHROPIC_API_KEY: sk-ant-fake-ci-stub
+      OPENAI_API_KEY: sk-proj-fake-ci-stub
+      OPENAI_ORG_ID: org-fake-ci-stub
+      NOTION_OAUTH_CLIENT_ID: notion-fake-ci-stub
+      NOTION_OAUTH_CLIENT_SECRET: notion-secret-fake-ci-stub
+      NOTION_OAUTH_REDIRECT_URI: https://forge.example.com/api/auth/notion/callback
+      NOTION_WEBHOOK_SECRET: notion-webhook-fake-ci-stub
+      NTN_VERSION: 0.1.x
+      CLERK_SECRET_KEY: sk_test_fake_ci_stub
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_fake_ci_stub
+      CLERK_WEBHOOK_SECRET: whsec_fake_ci_stub
+      CLERK_JWT_KEY: clerk-jwt-fake-ci-stub
+      DATABASE_URL: postgres://user:pass@localhost:5432/forge
+      VERCEL_AI_GATEWAY_API_KEY: gateway-fake-ci-stub
+      VERCEL_BLOB_READ_WRITE_TOKEN: vercel_blob_rw_fake_ci_stub
+      VERCEL_EDGE_CONFIG: https://edge-config.vercel.com/fake_ci_stub
+      SENTRY_DSN: https://fake@o0.ingest.sentry.io/0
+      NEXT_PUBLIC_SENTRY_DSN: https://fake@o0.ingest.sentry.io/0
+      SENTRY_AUTH_TOKEN: sntrys_fake_ci_stub
+      SENTRY_ORG: forge-dev
+      SENTRY_PROJECT: forge-web
+      POSTHOG_KEY: phc_fake_ci_stub
+      NEXT_PUBLIC_POSTHOG_KEY: phc_fake_ci_stub
+      RESEND_API_KEY: re_fake_ci_stub
+      RESEND_FROM_EMAIL: forge@example.com
+      UPSTASH_REDIS_REST_URL: https://fake.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: upstash-fake-ci-stub
+      MINIMAX_API_KEY: minimax-fake-ci-stub
+      MINIMAX_GROUP_ID: minimax-group-fake-ci-stub
+      STRIPE_SECRET_KEY: sk_test_stripe_fake_ci_stub
+      STRIPE_WEBHOOK_SECRET: whsec_stripe_fake_ci_stub
+      # 64-char placeholder, satisfies min(32) and is not literally "REPLACE_ME".
+      FORGE_INTERNAL_TOKEN: ci_stub_token_0000000000000000000000000000000000000000000000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify:env
+
+  prisma-check:
+    name: Prisma schema check
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @forge/db exec prisma format --check
+      - run: pnpm --filter @forge/db exec prisma validate
 
   test:
     name: Test
@@ -107,7 +207,7 @@ jobs:
 
   build:
     name: Build
-    needs: [lint, typecheck, test]
+    needs: [lint, format, typecheck, verify-env, prisma-check, test]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

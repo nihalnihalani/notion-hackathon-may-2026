@@ -2,7 +2,7 @@
   "name": "@forge/notion-client",
   "version": "0.0.0",
   "private": true,
-  "description": "Typed Notion REST wrapper used by the Forge studio (page state, comments, block streaming, DB rows).",
+  "description": "Typed Notion REST wrapper used by the Forge studio (page state, comments, block streaming, DB rows, webhook signature verification).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

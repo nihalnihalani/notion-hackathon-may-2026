@@ -57,6 +57,19 @@ pnpm dev
 
 The Next.js dashboard comes up on `http://localhost:3000`.
 
+## Vercel deployment
+
+This is a pnpm + Turborepo monorepo. The Next.js app lives at `apps/web`, so the
+Vercel project **must** have its **Root Directory** set to `apps/web` (Project →
+Settings → General → Root Directory). The repo's `vercel.json` declares
+`framework: nextjs` and the deploy region, but does not (and cannot) set the
+Root Directory — that is a dashboard-only setting. Without it, Vercel will try
+to build from the repo root and fail.
+
+The legacy `builds[]` array was removed from `vercel.json` because it disables
+the modern Vercel build pipeline (zero-config detection, Build Output API,
+Speed Insights wiring, etc.). Do not re-add it.
+
 ## Architecture
 
 - **Tech stack + sponsor mapping** — [PLAN.md Part II](PLAN.md#part-ii--tech-stack-with-sponsor-mapping)

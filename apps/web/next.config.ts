@@ -3,9 +3,10 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: {
-    typedRoutes: true,
-  },
+  // `typedRoutes` graduated from experimental → stable in Next 16. The
+  // experimental flag is now a no-op and emits a deprecation warning at build
+  // time, so keep it at top-level only.
+  typedRoutes: true,
   transpilePackages: [
     '@forge/agents',
     '@forge/ntn-wrapper',

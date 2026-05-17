@@ -4,60 +4,114 @@
  *
  * Run: `pnpm verify:env` (or `tsx scripts/verify-env.ts`)
  *
- * Exits 0 if every required variable is set and well-formed.
+ * Exits 0 if every required variable is set and shape-correct.
  * Exits 1 with a grouped, human-readable list of failures otherwise.
  *
  * The schema below MUST stay in sync with .env.example. If you add a new env
- * var to .env.example, add it here too.
+ * var to .env.example, add it here too — and prefer a structural refinement
+ * (regex, URL, prefix) over a bare `min(1)` so we catch swapped or
+ * placeholder values during local setup *before* they hit production.
+ *
+ * Loads .env from the repo root via `dotenv/config` so this script works for
+ * both CI (which sets process.env directly) and local devs (who use .env).
  */
+import 'dotenv/config';
 import { z } from 'zod';
 
-const nonEmpty = z.string().trim().min(1, 'must be non-empty');
-const url = z.string().url('must be a valid URL');
-
 const envSchema = z.object({
+  // App
+  NEXT_PUBLIC_APP_URL: z.string().url('must be a valid URL'),
+
   // Anthropic
-  ANTHROPIC_API_KEY: nonEmpty,
+  ANTHROPIC_API_KEY: z
+    .string()
+    .regex(/^sk-ant-/, 'must start with "sk-ant-" (Anthropic API key format)'),
 
   // OpenAI
-  OPENAI_API_KEY: nonEmpty,
+  OPENAI_API_KEY: z
+    .string()
+    .regex(/^sk-(proj-)?/, 'must start with "sk-" or "sk-proj-"'),
+  OPENAI_ORG_ID: z.string().trim().min(1).optional(),
 
   // Notion Developer Platform
-  NOTION_OAUTH_CLIENT_ID: nonEmpty,
-  NOTION_OAUTH_CLIENT_SECRET: nonEmpty,
-  NOTION_WEBHOOK_SECRET: nonEmpty,
-  NTN_VERSION: nonEmpty,
+  NOTION_OAUTH_CLIENT_ID: z.string().trim().min(1, 'must be non-empty'),
+  NOTION_OAUTH_CLIENT_SECRET: z.string().trim().min(1, 'must be non-empty'),
+  NOTION_OAUTH_REDIRECT_URI: z.string().url('must be a valid URL'),
+  NOTION_WEBHOOK_SECRET: z.string().trim().min(1, 'must be non-empty'),
+  NTN_VERSION: z.string().trim().min(1, 'must be non-empty'),
 
   // Clerk
-  CLERK_SECRET_KEY: nonEmpty,
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: nonEmpty,
+  CLERK_SECRET_KEY: z
+    .string()
+    .regex(/^sk_(test|live)_/, 'must start with "sk_test_" or "sk_live_"'),
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z
+    .string()
+    .regex(/^pk_(test|live)_/, 'must start with "pk_test_" or "pk_live_"'),
+  CLERK_WEBHOOK_SECRET: z.string().trim().min(1, 'must be non-empty'),
+  CLERK_JWT_KEY: z.string().trim().min(1, 'must be non-empty'),
 
-  // PlanetScale
-  DATABASE_URL: nonEmpty,
+  // PlanetScale (Postgres)
+  DATABASE_URL: z
+    .string()
+    .url('must be a valid URL')
+    .refine(
+      (s) => s.startsWith('postgres://') || s.startsWith('postgresql://'),
+      'must start with postgres:// or postgresql://',
+    ),
 
   // Vercel
-  VERCEL_AI_GATEWAY_API_KEY: nonEmpty,
-  VERCEL_BLOB_READ_WRITE_TOKEN: nonEmpty,
-  VERCEL_EDGE_CONFIG: nonEmpty,
+  VERCEL_AI_GATEWAY_API_KEY: z.string().trim().min(1, 'must be non-empty'),
+  VERCEL_BLOB_READ_WRITE_TOKEN: z
+    .string()
+    .startsWith(
+      'vercel_blob_rw_',
+      'must start with "vercel_blob_rw_" (Vercel Blob R/W token)',
+    ),
+  VERCEL_EDGE_CONFIG: z.string().trim().min(1, 'must be non-empty'),
 
-  // Observability
-  SENTRY_DSN: url,
-  NEXT_PUBLIC_SENTRY_DSN: url,
-  POSTHOG_KEY: nonEmpty,
-  NEXT_PUBLIC_POSTHOG_KEY: nonEmpty,
+  // Observability — Sentry DSNs are just URLs so self-hosted Sentry works too.
+  SENTRY_DSN: z.string().url('must be a valid URL'),
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url('must be a valid URL'),
+  SENTRY_AUTH_TOKEN: z.string().trim().min(1, 'must be non-empty'),
+  SENTRY_ORG: z.string().trim().min(1, 'must be non-empty'),
+  SENTRY_PROJECT: z.string().trim().min(1, 'must be non-empty'),
+  POSTHOG_KEY: z.string().trim().min(1, 'must be non-empty'),
+  NEXT_PUBLIC_POSTHOG_KEY: z.string().trim().min(1, 'must be non-empty'),
 
   // Email
-  RESEND_API_KEY: nonEmpty,
+  RESEND_API_KEY: z
+    .string()
+    .regex(/^re_/, 'must start with "re_" (Resend API key format)'),
+  RESEND_FROM_EMAIL: z.string().email('must be a valid email address'),
 
-  // Upstash Redis
-  UPSTASH_REDIS_REST_URL: url,
-  UPSTASH_REDIS_REST_TOKEN: nonEmpty,
+  // Upstash Redis — don't pin .upstash.io because Upstash supports custom domains.
+  UPSTASH_REDIS_REST_URL: z.string().url('must be a valid URL'),
+  UPSTASH_REDIS_REST_TOKEN: z.string().trim().min(1, 'must be non-empty'),
 
   // MiniMax
-  MINIMAX_API_KEY: nonEmpty,
+  MINIMAX_API_KEY: z.string().trim().min(1, 'must be non-empty'),
+  MINIMAX_GROUP_ID: z.string().trim().min(1, 'must be non-empty'),
+
+  // Stripe
+  STRIPE_SECRET_KEY: z
+    .string()
+    .regex(/^sk_(test|live)_/, 'must start with "sk_test_" or "sk_live_"'),
+  STRIPE_WEBHOOK_SECRET: z
+    .string()
+    .regex(/^whsec_/, 'must start with "whsec_" (Stripe webhook secret format)'),
+
+  // Inngest — optional backup pipeline.
+  INNGEST_EVENT_KEY: z.string().trim().min(1).optional(),
+  INNGEST_SIGNING_KEY: z.string().trim().min(1).optional(),
 
   // Internal
-  FORGE_INTERNAL_TOKEN: nonEmpty,
+  FORGE_INTERNAL_TOKEN: z
+    .string()
+    .min(32, 'must be at least 32 characters (use `openssl rand -hex 32`)')
+    .refine(
+      (s) => s !== 'REPLACE_ME',
+      'placeholder value detected — rotate FORGE_INTERNAL_TOKEN before use',
+    ),
 });
 
 const RED = '[31m';
