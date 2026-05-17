@@ -53,6 +53,7 @@ import { requireWorkspace } from '@/lib/auth';
 import { apiError } from '@/lib/errors';
 import { buildNotionConfig, getNotionTokenForClerkUser } from '@/lib/notion';
 import { capture } from '@/lib/posthog';
+import { checkRateLimit, createRateLimiter } from '@/lib/ratelimit';
 import { withSentry } from '@/lib/sentry';
 
 export const runtime = 'nodejs';
@@ -128,7 +129,26 @@ export const POST = withSentry(
   async (req) => {
     const r = await requireWorkspace();
     if (!r.ok) return r.response;
-    const { clerkId, workspace } = r.ctx;
+    const { clerkId, user, workspace } = r.ctx;
+
+    // Per-user rate limit: 10/min. The installer is idempotent but each
+    // call touches Notion (page fetch + block creates) and we don't want
+    // a stuck UI to drum the Notion API.
+    const rl = await checkRateLimit(
+      createRateLimiter('onboarding.install', 10, '1 m'),
+      user.id,
+    );
+    if (!rl.success) {
+      const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
+      const resp = apiError(
+        'rate_limited',
+        `Rate limit exceeded. Retry in ${resetSeconds}s.`,
+      );
+      resp.headers.set('Retry-After', String(resetSeconds));
+      resp.headers.set('X-RateLimit-Limit', String(rl.limit));
+      resp.headers.set('X-RateLimit-Remaining', String(rl.remaining));
+      return resp;
+    }
 
     // ── Body parse + validate ─────────────────────────────────────────────
     let json: unknown;

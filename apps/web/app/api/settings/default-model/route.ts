@@ -24,6 +24,7 @@ import { z } from 'zod';
 import { requireWorkspace } from '@/lib/auth';
 import { apiError } from '@/lib/errors';
 import { capture } from '@/lib/posthog';
+import { checkRateLimit, createRateLimiter } from '@/lib/ratelimit';
 import { withSentry } from '@/lib/sentry';
 
 export const runtime = 'nodejs';
@@ -43,6 +44,25 @@ async function handler(req: Request): Promise<NextResponse> {
   const r = await requireWorkspace();
   if (!r.ok) return r.response;
   const { user, workspace, clerkId } = r.ctx;
+
+  // Per-user rate limit: 30 writes/min — preferences don't need to update
+  // faster than that, and a tight cap blocks accidental loops in the
+  // settings UI from chewing through audit rows + DB writes.
+  const rl = await checkRateLimit(
+    createRateLimiter('settings.default_model', 30, '1 m'),
+    user.id,
+  );
+  if (!rl.success) {
+    const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
+    const resp = apiError(
+      'rate_limited',
+      `Rate limit exceeded. Retry in ${resetSeconds}s.`,
+    );
+    resp.headers.set('Retry-After', String(resetSeconds));
+    resp.headers.set('X-RateLimit-Limit', String(rl.limit));
+    resp.headers.set('X-RateLimit-Remaining', String(rl.remaining));
+    return resp;
+  }
 
   let json: unknown;
   try {

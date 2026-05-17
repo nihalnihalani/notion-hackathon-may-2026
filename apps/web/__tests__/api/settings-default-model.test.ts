@@ -31,6 +31,12 @@ vi.mock('@forge/db', () => ({
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
 
+const checkRateLimitMock = vi.fn();
+vi.mock('@/lib/ratelimit', () => ({
+  checkRateLimit: (...args: unknown[]) => checkRateLimitMock(...args),
+  createRateLimiter: () => ({}),
+}));
+
 beforeEach(async () => {
   vi.resetAllMocks();
   vi.resetModules();
@@ -47,6 +53,12 @@ beforeEach(async () => {
     },
   } as never);
   vi.mocked(db.prisma.workspace.update).mockResolvedValue({} as never);
+  checkRateLimitMock.mockResolvedValue({
+    success: true,
+    reset: 0,
+    remaining: 29,
+    limit: 30,
+  });
 });
 
 describe('PATCH /api/settings/default-model', () => {
@@ -126,5 +138,28 @@ describe('PATCH /api/settings/default-model', () => {
       makeCtx({}),
     );
     expect(res.status).toBe(200);
+  });
+
+  it('returns 429 with Retry-After + X-RateLimit headers when rate-limited', async () => {
+    checkRateLimitMock.mockResolvedValue({
+      success: false,
+      reset: Date.now() + 30_000,
+      remaining: 0,
+      limit: 30,
+    });
+    const { PATCH } = await import('@/app/api/settings/default-model/route');
+    const res = await PATCH(
+      makeRequest('http://localhost/api/settings/default-model', {
+        method: 'PATCH',
+        body: { model: 'auto' },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBeTruthy();
+    expect(res.headers.get('x-ratelimit-limit')).toBe('30');
+    expect(res.headers.get('x-ratelimit-remaining')).toBe('0');
+    const db = await import('@forge/db');
+    expect(db.prisma.workspace.update).not.toHaveBeenCalled();
   });
 });

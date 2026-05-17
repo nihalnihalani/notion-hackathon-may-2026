@@ -83,6 +83,12 @@ vi.mock('@/lib/notion', () => ({
 
 vi.mock('@/lib/posthog', () => ({ capture: vi.fn() }));
 
+const checkRateLimitMock = vi.fn();
+vi.mock('@/lib/ratelimit', () => ({
+  checkRateLimit: (...args: unknown[]) => checkRateLimitMock(...args),
+  createRateLimiter: () => ({}),
+}));
+
 const fakeUser = {
   id: 'user_1',
   email: 'nihal@example.com',
@@ -126,6 +132,13 @@ beforeEach(async () => {
     agentsDbId: 'db_agents_1',
     buildLogBlockId: 'block_log_1',
     buttonBlockId: 'block_btn_1',
+  });
+
+  checkRateLimitMock.mockResolvedValue({
+    success: true,
+    reset: 0,
+    remaining: 9,
+    limit: 10,
   });
 });
 
@@ -270,6 +283,29 @@ describe('POST /api/onboarding/install', () => {
     expect(res.status).toBe(502);
     const body = await readJson<{ step?: string }>(res);
     expect(body.step).toBe('create-build-log-block');
+  });
+
+  it('returns 429 with Retry-After when rate-limited', async () => {
+    checkRateLimitMock.mockResolvedValue({
+      success: false,
+      reset: Date.now() + 45_000,
+      remaining: 0,
+      limit: 10,
+    });
+    const { POST } = await import('@/app/api/onboarding/install/route');
+    const res = await POST(
+      makeRequest('http://localhost/api/onboarding/install', {
+        method: 'POST',
+        body: { parentPageId: VALID_PARENT },
+      }) as never,
+      makeCtx({}),
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBeTruthy();
+    expect(res.headers.get('x-ratelimit-limit')).toBe('10');
+    expect(res.headers.get('x-ratelimit-remaining')).toBe('0');
+    const installer = await import('@forge/installer');
+    expect(installer.installForgePage).not.toHaveBeenCalled();
   });
 
   it('is idempotent — re-running on an installed workspace returns the same IDs', async () => {
