@@ -1,0 +1,6 @@
+.env
+.env.local
+.bridge_ledger.json
+.state_hash
+__pycache__/
+*.lock
