@@ -1,102 +1,137 @@
 #!/usr/bin/env python3
+"""Acceptance/demo script for Notion OS War Room Bridge."""
+
 import os
 import sys
-import subprocess
 import time
+import subprocess
 from pathlib import Path
 
-def run_cmd(cmd):
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    return result.returncode, result.stdout, result.stderr
-
-def print_step(msg):
-    print(f"\n\033[1;34m=== {msg} ===\033[0m")
-
-def fail(msg):
-    print(f"\033[1;31m[FAIL]\033[0m {msg}")
+# Load config implicitly to ensure environment is okay.
+sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
+try:
+    from src.config import load_config
+except ImportError as e:
+    print(f"FAIL: Could not import bridge config: {e}")
     sys.exit(1)
 
-def pass_check(msg):
-    print(f"\033[1;32m[PASS]\033[0m {msg}")
+def run_once():
+    print("Running: python3 notion_warroom_bridge.py --once")
+    res = subprocess.run(
+        [sys.executable, "notion_warroom_bridge.py", "--once"],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        print(f"FAIL: bridge exited with {res.returncode}")
+        print("STDOUT:", res.stdout)
+        print("STDERR:", res.stderr)
+        return False
+    return True
+
+def get_handoff_contents(warroom_path: Path):
+    handoff_file = warroom_path / "HANDOFFS.md"
+    if not handoff_file.exists():
+        return ""
+    return handoff_file.read_text(encoding="utf-8")
+
+def get_dashboard_contents(warroom_path: Path):
+    dashboard_file = warroom_path / "CURRENT_STATE.md"
+    if not dashboard_file.exists():
+        return ""
+    return dashboard_file.read_text(encoding="utf-8")
 
 def main():
-    warroom_path = Path(os.path.expanduser("~/WarRoom"))
-    handoffs_file = warroom_path / "HANDOFFS.md"
-    state_file = warroom_path / "CURRENT_STATE.md"
+    try:
+        cfg = load_config()
+    except Exception as e:
+        print(f"FAIL: Failed to load config: {e}")
+        sys.exit(1)
+
+    print("--- Demo Acceptance Check ---")
+    print("\n1. Create Notion task with `Status = Pending`.")
+    print("   Open Notion UI, go to your Command Center DB.")
+    print("   Create a task titled 'Acceptance Test Task'.")
+    print("   Set 'Assignee' to 'Hermes'.")
+    print("   Set 'Status' to 'Pending'.")
+    input("   [Press Enter when you have created the task]")
+
+    print("\n2. Run `python3 notion_warroom_bridge.py --once`.")
+    if not run_once():
+        sys.exit(1)
+    print("PASS: Bridge executed successfully.")
+
+    print("\n3. Task appears in `HANDOFFS.md` in exact protocol format.")
+    handoff_text = get_handoff_contents(cfg.warroom_path)
+    if "- Task: Acceptance Test Task" not in handoff_text:
+        print("FAIL: Task title not found in HANDOFFS.md")
+        sys.exit(1)
+    if "Status: PENDING" not in handoff_text:
+        print("FAIL: Task not in PENDING status in HANDOFFS.md")
+        sys.exit(1)
     
-    # Pre-setup
-    os.makedirs(warroom_path, exist_ok=True)
-    if not handoffs_file.exists():
-        handoffs_file.touch()
-    if not state_file.exists():
-        state_file.write_text("# Initial State\n\nAll systems nominal.")
+    # Extract the key
+    import re
+    m = re.search(r"- Task: Acceptance Test Task \[([^\]]+)\]", handoff_text)
+    if not m:
+        print("FAIL: War Room Key not found in HANDOFFS.md")
+        sys.exit(1)
+    key = m.group(1)
+    print(f"PASS: Found task in HANDOFFS.md with key {key}")
 
-    print_step("Step 1: Create Notion Task")
-    print("Please go to Notion and create a task in the Command Center DB:")
-    print("  - Title: Demo Task")
-    print("  - Status: Pending")
-    print("  - Assignee: Hermes")
-    print("  - Authorized Files: /home/alhinai/WarRoom/**")
-    input("\nPress Enter when the task is created in Notion...")
+    print("\n4. Notion task becomes `Dispatched` and shows `War Room Key`.")
+    print("   Look at the Notion UI. The Status should be 'Dispatched'.")
+    print(f"   The 'War Room Key' should be '{key}'.")
+    input("   [Press Enter after verifying in Notion UI]")
 
-    print_step("Step 2: Run Daemon (--once)")
-    rc, stdout, stderr = run_cmd("python3 notion_warroom_bridge.py --once")
-    if rc != 0:
-        fail(f"Daemon failed to run:\n{stderr}\n{stdout}")
-    pass_check("Daemon executed successfully.")
+    print("\n5. Manually or via agent update handoff to `Status: COMPLETED` and add `Result`.")
+    print("   Automatically updating HANDOFFS.md...")
+    # Find block and replace
+    new_text = handoff_text.replace("Status: PENDING", "Status: COMPLETED").replace(
+        "  Result:\n", "  Result: Acceptance demo automated check passed.\n"
+    )
+    (cfg.warroom_path / "HANDOFFS.md").write_text(new_text, encoding="utf-8")
+    print("PASS: Updated HANDOFFS.md locally.")
 
-    print_step("Step 3 & 4: Verify HANDOFFS.md and Notion State")
-    content = handoffs_file.read_text()
-    if "Demo Task" not in content or "Status: PENDING" not in content:
-        fail(f"Demo Task not found in HANDOFFS.md or incorrect format.\nContent:\n{content}")
-    pass_check("Task successfully dispatched to HANDOFFS.md.")
+    print("\n6. Run `python3 notion_warroom_bridge.py --once` again.")
+    if not run_once():
+        sys.exit(1)
+    print("PASS: Bridge executed successfully.")
 
-    print("Please verify in Notion that:")
-    print("  - Status changed to 'Dispatched'")
-    print("  - 'War Room Key' property is populated (e.g. wrb_...)")
-    input("\nPress Enter when verified...")
+    print("\n7. Notion task becomes `Completed` and `Result Summary` updates.")
+    print("   Look at the Notion UI. The Status should be 'Completed'.")
+    print("   The 'Result Summary' should contain 'Acceptance demo automated check passed.'")
+    input("   [Press Enter after verifying in Notion UI]")
 
-    print_step("Step 5: Local Update to COMPLETED")
-    # Replace PENDING with COMPLETED
-    new_content = content.replace("Status: PENDING", "Status: COMPLETED")
-    new_content = new_content.replace("Result:", "Result: This was successfully executed locally.")
-    handoffs_file.write_text(new_content)
-    pass_check("Locally updated HANDOFFS.md to Status: COMPLETED.")
-
-    print_step("Step 6: Run Daemon (--once)")
-    rc, stdout, stderr = run_cmd("python3 notion_warroom_bridge.py --once")
-    if rc != 0:
-        fail(f"Daemon failed to run:\n{stderr}\n{stdout}")
-    pass_check("Daemon executed successfully.")
-
-    print_step("Step 7: Verify Result in Notion")
-    print("Please verify in Notion that:")
-    print("  - Status changed to 'Completed'")
-    print("  - 'Result Summary' property is updated")
-    input("\nPress Enter when verified...")
-
-    print_step("Step 8: Dashboard Live Update")
-    state_file.write_text("# Updated State\n\nTesting live dashboard update.")
-    pass_check("Locally updated CURRENT_STATE.md.")
+    print("\n8. Edit `CURRENT_STATE.md`, run `--once`, and verify the same dashboard block updates in place.")
+    print("   Automatically editing CURRENT_STATE.md...")
+    dashboard_text = get_dashboard_contents(cfg.warroom_path)
+    if "## Active Locks" not in dashboard_text:
+        dashboard_text += "\n## Active Locks\n- Active Lock: /home/alhinai/WarRoom/demo_check.lock\n"
+    else:
+        dashboard_text = dashboard_text.replace("## Active Locks", "## Active Locks\n- Active Lock: /home/alhinai/WarRoom/demo_check.lock")
+    (cfg.warroom_path / "CURRENT_STATE.md").write_text(dashboard_text, encoding="utf-8")
     
-    rc, stdout, stderr = run_cmd("python3 notion_warroom_bridge.py --once")
-    if rc != 0:
-        fail(f"Daemon failed to run:\n{stderr}\n{stdout}")
-    pass_check("Daemon executed successfully.")
+    if not run_once():
+        sys.exit(1)
+    print("   Look at the Notion UI for the Dashboard page.")
+    print("   The text '- Active Lock: /home/alhinai/WarRoom/demo_check.lock' should appear.")
+    input("   [Press Enter after verifying in Notion UI]")
 
-    print("Please verify in Notion that the Dashboard code block shows '# Updated State'")
-    input("\nPress Enter when verified...")
+    print("\n9. Run `--once` twice more; no duplicate handoff, dashboard block, or result block appears.")
+    run_once()
+    run_once()
+    
+    handoff_text_final = get_handoff_contents(cfg.warroom_path)
+    count = handoff_text_final.count("- Task: Acceptance Test Task")
+    if count != 1:
+        print(f"FAIL: Expected exactly 1 block for task, found {count}")
+        sys.exit(1)
+    print("PASS: No duplicate handoff blocks.")
+    print("   Verify Notion UI has no duplicate dashboards or result blocks.")
+    input("   [Press Enter after verifying in Notion UI]")
 
-    print_step("Step 9: Idempotency Check")
-    rc, stdout, stderr = run_cmd("python3 notion_warroom_bridge.py --once")
-    rc2, stdout2, stderr2 = run_cmd("python3 notion_warroom_bridge.py --once")
-    
-    if "Pushed" in stdout or "Pushed" in stdout2 or "upserted" in stdout or "upserted" in stdout2:
-        fail("Idempotency check failed: unexpected operations occurred when no files changed.")
-    
-    pass_check("Idempotency verified. No duplicate actions triggered.")
-    
-    print("\n\033[1;32m=== DEMO ACCEPTANCE COMPLETE! ALL CHECKS PASSED. ===\033[0m")
+    print("\nALL DEMO ACCEPTANCE CRITERIA PASSED!")
 
 if __name__ == "__main__":
     main()

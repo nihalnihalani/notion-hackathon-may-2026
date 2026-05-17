@@ -1,78 +1,79 @@
-# Notion OS War Room Bridge
+# Notion OS: War Room Bridge
 
-A highly secure, zero-execution courier daemon that bridges a Notion workspace with a local headless AI War Room. 
+**Notion is not just a wiki. It is the control plane for a local AI operating system.**
 
-## 🏗️ Architecture (V6 Final MVP)
+The War Room Bridge connects Notion to local AI agents (Hermes, OpenClaw, Codex, etc.) via a secure, file-based handoff protocol. It turns a Notion Database into a "Command Center" where you can dispatch tasks to agents, and turns a Notion Page into a "Mission Control Dashboard" that live-updates with your local workspace state.
 
-The bridge implements a strict **Closed-Loop Control Plane**. Notion acts as the command center, and the local War Room (a set of markdown files) acts as the execution plane for autonomous AI agents like Hermes and OpenClaw.
+## Architecture and Safety Boundary
 
-**Core Directives:**
-- **Zero Execution:** The bridge NEVER calls `subprocess`, `os.system`, or shell commands. It cannot be used to execute arbitrary code from Notion.
-- **Idempotency First:** `StateStore` provides robust cross-process file-locking (`.lock`) and atomic writes via temporary file swapping (`os.replace`).
-- **HTTP Pacing:** A custom `NotionHTTPClient` correctly handles Notion API rate limits, backoffs (via `Retry-After`), and 5xx errors.
-- **Single Dashboard Block:** Updates `CURRENT_STATE.md` into a single Notion code block in-place instead of endlessly appending.
+The bridge is designed with strict security isolation:
+1. **Unidirectional Command Plane:** Notion tasks with `Status = Pending` are fetched by the bridge and appended to a local `~/WarRoom/HANDOFFS.md` file.
+2. **Local Agent Execution:** The bridge **never** executes shell commands directly, **never** invokes agents, and **never** talks to Telegram. It simply writes the `.md` files. Your local agents (Hermes, OpenClaw) monitor these files under their own local safety locks.
+3. **Bidirectional Result Sync:** When an agent updates a task in `HANDOFFS.md` to `COMPLETED` and provides a `Result`, the bridge detects the change and syncs it back up to the Notion Database, marking the card as `Completed`.
+4. **Idempotency and Locks:** A local JSON state file maintains sync hashes so tasks aren't duplicated. File-level locks prevent race conditions between the bridge and active agents.
 
-## 🚀 Setup
+## Quickstart
 
-1. **Clone & Virtual Environment:**
+### Prerequisites
+- Python 3.9+
+- A Notion integration token (`NOTION_TOKEN`)
+- A Notion Database for tasks (`NOTION_COMMAND_CENTER_DATABASE_ID`)
+- A Notion Page or Block for the dashboard (`NOTION_DASHBOARD_PAGE_ID`)
+
+### Setup
+1. Clone the repository and navigate to it:
+   ```bash
+   cd notion-os
+   ```
+2. Set up the virtual environment:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-
-2. **Configuration:**
-   Create a `.env` file in the project root:
-   ```env
-   NOTION_TOKEN=ntn_your_integration_token
-   NOTION_DASHBOARD_PAGE_ID=uuid_of_dashboard_page
-   NOTION_COMMAND_CENTER_DATABASE_ID=uuid_of_dispatch_database
-   NOTION_VERSION=2022-06-28
-   WARROOM_PATH=/home/alhinai/WarRoom
-   POLL_SECONDS=5
+3. Copy the example `.env` file and fill in your variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your NOTION_TOKEN, IDs, etc.
    ```
 
-3. **Database Schema Requirements:**
-   The Notion database needs the following exact properties:
-   - `Name` (title)
-   - `Status` (status: Pending, Dispatched, In Progress, Blocked, Completed, Failed)
-   - `Assignee` (select: Hermes, OpenClaw, Codex, User)
-   - `Authorized Files` (rich_text)
-   - `War Room Key` (rich_text)
-   - `Result Summary` (rich_text)
-   - `Next Action` (rich_text)
-   - `Last Synced At` (date)
-   - `Last Sync Hash` (rich_text)
+### Running the Bridge
 
-## 💻 Usage
-
-Start the background polling daemon:
+Run the daemon continuously in the background (polls every 5 seconds by default):
 ```bash
 python3 notion_warroom_bridge.py
 ```
 
-Or trigger a one-shot sync manually (useful for tests or cron):
+Run a single pass for testing or cron-jobs (exits immediately after one sync cycle):
 ```bash
 python3 notion_warroom_bridge.py --once
 ```
 
-## ✅ Running the Demo
+## Demo Script
 
-To prove the loop end-to-end for the hackathon judges:
+To verify that the system works perfectly and meets all hackathon acceptance criteria, you can run the interactive demo script:
 
 ```bash
 ./scripts/demo_check.py
 ```
 
-This interactive script guides you through the exact acceptance criteria, validating:
-1. Dispatch from Notion to `HANDOFFS.md`
-2. Syncing of results back to Notion
-3. Real-time observability syncing of `CURRENT_STATE.md`
-4. Strict idempotency (no duplicate operations).
+This script guides you through the full lifecycle:
+1. Creating a task in Notion.
+2. Passing the task to the local `HANDOFFS.md`.
+3. Answering the task locally as an agent would.
+4. Syncing the completed task back to Notion.
+5. Verifying that live dashboard blocks are correctly upserted without duplication.
 
-## 🧪 Testing
-The codebase uses `pytest` and boasts 88 tests covering API behavior, format parsing, file locking, and zero-execution guardrails.
+## Project Structure
 
-```bash
-pytest tests/
-```
+- `notion_warroom_bridge.py`: Main daemon entry point.
+- `src/notion_http.py`: Custom HTTP client (no SDK) with rate limiting (429/5xx backoff).
+- `src/config.py`: Environment and configuration loader.
+- `src/state_store.py`: Atomic JSON sidecar state for idempotency and file locks.
+- `src/dispatch_sync.py`: Syncs Notion tasks -> War Room `HANDOFFS.md`.
+- `src/result_sync.py`: Syncs War Room `HANDOFFS.md` -> Notion task completion.
+- `src/state_observer.py`: Syncs War Room `CURRENT_STATE.md` -> Notion dashboard block.
+
+## License
+
+Internal War Room project.
