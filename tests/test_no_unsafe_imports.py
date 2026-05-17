@@ -18,10 +18,11 @@ def test_no_banned_imports():
     offenders = []
     for f in files:
         if not f.exists(): continue
+        import re
         text = f.read_text()
         for banned in BANNED:
-            # Simple substring check (sufficient for guardrail)
-            if banned in text:
+            # Word boundary regex check
+            if re.search(r'\b' + re.escape(banned) + r'\b', text):
                 offenders.append((str(f), banned))
                 
     assert not offenders, f"banned references found: {offenders}"

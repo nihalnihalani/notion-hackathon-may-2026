@@ -305,3 +305,17 @@ class StateStore:
             state = self.load()
             state["dashboard_block_id"] = block_id
             self.save(state)
+
+    @property
+    def dashboard_block_id(self) -> Optional[str]:
+        return self.load().get("dashboard_block_id")
+
+    @property
+    def dashboard_hash(self) -> Optional[str]:
+        return self.load().get("dashboard_hash")
+
+    def set_dashboard_hash(self, dash_hash: Optional[str]) -> None:
+        with self.locked():
+            state = self.load()
+            state["dashboard_hash"] = dash_hash
+            self.save(state)
