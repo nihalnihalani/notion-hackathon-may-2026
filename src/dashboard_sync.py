@@ -55,11 +55,15 @@ def sync_dashboard(
         
         try:
             client.update_block(
-                block_id=block_id,
-                code_payload={
-                    "rich_text": [{"type": "text", "text": {"content": safe_content}}],
-                    "language": "markdown",
-                }
+                block_id,
+                {
+                    "code": {
+                        "rich_text": [
+                            {"type": "text", "text": {"content": safe_content}}
+                        ],
+                        "language": "markdown",
+                    }
+                },
             )
             state["dashboard_hash"] = current_hash
             state_store.save(state)

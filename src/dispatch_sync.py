@@ -84,15 +84,22 @@ def sanitize_inline(text: str, limit: int = MAX_FIELD_LEN) -> str:
 
 
 def sanitize_path_field(text: str, limit: int = MAX_FIELD_LEN) -> str:
-    """Ensure paths cannot traverse out of the workspace or use absolute roots."""
+    """Sanitize a path/glob field for HANDOFFS.md.
+
+    The plan requires absolute local paths or globs (e.g. `/home/alhinai/WarRoom/**`)
+    in `Authorized Files` and an optional absolute path in `Working Directory`.
+    We strip shell metacharacters and `..` traversal segments, but preserve
+    absolute paths and `~/` prefixes so the plan's demo storyboard works.
+    """
     cleaned = sanitize_inline(text, limit)
+    cleaned = re.sub(r"[`$|&;<>]+", "", cleaned)
     tokens = re.split(r"([\s,;]+)", cleaned)
     safe_tokens = []
     for t in tokens:
         if not t.strip():
             safe_tokens.append(t)
             continue
-        if ".." in t or t.startswith("/") or t.startswith("~") or t.startswith("$"):
+        if ".." in t:
             safe_tokens.append(".")
         else:
             safe_tokens.append(t)
