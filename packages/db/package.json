@@ -11,6 +11,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./edge": {
+      "types": "./dist/edge.d.ts",
+      "default": "./dist/edge.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
     }
   },
   "files": ["dist", "prisma"],
@@ -18,9 +26,23 @@
     "build": "tsc -b",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "5.22.0",
+    "@prisma/client": "5.22.0",
+    "pg": "8.13.1",
+    "zod": "3.23.8"
   },
   "devDependencies": {
+    "@types/node": "20.17.10",
+    "@types/pg": "8.11.10",
+    "prisma": "5.22.0",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

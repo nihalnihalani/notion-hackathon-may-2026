@@ -2,7 +2,7 @@
   "name": "@forge/connectors",
   "version": "0.0.0",
   "private": true,
-  "description": "First-party connector SDKs (GitHub, Linear, Stripe, Slack, Google) used by generated agents.",
+  "description": "First-party connector SDKs (GitHub, Linear, Stripe, Slack, Google, Sentry, Vercel, Anthropic, OpenAI, MiniMax) used by generated agents.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,6 +11,46 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./github": {
+      "types": "./dist/github/index.d.ts",
+      "default": "./dist/github/index.js"
+    },
+    "./linear": {
+      "types": "./dist/linear/index.d.ts",
+      "default": "./dist/linear/index.js"
+    },
+    "./stripe": {
+      "types": "./dist/stripe/index.d.ts",
+      "default": "./dist/stripe/index.js"
+    },
+    "./slack": {
+      "types": "./dist/slack/index.d.ts",
+      "default": "./dist/slack/index.js"
+    },
+    "./google": {
+      "types": "./dist/google/index.d.ts",
+      "default": "./dist/google/index.js"
+    },
+    "./sentry": {
+      "types": "./dist/sentry/index.d.ts",
+      "default": "./dist/sentry/index.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel/index.d.ts",
+      "default": "./dist/vercel/index.js"
+    },
+    "./anthropic": {
+      "types": "./dist/anthropic/index.d.ts",
+      "default": "./dist/anthropic/index.js"
+    },
+    "./openai": {
+      "types": "./dist/openai/index.d.ts",
+      "default": "./dist/openai/index.js"
+    },
+    "./minimax": {
+      "types": "./dist/minimax/index.d.ts",
+      "default": "./dist/minimax/index.js"
     }
   },
   "files": ["dist"],
@@ -20,7 +60,12 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

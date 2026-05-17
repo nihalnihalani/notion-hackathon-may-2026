@@ -1,0 +1,205 @@
+// Forge — Prisma schema (Postgres on PlanetScale)
+//
+// Source of truth: PLAN.md Part V (Data Model — PlanetScale).
+// This file MUST stay byte-equivalent to that schema in shape.
+//
+// Notes on deviations from PLAN.md Part V (intentional, narrow):
+//   1. `previewFeatures = ["driverAdapters"]` is enabled on the generator so we
+//      can use `@prisma/adapter-pg` for Edge / Vercel Workflow runtimes
+//      (`src/edge.ts`). This does NOT change the schema or migrations — it only
+//      affects the generated client's runtime surface.
+//   2. `binaryTargets` is set so Prisma's query engine works on local macOS
+//      *and* on Vercel's Linux build environment.
+// Everything else (models, fields, enums, indexes, relations) matches Part V
+// exactly.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
+}
+
+model Workspace {
+  id                String           @id @default(cuid())
+  notionWorkspaceId String           @unique // from Notion OAuth
+  name              String
+  ownerUserId       String
+  installedAt       DateTime         @default(now())
+  forgePageId       String? // the installed Forge page in their workspace
+  forgeDbId         String? // the installed Forge Requests DB
+  users             User[]
+  generations       Generation[]
+  generatedAgents   GeneratedAgent[]
+  usage             UsageMeter[]
+}
+
+model User {
+  id          String       @id @default(cuid())
+  clerkId     String       @unique
+  email       String       @unique
+  workspaceId String
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id])
+  generations Generation[]
+  createdAt   DateTime     @default(now())
+}
+
+model Generation {
+  id              String           @id @default(cuid())
+  workspaceId     String
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id])
+  userId          String
+  user            User             @relation(fields: [userId], references: [id])
+  notionRowId     String // Forge Requests DB row in Notion
+  description     String           @db.Text
+  descriptionHash String           @db.VarChar(64) // for idempotency
+  status          GenerationStatus
+  pattern         AgentPattern?
+  agentId         String? // GeneratedAgent.id once shipped
+  startedAt       DateTime         @default(now())
+  completedAt     DateTime?
+  totalLatencyMs  Int?
+  totalCostUsd    Decimal?         @db.Decimal(10, 6)
+  steps           GenerationStep[]
+
+  @@index([workspaceId, descriptionHash])
+  @@index([status, startedAt])
+}
+
+model GenerationStep {
+  id               String     @id @default(cuid())
+  generationId     String
+  generation       Generation @relation(fields: [generationId], references: [id], onDelete: Cascade)
+  agent            AgentName // schema_smith | tool_coder | inspector | shipper
+  attempt          Int
+  status           StepStatus
+  modelUsed        String? // claude-opus-4-7 | gpt-5 | n/a
+  promptTokens     Int?
+  completionTokens Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+  costUsd          Decimal?   @db.Decimal(10, 6)
+  inputJson        Json
+  outputJson       Json?
+  errorJson        Json?
+  latencyMs        Int?
+  startedAt        DateTime   @default(now())
+  completedAt      DateTime?
+}
+
+model GeneratedAgent {
+  id                  String       @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace    @relation(fields: [workspaceId], references: [id])
+  generationId        String       @unique
+  ntnWorkerName       String // the slug used in `ntn workers ...`
+  ntnDeployUrl        String?
+  notionCustomAgentId String?
+  pattern             AgentPattern
+  description         String       @db.Text
+  sourceBlobUrl       String // Vercel Blob URL for generated TS
+  avatarUrl           String? // MiniMax-generated image
+  capabilities        Json // [{ kind, key, title }]
+  oauthProviders      String[] // ["github", "linear"]
+  webhookUrl          String?
+  status              AgentStatus // active | paused | retracted
+  createdAt           DateTime     @default(now())
+  lastInvokedAt       DateTime?
+  totalInvocations    Int          @default(0)
+
+  @@index([workspaceId, status])
+}
+
+model PromptCache {
+  id                String   @id @default(cuid())
+  descriptionHash   String   @db.VarChar(64)
+  embedding         Bytes // pgvector-compatible
+  schemaSmithOutput Json
+  toolCoderOutput   String   @db.Text
+  hitCount          Int      @default(0)
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime
+
+  @@index([descriptionHash])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  userId       String?
+  action       String // "agent.deployed" | "agent.deleted" | "oauth.granted" | ...
+  resourceType String
+  resourceId   String
+  metadata     Json
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([workspaceId, action, createdAt])
+}
+
+model UsageMeter {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  workspace           Workspace @relation(fields: [workspaceId], references: [id])
+  date                DateTime  @db.Date
+  generationsCount    Int       @default(0)
+  deploysCount        Int       @default(0)
+  invocationsCount    Int       @default(0)
+  totalLlmCostUsd     Decimal   @default(0) @db.Decimal(10, 4)
+  totalSandboxSeconds Int       @default(0)
+
+  @@unique([workspaceId, date])
+}
+
+model Evaluation {
+  id              String    @id @default(cuid())
+  agent           AgentName
+  goldenInputHash String    @db.VarChar(64)
+  modelUsed       String
+  pass            Boolean
+  diffJson        Json?
+  runAt           DateTime  @default(now())
+
+  @@index([agent, runAt])
+}
+
+enum GenerationStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+enum StepStatus {
+  running
+  succeeded
+  failed
+  retrying
+}
+
+enum AgentPattern {
+  database_query
+  webhook_trigger
+  sync_source
+  external_api_call
+  multi_step
+}
+
+enum AgentStatus {
+  active
+  paused
+  retracted
+}
+
+enum AgentName {
+  schema_smith
+  tool_coder
+  inspector
+  shipper
+}
