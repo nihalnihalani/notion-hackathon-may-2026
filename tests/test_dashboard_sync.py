@@ -1,10 +1,33 @@
-import os
-import pytest
+"""Unit tests for src/dashboard_sync.py — Redis-backed.
+
+Covers CURRENT_STATE.md → dashboard Notion block syncing.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import sys
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
-from src.dashboard_sync import safe_truncate_markdown, push_state_to_notion
-from src.state_store import StateStore
-from src.notion_http import NotionHTTPClient
+from unittest.mock import MagicMock, Mock
+
+import fakeredis
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from src.dashboard_sync import (  # noqa: E402
+    push_state_to_notion,
+    safe_truncate_markdown,
+)
+from src.notion_http import NotionHTTPClient  # noqa: E402
+from src.redis_store import RedisStore  # noqa: E402
+
+
+@pytest.fixture
+def store() -> RedisStore:
+    return RedisStore(client=fakeredis.FakeRedis(decode_responses=True))
+
 
 def test_safe_truncate():
     text = "hello"
@@ -14,61 +37,47 @@ def test_safe_truncate():
     res = safe_truncate_markdown(text, limit=100)
     assert len(res) == 100 + len("\n...[truncated]")
 
-def test_sync_dashboard_no_block_id(tmp_path):
-    client = Mock(spec=NotionHTTPClient)
-    store = Mock(spec=StateStore)
-    mock_ctx = MagicMock()
-    store.locked.return_value = mock_ctx
-    mock_ctx.__enter__.return_value = store
-    store.dashboard_block_id = None
-    store.dashboard_hash = None
-    
-    assert push_state_to_notion(client, "dummy_dash_page", Path(tmp_path), store) is False
 
-def test_sync_dashboard_no_file(tmp_path):
+def test_sync_dashboard_no_block_id(store):
     client = Mock(spec=NotionHTTPClient)
-    store = Mock(spec=StateStore)
-    mock_ctx = MagicMock()
-    store.locked.return_value = mock_ctx
-    mock_ctx.__enter__.return_value = store
-    store.dashboard_block_id = "block123"
-    store.dashboard_hash = None
-    
-    # CURRENT_STATE.md doesn't exist
-    assert push_state_to_notion(client, "dummy_dash_page", Path(tmp_path), store) is False
+    # Bridge state has no dashboard_block_id.
+    assert push_state_to_notion(client, "dummy_dash_page", store) is False
 
-def test_sync_dashboard_success(tmp_path):
+
+def test_sync_dashboard_no_file(store):
     client = Mock(spec=NotionHTTPClient)
-    store = Mock(spec=StateStore)
-    mock_ctx = MagicMock()
-    store.locked.return_value = mock_ctx
-    mock_ctx.__enter__.return_value = store
-    store.dashboard_block_id = "block123"
-    store.dashboard_hash = None
-    
-    warroom = Path(tmp_path)
-    state_file = warroom / "CURRENT_STATE.md"
-    state_file.write_text("New state")
-        
-    assert push_state_to_notion(client, "dummy_dash_page", warroom, store) is True
+    state = store.get_bridge_state()
+    state["dashboard_block_id"] = "block123"
+    store.set_bridge_state(state)
+
+    # CURRENT_STATE.md was never set in Redis.
+    assert push_state_to_notion(client, "dummy_dash_page", store) is False
+
+
+def test_sync_dashboard_success(store):
+    client = Mock(spec=NotionHTTPClient)
+    state = store.get_bridge_state()
+    state["dashboard_block_id"] = "block123"
+    store.set_bridge_state(state)
+
+    store.set_file("CURRENT_STATE.md", "New state")
+
+    assert push_state_to_notion(client, "dummy_dash_page", store) is True
     client.update_block.assert_called_once()
-    store.set_dashboard_hash.assert_called_once()
 
-def test_sync_dashboard_unchanged(tmp_path):
+    # Hash advanced in bridge state.
+    assert store.get_bridge_state().get("dashboard_hash")
+
+
+def test_sync_dashboard_unchanged(store):
     client = Mock(spec=NotionHTTPClient)
-    store = Mock(spec=StateStore)
-    mock_ctx = MagicMock()
-    store.locked.return_value = mock_ctx
-    mock_ctx.__enter__.return_value = store
-    
-    import hashlib
     current_hash = hashlib.sha256(b"New state").hexdigest()
-    store.dashboard_block_id = "block123"
-    store.dashboard_hash = current_hash
-    
-    warroom = Path(tmp_path)
-    state_file = warroom / "CURRENT_STATE.md"
-    state_file.write_text("New state")
-        
-    assert push_state_to_notion(client, "dummy_dash_page", warroom, store) is False
+    state = store.get_bridge_state()
+    state["dashboard_block_id"] = "block123"
+    state["dashboard_hash"] = current_hash
+    store.set_bridge_state(state)
+
+    store.set_file("CURRENT_STATE.md", "New state")
+
+    assert push_state_to_notion(client, "dummy_dash_page", store) is False
     client.update_block.assert_not_called()

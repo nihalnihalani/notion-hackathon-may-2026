@@ -891,7 +891,7 @@ def main() -> int:
 
     # Seed the 4 live screens with their first live snapshot.
     print("\nSeeding live data on Memory / Docs / Team / Calendar screens...")
-    n = sync_openclaw_screens(client, config.warroom_path, store)
+    n = sync_openclaw_screens(client, store)
     print(f"[ok]   {n} screen(s) populated with live data")
 
     print("\n--- Done ---")

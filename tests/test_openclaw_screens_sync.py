@@ -1,25 +1,29 @@
-"""Tests for src/openclaw_screens_sync.py — bidirectional sync.
+"""Tests for src/openclaw_screens_sync.py — bidirectional sync, Redis-backed.
 
 Covers:
 - First-run bootstrap creates the editable block from local content.
 - Hash-skip when nothing changed on either side.
 - Local-changed → push to Notion.
-- Notion-changed → pull to local (atomic write).
+- Notion-changed → pull to local (store write).
 - Both changed → last-edit-wins by timestamp.
 - 404 on the editable block recreates it once.
 - Read-only screens (Docs, Visual Office) follow the existing
   upsert pattern.
 - The one-shot Command Center linker is idempotent.
+
+The bidirectional flow compares `last_local_updated_at` (from bridge state)
+with Notion's `last_edited_time`, since the canonical local content lives
+in Redis and has no filesystem mtime.
 """
 
 from __future__ import annotations
 
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import fakeredis
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +32,6 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.notion_http import NotionAPIError  # noqa: E402
 from src.openclaw_screens_sync import (  # noqa: E402
     BidirectionalSpec,
-    _atomic_write_text,
     _extract_block_text,
     _last_activity_per_owner,
     _parse_notion_ts,
@@ -38,20 +41,15 @@ from src.openclaw_screens_sync import (  # noqa: E402
     render_visual_office,
     sync_openclaw_screens,
 )
-from src.state_store import StateStore  # noqa: E402
+from src.redis_store import RedisStore  # noqa: E402
+
+
+@pytest.fixture
+def store() -> RedisStore:
+    return RedisStore(client=fakeredis.FakeRedis(decode_responses=True))
 
 
 # ---- low-level helpers ---------------------------------------------------
-
-
-def test_atomic_write_creates_then_replaces(tmp_path):
-    target = tmp_path / "x.md"
-    _atomic_write_text(target, "v1")
-    assert target.read_text() == "v1"
-    _atomic_write_text(target, "v2")
-    assert target.read_text() == "v2"
-    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(".x.md.")]
-    assert leftovers == []
 
 
 def test_extract_block_text_handles_code_paragraph_quote():
@@ -79,17 +77,17 @@ def test_parse_notion_ts_empty_returns_none():
 # ---- render_docs (read-only derived) ------------------------------------
 
 
-def test_render_docs_missing_dir(tmp_path):
-    out = render_docs_screen(tmp_path / "nope")
-    assert "no KnowledgeBase directory" in out
+def test_render_docs_missing_dir(store):
+    # Nothing in the KB index yet — renderer emits a clear empty-state sentinel.
+    out = render_docs_screen(store)
+    assert "Live Docs" in out
+    assert "no .md files" in out.lower() or "no knowledgebase" in out.lower()
 
 
-def test_render_docs_lists_md_files_sorted(tmp_path):
-    kb = tmp_path / "KnowledgeBase"
-    kb.mkdir()
-    (kb / "alpha.md").write_text("a", "utf-8")
-    (kb / "beta.md").write_text("bb", "utf-8")
-    out = render_docs_screen(kb)
+def test_render_docs_lists_md_files_sorted(store):
+    store.set_kb_doc("alpha.md", "a")
+    store.set_kb_doc("beta.md", "bb")
+    out = render_docs_screen(store)
     assert "alpha.md (1 bytes)" in out
     assert "beta.md (2 bytes)" in out
     assert out.index("alpha.md") < out.index("beta.md")
@@ -98,37 +96,67 @@ def test_render_docs_lists_md_files_sorted(tmp_path):
 # ---- render_visual_office (read-only derived) ---------------------------
 
 
-def test_visual_office_no_activity(tmp_path):
-    out = render_visual_office(tmp_path / "state.json", tmp_path / "HANDOFFS.md")
+def test_visual_office_no_activity(store):
+    out = render_visual_office(store)
     assert "no agent activity recorded yet" in out
 
 
-def test_visual_office_status_badges(tmp_path):
-    handoffs = tmp_path / "HANDOFFS.md"
-    handoffs.write_text(
-        "- Task: A [wrb_aaaaaaaaaaaa]\n  Owner: Hermes\n  Files Touched: x\n  Status: COMPLETED\n  Result: ok\n  Next Action: None\n\n"
-        "- Task: B [wrb_bbbbbbbbbbbb]\n  Owner: OpenClaw\n  Files Touched: x\n  Status: COMPLETED\n  Result: ok\n  Next Action: None\n\n"
-        "- Task: C [wrb_cccccccccccc]\n  Owner: Codex\n  Files Touched: x\n  Status: COMPLETED\n  Result: ok\n  Next Action: None\n",
-        encoding="utf-8",
+def test_visual_office_status_badges(store):
+    # Three handoffs with different owners, last_updated_at varying.
+    store.upsert_handoff(
+        "wrb_aaaaaaaaaaaa",
+        task="A",
+        owner="Hermes",
+        files_touched="x",
+        status="COMPLETED",
+        result="ok",
+        next_action="None",
+        last_updated_at="2026-05-17T12:00:00Z",
     )
-    state = tmp_path / "state.json"
-    state.write_text(
-        json.dumps(
-            {
-                "pages": {
-                    "p1": {"handoff_key": "wrb_aaaaaaaaaaaa", "last_synced_at": "2026-05-17T12:00:00Z"},
-                    "p2": {"handoff_key": "wrb_bbbbbbbbbbbb", "last_synced_at": "2026-05-17T11:30:00Z"},
-                    "p3": {"handoff_key": "wrb_cccccccccccc", "last_synced_at": "2026-05-17T05:00:00Z"},
-                }
-            }
-        ),
-        encoding="utf-8",
+    store.upsert_handoff(
+        "wrb_bbbbbbbbbbbb",
+        task="B",
+        owner="OpenClaw",
+        files_touched="x",
+        status="COMPLETED",
+        result="ok",
+        next_action="None",
+        last_updated_at="2026-05-17T11:30:00Z",
     )
-    now = datetime(2026, 5, 17, 12, 2, 0, tzinfo=timezone.utc)  # Hermes: 2 min ago
-    out = render_visual_office(state, handoffs, now=now)
-    assert "🟢 ACTIVE" in out  # Hermes
-    assert "🟡 IDLE" in out  # OpenClaw (~32min ago)
-    assert "⚫ AWAY" in out  # Codex (~7h ago)
+    store.upsert_handoff(
+        "wrb_cccccccccccc",
+        task="C",
+        owner="Codex",
+        files_touched="x",
+        status="COMPLETED",
+        result="ok",
+        next_action="None",
+        last_updated_at="2026-05-17T05:00:00Z",
+    )
+    # Mirror the per-page state so renderers depending on bridge state can
+    # derive activity buckets.
+    state = store.get_bridge_state()
+    state["pages"] = {
+        "p1": {
+            "handoff_key": "wrb_aaaaaaaaaaaa",
+            "last_synced_at": "2026-05-17T12:00:00Z",
+        },
+        "p2": {
+            "handoff_key": "wrb_bbbbbbbbbbbb",
+            "last_synced_at": "2026-05-17T11:30:00Z",
+        },
+        "p3": {
+            "handoff_key": "wrb_cccccccccccc",
+            "last_synced_at": "2026-05-17T05:00:00Z",
+        },
+    }
+    store.set_bridge_state(state)
+
+    now = datetime(2026, 5, 17, 12, 2, 0, tzinfo=timezone.utc)
+    out = render_visual_office(store, now=now)
+    assert "🟢 ACTIVE" in out  # Hermes (2 min ago)
+    assert "🟡 IDLE" in out  # OpenClaw (~32 min ago)
+    assert "⚫ AWAY" in out  # Codex (~7 h ago)
 
 
 # ---- Bidirectional sync ----------------------------------------------
@@ -138,11 +166,17 @@ def _spec(file_name: str = "TEST.md") -> BidirectionalSpec:
     return BidirectionalSpec(screen_key="screen_test", local_file=file_name)
 
 
-def _seed_page(store: StateStore, screen_key: str, page_id: str = "page_x") -> None:
-    with store.locked():
-        state = store.load()
-        state.setdefault("openclaw_pages", {})[screen_key] = {"page_id": page_id}
-        store.save(state)
+def _seed_page(store: RedisStore, screen_key: str, page_id: str = "page_x") -> None:
+    state = store.get_bridge_state()
+    state.setdefault("openclaw_pages", {})[screen_key] = {"page_id": page_id}
+    store.set_bridge_state(state)
+
+
+def _set_local_updated_at(store: RedisStore, screen_key: str, iso_ts: str) -> None:
+    state = store.get_bridge_state()
+    entry = state.setdefault("openclaw_pages", {}).setdefault(screen_key, {})
+    entry["last_local_updated_at"] = iso_ts
+    store.set_bridge_state(state)
 
 
 def _make_client(
@@ -163,41 +197,40 @@ def _make_client(
     return client
 
 
-def test_first_run_bootstraps_block_from_local_content(tmp_path):
-    (tmp_path / "TEST.md").write_text("hello local\n", "utf-8")
-    store = StateStore(tmp_path)
+def test_first_run_bootstraps_block_from_local_content(store):
+    store.set_file("TEST.md", "hello local\n")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_created")
 
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", None, tmp_path / "TEST.md", store
+        client, _spec(), "page_x", None, store
     )
 
     assert outcome == "created"
     client.append_block_children.assert_called_once()
     client.update_block.assert_not_called()
-    entry = store.load()["openclaw_pages"]["screen_test"]
+    entry = store.get_bridge_state()["openclaw_pages"]["screen_test"]
     assert entry["live_block_id"] == "blk_created"
     assert isinstance(entry["live_hash"], str) and len(entry["live_hash"]) == 64
 
 
-def test_unchanged_no_api_mutation(tmp_path):
-    (tmp_path / "TEST.md").write_text("same\n", "utf-8")
-    store = StateStore(tmp_path)
+def test_unchanged_no_api_mutation(store):
+    store.set_file("TEST.md", "same\n")
     _seed_page(store, "screen_test")
-    # Seed live_block_id + live_hash to match local.
     client = _make_client(append_id="blk_1", get_text="same\n")
     _sync_one_bidirectional(
-        client, _spec(), "page_x", None, tmp_path / "TEST.md", store
+        client, _spec(), "page_x", None, store
     )
     client.reset_mock()
 
+    block_id = store.get_bridge_state()["openclaw_pages"]["screen_test"][
+        "live_block_id"
+    ]
     outcome = _sync_one_bidirectional(
         client,
         _spec(),
         "page_x",
-        store.load()["openclaw_pages"]["screen_test"]["live_block_id"],
-        tmp_path / "TEST.md",
+        block_id,
         store,
     )
     assert outcome == "unchanged"
@@ -205,24 +238,27 @@ def test_unchanged_no_api_mutation(tmp_path):
     client.append_block_children.assert_not_called()
 
 
-def test_local_changed_pushes_to_notion(tmp_path):
-    (tmp_path / "TEST.md").write_text("v1", "utf-8")
-    store = StateStore(tmp_path)
+def test_local_changed_pushes_to_notion(store):
+    store.set_file("TEST.md", "v1")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_1", get_text="v1")
     _sync_one_bidirectional(
-        client, _spec(), "page_x", None, tmp_path / "TEST.md", store
+        client, _spec(), "page_x", None, store
     )
     client.reset_mock()
 
-    (tmp_path / "TEST.md").write_text("v2 — local edit", "utf-8")
+    store.set_file("TEST.md", "v2 — local edit")
+    # Local edit time is now; remote is older.
+    _set_local_updated_at(
+        store, "screen_test", datetime.now(timezone.utc).isoformat()
+    )
     client.get_block.return_value = {
         "id": "blk_1",
         "code": {"rich_text": [{"text": {"content": "v1"}}]},  # remote unchanged
         "last_edited_time": "2026-05-17T00:00:00.000Z",
     }
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", "blk_1", tmp_path / "TEST.md", store
+        client, _spec(), "page_x", "blk_1", store
     )
 
     assert outcome == "pushed"
@@ -232,13 +268,11 @@ def test_local_changed_pushes_to_notion(tmp_path):
     assert "v2 — local edit" in args[1]["code"]["rich_text"][0]["text"]["content"]
 
 
-def test_remote_changed_pulls_to_local_atomic(tmp_path):
-    target = tmp_path / "TEST.md"
-    target.write_text("v1", "utf-8")
-    store = StateStore(tmp_path)
+def test_remote_changed_pulls_to_local(store):
+    store.set_file("TEST.md", "v1")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_1", get_text="v1")
-    _sync_one_bidirectional(client, _spec(), "page_x", None, target, store)
+    _sync_one_bidirectional(client, _spec(), "page_x", None, store)
     client.reset_mock()
 
     # Local unchanged; remote was edited.
@@ -248,60 +282,58 @@ def test_remote_changed_pulls_to_local_atomic(tmp_path):
         "last_edited_time": "2026-05-17T12:00:00.000Z",
     }
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", "blk_1", target, store
+        client, _spec(), "page_x", "blk_1", store
     )
 
     assert outcome == "pulled"
-    assert target.read_text() == "v2 from notion"
+    assert store.get_file("TEST.md") == "v2 from notion"
     client.update_block.assert_not_called()
-    # No temp leftovers from atomic write.
-    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(".TEST.md.")]
-    assert leftovers == []
 
 
-def test_both_changed_local_wins_when_local_newer(tmp_path):
-    target = tmp_path / "TEST.md"
-    target.write_text("v1", "utf-8")
-    store = StateStore(tmp_path)
+def test_both_changed_local_wins_when_local_newer(store):
+    store.set_file("TEST.md", "v1")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_1", get_text="v1")
-    _sync_one_bidirectional(client, _spec(), "page_x", None, target, store)
+    _sync_one_bidirectional(client, _spec(), "page_x", None, store)
     client.reset_mock()
 
-    # Local edited to "L2" (mtime = now). Remote edited to "R2" but Notion
-    # says it was edited 1 hour ago — local wins.
-    target.write_text("L2", "utf-8")
+    # Local edited to "L2" (last_local_updated_at = now). Remote edited to
+    # "R2" but Notion says it was edited well in the past — local wins.
+    store.set_file("TEST.md", "L2")
+    _set_local_updated_at(
+        store, "screen_test", datetime.now(timezone.utc).isoformat()
+    )
     client.get_block.return_value = {
         "id": "blk_1",
         "code": {"rich_text": [{"text": {"content": "R2"}}]},
-        "last_edited_time": "2026-05-16T00:00:00.000Z",  # well in the past
+        "last_edited_time": "2026-05-16T00:00:00.000Z",  # past
     }
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", "blk_1", target, store
+        client, _spec(), "page_x", "blk_1", store
     )
 
     assert outcome == "conflict_local"
     client.update_block.assert_called_once()
     args, _ = client.update_block.call_args
     assert "L2" in args[1]["code"]["rich_text"][0]["text"]["content"]
-    assert target.read_text() == "L2"
+    assert store.get_file("TEST.md") == "L2"
 
 
-def test_both_changed_remote_wins_when_notion_newer(tmp_path):
-    target = tmp_path / "TEST.md"
-    target.write_text("v1", "utf-8")
-    store = StateStore(tmp_path)
+def test_both_changed_remote_wins_when_notion_newer(store):
+    store.set_file("TEST.md", "v1")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_1", get_text="v1")
-    _sync_one_bidirectional(client, _spec(), "page_x", None, target, store)
+    _sync_one_bidirectional(client, _spec(), "page_x", None, store)
     client.reset_mock()
 
-    # Force local mtime to be 1 hour ago; remote edit is "now".
-    import os
-
-    old = (datetime.now(timezone.utc).timestamp() - 3600)
-    target.write_text("L2", "utf-8")
-    os.utime(target, (old, old))
+    # Local edited to "L2" but with a stale last_local_updated_at (~1 hour
+    # ago); remote edit is in the far future — remote wins.
+    store.set_file("TEST.md", "L2")
+    old = (
+        datetime.now(timezone.utc).timestamp() - 3600
+    )
+    old_iso = datetime.fromtimestamp(old, tz=timezone.utc).isoformat()
+    _set_local_updated_at(store, "screen_test", old_iso)
     future = "2099-01-01T00:00:00.000Z"
     client.get_block.return_value = {
         "id": "blk_1",
@@ -309,34 +341,32 @@ def test_both_changed_remote_wins_when_notion_newer(tmp_path):
         "last_edited_time": future,
     }
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", "blk_1", target, store
+        client, _spec(), "page_x", "blk_1", store
     )
 
     assert outcome == "conflict_remote"
-    assert target.read_text() == "R2"
+    assert store.get_file("TEST.md") == "R2"
     client.update_block.assert_not_called()
 
 
-def test_404_on_get_block_recreates_from_local(tmp_path):
-    target = tmp_path / "TEST.md"
-    target.write_text("v1", "utf-8")
-    store = StateStore(tmp_path)
+def test_404_on_get_block_recreates_from_local(store):
+    store.set_file("TEST.md", "v1")
     _seed_page(store, "screen_test")
     client = _make_client(append_id="blk_old", get_text="v1")
-    _sync_one_bidirectional(client, _spec(), "page_x", None, target, store)
+    _sync_one_bidirectional(client, _spec(), "page_x", None, store)
     client.reset_mock()
 
     # Notion deleted the block; get_block raises 404.
     client.get_block.side_effect = NotionAPIError(404, "Not Found")
     client.append_block_children.return_value = {"results": [{"id": "blk_recreated"}]}
     outcome = _sync_one_bidirectional(
-        client, _spec(), "page_x", "blk_old", target, store
+        client, _spec(), "page_x", "blk_old", store
     )
 
     assert outcome == "created"
     client.append_block_children.assert_called_once()
     assert (
-        store.load()["openclaw_pages"]["screen_test"]["live_block_id"]
+        store.get_bridge_state()["openclaw_pages"]["screen_test"]["live_block_id"]
         == "blk_recreated"
     )
 
@@ -344,17 +374,15 @@ def test_404_on_get_block_recreates_from_local(tmp_path):
 # ---- End-to-end sync_openclaw_screens --------------------------------
 
 
-def test_sync_e2e_creates_one_block_per_wired_screen(tmp_path):
-    """All 6 wired screen pages get their first live block on a cold run."""
-    (tmp_path / "SHARED_MEMORY.md").write_text("memory\n", "utf-8")
-    (tmp_path / "AGENT_ROLES.md").write_text("roles\n", "utf-8")
-    (tmp_path / "SCHEDULE.md").write_text("schedule\n", "utf-8")
-    (tmp_path / "PROJECTS.md").write_text("projects\n", "utf-8")
-    (tmp_path / "HANDOFFS.md").write_text("", "utf-8")
-    (tmp_path / "KnowledgeBase").mkdir()
-    (tmp_path / "KnowledgeBase" / "x.md").write_text("doc", "utf-8")
+def test_sync_e2e_creates_one_block_per_wired_screen(store):
+    """All wired screen pages get their first live block on a cold run."""
+    store.set_file("SHARED_MEMORY.md", "memory\n")
+    store.set_file("AGENT_ROLES.md", "roles\n")
+    store.set_file("SCHEDULE.md", "schedule\n")
+    store.set_file("PROJECTS.md", "projects\n")
+    store.set_file("HANDOFFS.md", "")
+    store.set_kb_doc("x.md", "doc")
 
-    store = StateStore(tmp_path)
     for screen in (
         "screen_memory",
         "screen_calendar",
@@ -376,7 +404,7 @@ def test_sync_e2e_creates_one_block_per_wired_screen(tmp_path):
     }
     client.update_block.return_value = {}
 
-    pushed = sync_openclaw_screens(client, tmp_path, store)
+    pushed = sync_openclaw_screens(client, store)
     # 4 bidirectional + 2 readonly = 6 first-run mutations.
     assert pushed == 6
 
@@ -384,15 +412,13 @@ def test_sync_e2e_creates_one_block_per_wired_screen(tmp_path):
 # ---- Linker ----------------------------------------------------------
 
 
-def test_link_tasks_page_requires_page_in_state(tmp_path):
-    store = StateStore(tmp_path)
+def test_link_tasks_page_requires_page_in_state(store):
     client = MagicMock()
     assert link_tasks_page_to_command_center(client, "db_xyz", store) is False
     client.append_block_children.assert_not_called()
 
 
-def test_link_tasks_page_appends_once(tmp_path):
-    store = StateStore(tmp_path)
+def test_link_tasks_page_appends_once(store):
     _seed_page(store, "screen_tasks", page_id="tasks_p")
     client = MagicMock()
     client.append_block_children.return_value = {"results": [{"id": "blk_link"}]}
@@ -412,24 +438,37 @@ def test_link_tasks_page_appends_once(tmp_path):
 # ---- Per-Owner activity helper ---------------------------------------
 
 
-def test_last_activity_per_owner_groups_by_newest(tmp_path):
-    handoffs = tmp_path / "HANDOFFS.md"
-    handoffs.write_text(
-        "- Task: A [wrb_aaaaaaaaaaaa]\n  Owner: Hermes\n  Files Touched: x\n  Status: COMPLETED\n  Result: ok\n  Next Action: None\n\n"
-        "- Task: B [wrb_bbbbbbbbbbbb]\n  Owner: Hermes\n  Files Touched: x\n  Status: IN PROGRESS\n  Result: \n  Next Action: continue\n",
-        encoding="utf-8",
+def test_last_activity_per_owner_groups_by_newest(store):
+    store.upsert_handoff(
+        "wrb_aaaaaaaaaaaa",
+        task="A",
+        owner="Hermes",
+        files_touched="x",
+        status="COMPLETED",
+        result="ok",
+        next_action="None",
     )
-    state = tmp_path / "state.json"
-    state.write_text(
-        json.dumps(
-            {
-                "pages": {
-                    "p1": {"handoff_key": "wrb_aaaaaaaaaaaa", "last_synced_at": "2026-05-17T10:00:00Z"},
-                    "p2": {"handoff_key": "wrb_bbbbbbbbbbbb", "last_synced_at": "2026-05-17T12:00:00Z"},
-                }
-            }
-        ),
-        encoding="utf-8",
+    store.upsert_handoff(
+        "wrb_bbbbbbbbbbbb",
+        task="B",
+        owner="Hermes",
+        files_touched="x",
+        status="IN PROGRESS",
+        result="",
+        next_action="continue",
     )
-    activity = _last_activity_per_owner(state, handoffs)
+    state = store.get_bridge_state()
+    state["pages"] = {
+        "p1": {
+            "handoff_key": "wrb_aaaaaaaaaaaa",
+            "last_synced_at": "2026-05-17T10:00:00Z",
+        },
+        "p2": {
+            "handoff_key": "wrb_bbbbbbbbbbbb",
+            "last_synced_at": "2026-05-17T12:00:00Z",
+        },
+    }
+    store.set_bridge_state(state)
+
+    activity = _last_activity_per_owner(store)
     assert activity["Hermes"] == "2026-05-17T12:00:00Z"

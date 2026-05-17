@@ -1,24 +1,35 @@
 """Pure-function content renderers for the Mission Control Notion page.
 
-Each renderer takes one or more local War Room file paths and returns a
-markdown string ready to be pushed into a single Notion code block by the
-mission control syncer. Renderers do NOT:
+Path B of the storage migration moves every renderer off direct filesystem
+reads and onto ``RedisStore``. Each renderer now takes a ``RedisStore``
+instance and pulls the relevant logical content through the store:
 
-- call the Notion API,
-- invoke external processes, shells, or agent CLIs,
-- read directories outside the supplied paths.
+- ``RedisStore.get_file(name)`` for the canonical War Room markdown files
+  (``CURRENT_STATE.md``, ``SHARED_MEMORY.md``, ``SKILL_REGISTRY.md``,
+  ``PROTOCOL.md``, ``AGENT_ROLES.md``).
+- ``RedisStore.list_kb_docs`` / ``get_kb_doc`` for the knowledge base index.
+- ``RedisStore.render_handoffs_md`` for handoff history so the renderer can
+  reuse the existing ``warroom_format.parse_handoffs`` parser without
+  duplicating the materialisation logic.
+- ``RedisStore.get_bridge_state`` for the bridge-stats summary that used to
+  read ``.notion_bridge_state.json`` off disk.
 
-They are pure file readers: missing files yield a short human-readable
-sentinel rather than raising, and every renderer self-truncates to
-`MAX_RENDER_LEN` so the caller does not have to.
+Renderers remain pure: no Notion API calls, no shell execution, no agent
+CLI invocation. Missing content yields a short human-readable sentinel
+rather than raising, and every renderer self-truncates to ``MAX_RENDER_LEN``
+so callers don't have to.
+
+A small back-compat shim is kept at the bottom of the module for any
+legacy caller that still passes a ``Path``; tests under
+``tests/test_mission_control_renderers.py`` (owned by Agent C) will be
+migrated separately.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Optional
 
+from src.redis_store import RedisStore
 from src.warroom_format import parse_handoffs, sanitize_inline
 
 
@@ -36,17 +47,29 @@ _OWNER_ORDER = ("Hermes", "OpenClaw", "Codex", "User")
 # ---- Internal helpers ----------------------------------------------------
 
 
-def _safe_read_text(path: Path) -> Optional[str]:
-    """Return UTF-8 text from `path`, or None on missing/IO error.
+def _safe_read_text(value) -> Optional[str]:
+    """Back-compat shim: tolerate legacy callers that still hand us a Path.
 
-    We deliberately swallow `OSError` (which covers `FileNotFoundError`,
-    `PermissionError`, `IsADirectoryError`, etc.) so a single broken file
-    cannot crash the daemon's render cycle.
+    The migration target is "every renderer takes a ``RedisStore``", but a
+    couple of helper scripts and the openclaw bidirectional syncer still
+    call ``_safe_read_text`` directly with a filesystem ``Path`` to peek at
+    raw War Room files. Keep that working without dragging full file I/O
+    back into the renderer module by accepting both shapes here. When the
+    callers migrate, this helper can be deleted.
     """
-    try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+    if value is None:
         return None
+    # Duck-type instead of importing pathlib at module top: any object that
+    # exposes `.read_text` is treated as a Path-like.
+    read_text = getattr(value, "read_text", None)
+    if callable(read_text):
+        try:
+            return read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+    if isinstance(value, str):
+        return value
+    return None
 
 
 def _truncate(text: str) -> str:
@@ -68,9 +91,7 @@ def _truncate(text: str) -> str:
 # ---- Renderers -----------------------------------------------------------
 
 
-def render_agent_history(
-    handoffs_path: Path, *, limit_per_agent: int = 5
-) -> str:
+def render_agent_history(store: RedisStore, *, limit_per_agent: int = 5) -> str:
     """Group recent handoff entries by Owner; show last N per agent.
 
     The output is a markdown document with one `## <Owner>` section per
@@ -78,9 +99,9 @@ def render_agent_history(
     in first-seen order). Each section is a bullet list of the form
     `- [STATUS] task title (key)`.
 
-    Missing/empty source -> `(no handoff history)`.
+    Missing/empty handoff index -> `(no handoff history)`.
     """
-    text = _safe_read_text(handoffs_path)
+    text = store.render_handoffs_md()
     if not text or not text.strip():
         return "(no handoff history)"
 
@@ -128,9 +149,9 @@ def render_agent_history(
     return _truncate("\n".join(lines))
 
 
-def render_shared_memory(memory_path: Path) -> str:
-    """Return SHARED_MEMORY.md contents, truncated."""
-    text = _safe_read_text(memory_path)
+def render_shared_memory(store: RedisStore) -> str:
+    """Return SHARED_MEMORY.md contents (from Redis), truncated."""
+    text = store.get_file("SHARED_MEMORY.md")
     if text is None:
         return "(no shared memory yet)"
     if not text.strip():
@@ -138,42 +159,24 @@ def render_shared_memory(memory_path: Path) -> str:
     return _truncate(text)
 
 
-def render_knowledge_base_index(kb_dir: Path) -> str:
-    """List every `.md` file under `kb_dir` (max two levels deep) as bullets.
+def render_knowledge_base_index(store: RedisStore) -> str:
+    """List every KB doc registered in Redis as `- {rel_path} ({n} bytes)`.
 
-    Format per entry: `- {relative_path} ({n} bytes)`. Entries are sorted
-    by relative path. Non-`.md` files are ignored. Missing or non-directory
-    `kb_dir` -> `(no knowledge base files)`.
+    The previous filesystem-walk based version capped depth at two levels;
+    Redis stores docs by flat relative path so we just sort the index. We
+    keep the byte-count display to maintain the same visual shape on Notion
+    even though the source is now a key/value store.
     """
-    try:
-        if not kb_dir.exists() or not kb_dir.is_dir():
-            return "(no knowledge base files)"
-    except OSError:
+    rel_paths = store.list_kb_docs()
+    if not rel_paths:
         return "(no knowledge base files)"
 
     entries: list[tuple[str, int]] = []
-    # Depth 0: kb_dir itself; depth 1: kb_dir/*; depth 2: kb_dir/*/*.
-    # `relative_to(kb_dir).parts` gives 1 for top-level files, 2 for
-    # one-level-nested files. Anything deeper is skipped.
-    try:
-        candidates = list(kb_dir.rglob("*.md"))
-    except OSError:
-        return "(no knowledge base files)"
-
-    for path in candidates:
-        try:
-            rel = path.relative_to(kb_dir)
-        except ValueError:
+    for rel in rel_paths:
+        body = store.get_kb_doc(rel)
+        if body is None:
             continue
-        if len(rel.parts) > 2:
-            continue
-        try:
-            if not path.is_file():
-                continue
-            size = path.stat().st_size
-        except OSError:
-            continue
-        entries.append((str(rel), size))
+        entries.append((rel, len(body.encode("utf-8"))))
 
     if not entries:
         return "(no knowledge base files)"
@@ -183,9 +186,9 @@ def render_knowledge_base_index(kb_dir: Path) -> str:
     return _truncate("\n".join(lines))
 
 
-def render_skill_registry(registry_path: Path) -> str:
-    """Pass-through SKILL_REGISTRY.md contents, truncated."""
-    text = _safe_read_text(registry_path)
+def render_skill_registry(store: RedisStore) -> str:
+    """Pass-through SKILL_REGISTRY.md contents (from Redis), truncated."""
+    text = store.get_file("SKILL_REGISTRY.md")
     if text is None:
         return "(no skill registry)"
     if not text.strip():
@@ -193,14 +196,14 @@ def render_skill_registry(registry_path: Path) -> str:
     return _truncate(text)
 
 
-def render_protocol_and_roles(protocol_path: Path, roles_path: Path) -> str:
+def render_protocol_and_roles(store: RedisStore) -> str:
     """Concatenate PROTOCOL.md and AGENT_ROLES.md with section headers.
 
     Either file being absent is non-fatal: that section is rendered as
     `(missing)` while the other section is still included.
     """
-    protocol_text = _safe_read_text(protocol_path)
-    roles_text = _safe_read_text(roles_path)
+    protocol_text = store.get_file("PROTOCOL.md")
+    roles_text = store.get_file("AGENT_ROLES.md")
 
     protocol_body = protocol_text.rstrip() if protocol_text else "(missing)"
     roles_body = roles_text.rstrip() if roles_text else "(missing)"
@@ -215,8 +218,8 @@ def render_protocol_and_roles(protocol_path: Path, roles_path: Path) -> str:
     return _truncate(out)
 
 
-def render_bridge_stats(state_path: Path) -> str:
-    """Summarize `.notion_bridge_state.json` as human-readable markdown.
+def render_bridge_stats(store: RedisStore) -> str:
+    """Summarize the bridge-state JSON blob as human-readable markdown.
 
     Reports:
     - number of tracked pages
@@ -225,20 +228,11 @@ def render_bridge_stats(state_path: Path) -> str:
     - per-status counts of pages (based on `last_notion_status`)
     - number of mission control sections currently tracked
 
-    Missing file -> `(no bridge state yet)`.
-    Malformed JSON -> `(bridge state unreadable)`.
+    Empty bridge state -> `(no bridge state yet)`.
     """
-    raw = _safe_read_text(state_path)
-    if raw is None:
+    data = store.get_bridge_state()
+    if not data:
         return "(no bridge state yet)"
-    if not raw.strip():
-        return "(no bridge state yet)"
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        return "(bridge state unreadable)"
-    if not isinstance(data, dict):
-        return "(bridge state unreadable)"
 
     pages = data.get("pages")
     if not isinstance(pages, dict):
@@ -283,9 +277,10 @@ def render_bridge_stats(state_path: Path) -> str:
 
     return _truncate("\n".join(lines))
 
-def render_live_state(state_path: Path) -> str:
-    """Pass-through CURRENT_STATE.md contents, truncated."""
-    text = _safe_read_text(state_path)
+
+def render_live_state(store: RedisStore) -> str:
+    """Pass-through CURRENT_STATE.md contents (from Redis), truncated."""
+    text = store.get_file("CURRENT_STATE.md")
     if text is None:
         return "(no live state yet)"
     if not text.strip():

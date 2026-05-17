@@ -1,10 +1,27 @@
-"""Dispatch sync: copy Notion `Pending` tasks into War Room `HANDOFFS.md`.
+"""Dispatch sync: copy Notion `Pending` tasks into the War Room handoff queue.
 
-Uses `NotionHTTPClient` for all Notion I/O and `StateStore` for bridge state
-plus cross-process locking. There is no inline ledger JSON here and no inline
-`FileLock` against an ad-hoc lock file: the single bridge lock owned by
-`StateStore.locked()` brackets every read-modify-write critical section so a
-crash mid-dispatch cannot leave Notion ahead of the local handoff append.
+This module is the Redis-backed rewrite of the dispatch flow (Path B of the
+storage migration). The previous file-based implementation appended to
+`HANDOFFS.md` on disk and stored bridge state in
+`.notion_bridge_state.json`. It now:
+
+- writes each new handoff into Redis via ``RedisStore.upsert_handoff`` —
+  ``HANDOFFS.md`` is materialised on demand from that index by
+  ``RedisStore.render_handoffs_md`` for any consumer that still wants the
+  on-disk format (the local-file mirror process owns that path).
+- writes the full Notion context snapshot via ``RedisStore.set_notion_inbox``
+  rather than to ``NotionInbox/<key>.md`` on disk.
+- reads/writes bridge state JSON via
+  ``RedisStore.get_bridge_state`` / ``set_bridge_state``.
+- holds the per-cycle critical section via ``RedisStore.locked``
+  (the SETNX-fenced Redis lock that replaces the old ``FileLock``).
+
+Public signature is preserved: callers still call
+``sync_dispatch(client, data_source_id, warroom_path, store=redis_store)``
+so the daemon and any helper scripts continue to work after passing a
+``RedisStore`` instead of the legacy ``StateStore``. The ``warroom_path``
+argument is kept for compatibility but is no longer consulted — Redis owns
+the storage now.
 """
 
 from __future__ import annotations
@@ -15,18 +32,15 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from src.notion_http import NotionHTTPClient
-from src.state_store import StateStore, handoff_key_for_page
+from src.redis_store import RedisStore
+from src.state_store import handoff_key_for_page
 from src.warroom_format import (
     ALLOWED_OWNERS,
-    MAX_FIELD_LEN,
-    MAX_TITLE_LEN,
     PLANNING_FILES_DEFAULT,
     make_handoff_block,
-    sanitize_inline,
     sanitize_multiline,
     sanitize_path_field,
     sanitize_text_field,
@@ -37,7 +51,6 @@ log = logging.getLogger(__name__)
 
 HANDOFFS_NAME = "HANDOFFS.md"
 CURRENT_STATE_NAME = "CURRENT_STATE.md"
-NOTION_INBOX_DIRNAME = "NotionInbox"
 
 _PENDING_QUERY: dict[str, Any] = {
     "filter": {"property": "Status", "status": {"equals": "Pending"}},
@@ -91,13 +104,15 @@ def _sync_hash(*parts: str) -> str:
     return h.hexdigest()
 
 
-def _active_locks_text(warroom_path: Path) -> str:
-    path = warroom_path / CURRENT_STATE_NAME
-    if not path.exists():
-        return ""
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
+def _active_locks_text(store: RedisStore) -> str:
+    """Pull the "## Active Locks" section out of the Redis-backed CURRENT_STATE.
+
+    Returns an empty string when the file isn't present or has no Active Locks
+    section. Same parsing rules as the file-based version so the conflict
+    detection contract from plan.md §6.A is preserved.
+    """
+    raw = store.get_file(CURRENT_STATE_NAME)
+    if not raw:
         return ""
     section_re = re.compile(
         r"^##\s*Active Locks\s*\n(.*?)(?=^##\s|\Z)",
@@ -123,8 +138,7 @@ def _detect_lock_conflict(files_touched: str, locks_text: str) -> Optional[str]:
     return None
 
 
-def _write_context_snapshot(
-    warroom_path: Path,
+def _build_context_snapshot(
     handoff_key: str,
     page_id: str,
     *,
@@ -134,11 +148,14 @@ def _write_context_snapshot(
     context: str,
     work_dir: str,
     next_action: str,
-) -> Path:
-    inbox = warroom_path / NOTION_INBOX_DIRNAME
-    inbox.mkdir(parents=True, exist_ok=True)
-    snapshot_path = inbox / f"{handoff_key}.md"
-    body = (
+) -> str:
+    """Render the Notion context snapshot body that goes into Redis.
+
+    Same shape the file-based version wrote to ``NotionInbox/<key>.md`` so
+    any downstream consumer (or the local-file mirror that materialises
+    those files) gets identical text.
+    """
+    return (
         f"# Notion Task Snapshot — {handoff_key}\n\n"
         f"- Notion page id: {page_id}\n"
         f"- Title: {sanitize_text_field(title)}\n"
@@ -149,15 +166,6 @@ def _write_context_snapshot(
         "## Context\n\n"
         f"{sanitize_multiline(context)}\n"
     )
-    snapshot_path.write_text(body, encoding="utf-8")
-    return snapshot_path
-
-
-def _append_handoff(warroom_path: Path, entry: str) -> None:
-    warroom_path.mkdir(parents=True, exist_ok=True)
-    path = warroom_path / HANDOFFS_NAME
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(entry)
 
 
 def _props_dispatched(handoff_key: str, when: str, sync_hash: str) -> dict[str, Any]:
@@ -188,15 +196,62 @@ def _props_blocked(reason: str, when: str, sync_hash: str) -> dict[str, Any]:
     }
 
 
+# ---- Bridge-state helpers (replaces StateStore.mark_dispatched) -------------
+
+
+def _record_dispatched(
+    store: RedisStore,
+    *,
+    page_id: str,
+    handoff_key: str,
+    context_key: Optional[str],
+    last_notion_status: str,
+    last_local_status: str,
+    last_synced_at: str,
+    last_sync_hash: str,
+) -> None:
+    """Idempotently insert the page entry into the bridge state JSON blob.
+
+    Mirrors what ``StateStore.mark_dispatched`` used to do on the file-backed
+    sidecar so the bridge state shape (per plan.md §5) is unchanged. The
+    caller must already hold ``store.locked()`` for the surrounding critical
+    section.
+    """
+    state = store.get_bridge_state()
+    pages = state.setdefault("pages", {})
+    if not isinstance(pages, dict):
+        pages = {}
+        state["pages"] = pages
+    existing = pages.get(page_id) or {}
+    entry: dict[str, Any] = dict(existing) if isinstance(existing, Mapping) else {}
+    entry["handoff_key"] = handoff_key
+    if context_key is not None:
+        # Stored as a Redis key reference (`wr:notion_inbox:<handoff_key>`) so
+        # downstream tooling can fetch the body without re-deriving it; kept
+        # under the same JSON field name for plan.md §5 compatibility.
+        entry["context_path"] = context_key
+    else:
+        entry.setdefault("context_path", None)
+    entry["last_notion_status"] = last_notion_status
+    entry["last_local_status"] = last_local_status
+    entry["last_synced_at"] = last_synced_at
+    entry["last_sync_hash"] = last_sync_hash
+    entry.setdefault("last_result_hash", None)
+    entry.setdefault("last_next_action_hash", None)
+    entry.setdefault("last_result_block_id", None)
+    pages[page_id] = entry
+    store.set_bridge_state(state)
+
+
 # ---- Public entry point -----------------------------------------------------
 
 
 def sync_dispatch(
     client: NotionHTTPClient,
     data_source_id: str,
-    warroom_path: os.PathLike | str,
+    warroom_path: Optional[os.PathLike | str] = None,
     *,
-    store: Optional[StateStore] = None,
+    store: Optional[RedisStore] = None,
     query_payload: Optional[Mapping[str, Any]] = None,
 ) -> int:
     """Dispatch new Notion `Pending` tasks into the War Room handoff queue.
@@ -204,19 +259,24 @@ def sync_dispatch(
     Returns the count of pages this call newly resolved (dispatched OR blocked).
     Pages already present in state are left untouched so the bridge stays
     idempotent across restarts.
+
+    ``warroom_path`` is kept as an optional positional for back-compat with
+    older callers (e.g. the daemon prior to the Redis migration); all storage
+    now flows through Redis via ``store``. Pass it or omit it freely.
     """
     if not data_source_id:
         raise ValueError("data_source_id is required")
-    warroom = Path(warroom_path)
     if store is None:
-        store = StateStore(warroom)
+        # Constructed from REDIS_URL; raises RedisStoreError if absent so the
+        # daemon fails loudly instead of silently degrading to local files.
+        store = RedisStore()
 
     payload = dict(query_payload or _PENDING_QUERY)
     response = client.query_data_source(data_source_id, payload)
     pages = response.get("results") or []
     resolved = 0
 
-    locks_text = _active_locks_text(warroom)
+    locks_text = _active_locks_text(store)
 
     for page in pages:
         page_id = page.get("id")
@@ -239,7 +299,7 @@ def sync_dispatch(
         )
 
         with store.locked():
-            state = store.load()
+            state = store.get_bridge_state()
             if page_id in (state.get("pages") or {}):
                 continue
 
@@ -248,14 +308,21 @@ def sync_dispatch(
                     f"Invalid Assignee {owner!r}; must be one of "
                     f"{', '.join(ALLOWED_OWNERS)}."
                 )
-                store.mark_dispatched(
-                    handoff_key,
-                    page_id,
+                _record_dispatched(
+                    store,
+                    page_id=page_id,
+                    handoff_key=handoff_key,
+                    context_key=None,
                     last_notion_status="Blocked",
                     last_local_status="BLOCKED",
                     last_synced_at=when,
                     last_sync_hash=sync_hash,
                 )
+                # Blocked tasks do NOT enter the handoff log — only the
+                # Notion card is updated with the rejection reason. This
+                # matches plan.md §6.A behaviour ("invalid owner → Notion
+                # Blocked") and keeps `render_handoffs_md()` clean of
+                # rejected entries that an agent would otherwise pick up.
                 try:
                     client.update_page(page_id, _props_blocked(reason, when, sync_hash))
                 except Exception:
@@ -270,14 +337,18 @@ def sync_dispatch(
                     f"Active lock conflict on {conflict!r}; release the lock in "
                     f"CURRENT_STATE.md before retrying."
                 )
-                store.mark_dispatched(
-                    handoff_key,
-                    page_id,
+                _record_dispatched(
+                    store,
+                    page_id=page_id,
+                    handoff_key=handoff_key,
+                    context_key=None,
                     last_notion_status="Blocked",
                     last_local_status="BLOCKED",
                     last_synced_at=when,
                     last_sync_hash=sync_hash,
                 )
+                # Same rule as invalid-owner: blocked tasks stay out of the
+                # handoff log; only the Notion card carries the reason.
                 try:
                     client.update_page(page_id, _props_blocked(reason, when, sync_hash))
                 except Exception:
@@ -285,8 +356,8 @@ def sync_dispatch(
                 resolved += 1
                 continue
 
-            snapshot_path = _write_context_snapshot(
-                warroom,
+            # Stash the full Notion context as a snapshot blob in Redis.
+            snapshot_body = _build_context_snapshot(
                 handoff_key,
                 page_id,
                 title=title,
@@ -296,19 +367,38 @@ def sync_dispatch(
                 work_dir=work_dir,
                 next_action=next_action,
             )
-            entry = make_handoff_block(
+            store.set_notion_inbox(handoff_key, snapshot_body)
+
+            # The Redis handoff store *is* the new authoritative HANDOFFS.md.
+            # We still render the protocol entry (via make_handoff_block) so
+            # we can derive the same sanitized text for `Task` / `Files
+            # Touched` / `Next Action` fields — then split it into the
+            # structured fields the Redis store expects.
+            entry_text = make_handoff_block(
                 handoff_key=handoff_key,
                 title=title,
                 owner=owner,
                 files_touched=effective_files,
                 next_action=next_action,
-                context_path=snapshot_path,
+                context_path=f"redis://wr:notion_inbox:{handoff_key}",
             )
-            _append_handoff(warroom, entry)
-            store.mark_dispatched(
+            fields = _split_handoff_entry(entry_text)
+            store.upsert_handoff(
                 handoff_key,
-                page_id,
-                context_path=str(snapshot_path),
+                task=fields.get("Task", f"{title} [{handoff_key}]"),
+                owner=fields.get("Owner", owner),
+                files_touched=fields.get("Files Touched", effective_files),
+                status="PENDING",
+                result="",
+                next_action=fields.get("Next Action", ""),
+                context=f"Notion page id: {page_id}",
+            )
+
+            _record_dispatched(
+                store,
+                page_id=page_id,
+                handoff_key=handoff_key,
+                context_key=f"wr:notion_inbox:{handoff_key}",
                 last_notion_status="Dispatched",
                 last_local_status="PENDING",
                 last_synced_at=when,
@@ -329,3 +419,31 @@ def sync_dispatch(
             resolved += 1
 
     return resolved
+
+
+# ---- Internal: split a rendered protocol block into its six fields ---------
+
+
+_FIELD_LINE_RE = re.compile(
+    r"^\s*(?:-\s+)?(Task|Owner|Files Touched|Status|Result|Next Action)\s*:\s*(.*)$"
+)
+
+
+def _split_handoff_entry(entry_text: str) -> dict[str, str]:
+    """Parse one make_handoff_block() output into a {field: value} dict.
+
+    Used to feed the sanitized field values from the canonical renderer into
+    the Redis hash. We intentionally do not re-use ``warroom_format.parse_handoffs``
+    because that helper drops blocks lacking a ``[wrb_*]`` key, and we want
+    the raw per-field values regardless of key presence.
+    """
+    fields: dict[str, str] = {}
+    last_key: Optional[str] = None
+    for raw_line in entry_text.splitlines():
+        m = _FIELD_LINE_RE.match(raw_line)
+        if m:
+            last_key = m.group(1)
+            fields[last_key] = m.group(2).strip()
+        elif last_key and raw_line.strip():
+            fields[last_key] = (fields[last_key] + " " + raw_line.strip()).strip()
+    return fields

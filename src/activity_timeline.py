@@ -22,6 +22,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
+from src.redis_store import RedisStore
 from src.warroom_format import parse_handoffs, sanitize_inline
 
 
@@ -155,19 +156,22 @@ def _truncate(text: str) -> str:
 
 
 def render_activity_timeline(
-    handoffs_path: Path,
-    state_path: Path,
+    store: RedisStore,
     *,
     limit_per_agent: int = 5,
 ) -> str:
-    """Render a per-agent activity timeline with timestamps from state.
+    """Render a per-agent activity timeline with timestamps from bridge state.
 
     See module docstring for the output shape. Returns
-    ``"(no agent activity yet)"`` when the handoffs file is missing or
-    empty. When the state file is missing the timeline is still rendered
-    but every timestamp is replaced with a placeholder.
+    ``"(no agent activity yet)"`` when no handoffs exist. When the bridge
+    state has no per-page entry for a handoff, the timestamp is replaced
+    with a placeholder rather than crashing.
+
+    Sources content from the Redis store: handoff text via
+    ``store.render_handoffs_md()`` and per-page timestamps via
+    ``store.get_bridge_state()['pages'][page_id]['last_synced_at']``.
     """
-    text = _safe_read_text(handoffs_path)
+    text = store.render_handoffs_md()
     if not text or not text.strip():
         return "(no agent activity yet)"
 
@@ -175,7 +179,7 @@ def render_activity_timeline(
     if not parsed:
         return "(no agent activity yet)"
 
-    state = _load_state(state_path)
+    state = store.get_bridge_state()
     ts_by_key = _timestamps_by_key(state)
 
     # Group by owner, preserving file order so untimestamped entries stay

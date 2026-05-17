@@ -1,12 +1,24 @@
-"""Notion <-> War Room bridge daemon.
+"""Notion <-> War Room bridge daemon (Redis-backed).
 
 Plan-aligned entry point. Loops every `POLL_SECONDS`:
   1. Resolve a Notion data source id (preferring `NOTION_COMMAND_CENTER_DATA_SOURCE_ID`,
      otherwise discovering one from `NOTION_COMMAND_CENTER_DATABASE_ID`).
-  2. Run dispatch sync (Notion -> HANDOFFS.md).
-  3. Run result sync (HANDOFFS.md -> Notion).
-  4. Run dashboard sync (CURRENT_STATE.md -> single Notion code block).
-  5. Log errors and continue. One bad task must not crash the daemon.
+  2. Run dispatch sync (Notion -> Redis-backed handoff store).
+  3. Run result sync (Redis-backed handoffs -> Notion).
+  4. Run dashboard sync (Redis `CURRENT_STATE.md` -> single Notion code block).
+  5. Run Mission Control + OpenClaw screen syncs.
+  6. Optionally run KB and Skill Inbox syncs when their parent pages are configured.
+  7. Log errors and continue. One bad task must not crash the daemon.
+
+Storage backend: every read/write the bridge does is mediated by
+`src.redis_store.RedisStore`. War Room state lives in Redis (see plan
+Path B). A separate `scripts/redis_file_mirror.py` process mirrors the
+relevant keys onto `~/WarRoom/*.md` so the agent CLIs that still expect
+local files keep working unchanged.
+
+Connection: set `REDIS_URL` in `.env`. Typical values:
+    rediss://default:<token>@<host>.upstash.io:6379  (Upstash TLS)
+    redis://localhost:6379                            (local dev)
 """
 
 from __future__ import annotations
@@ -24,22 +36,31 @@ from src.knowledge_base_sync import sync_knowledge_base
 from src.log_archive import attach_file_logger
 from src.mission_control_sync import sync_mission_control
 from src.openclaw_screens_sync import sync_openclaw_screens
+from src.redis_store import RedisStore
 from src.result_sync import sync_results
 from src.skill_inbox_sync import sync_skill_inbox
-from src.state_store import StateStore
 
 log = logging.getLogger("notion_warroom_bridge")
 
 
-def _resolve_data_source_id(notion, config, store: StateStore) -> Optional[str]:
-    """Pick or discover the Notion data source id used for Command Center polling."""
+def _resolve_data_source_id(
+    notion, config, store: RedisStore
+) -> Optional[str]:
+    """Pick or discover the Notion data source id used for Command Center polling.
+
+    The cache lives inside the bridge-state JSON blob (under
+    `command_center_data_source_id`) so it survives across restarts.
+    """
     if config.notion_command_center_data_source_id:
         ds = config.notion_command_center_data_source_id
-        store.set_command_center_data_source_id(ds)
+        with store.locked():
+            state = store.get_bridge_state()
+            state["command_center_data_source_id"] = ds
+            store.set_bridge_state(state)
         return ds
 
-    cached = store.load().get("command_center_data_source_id")
-    if cached:
+    cached = store.get_bridge_state().get("command_center_data_source_id")
+    if isinstance(cached, str) and cached:
         return cached
 
     if config.notion_command_center_database_id:
@@ -47,34 +68,33 @@ def _resolve_data_source_id(notion, config, store: StateStore) -> Optional[str]:
             config.notion_command_center_database_id
         )
         if discovered:
-            store.set_command_center_data_source_id(discovered)
+            with store.locked():
+                state = store.get_bridge_state()
+                state["command_center_data_source_id"] = discovered
+                store.set_bridge_state(state)
             return discovered
     return None
 
 
-def _one_cycle(notion, config, store: StateStore) -> None:
+def _one_cycle(notion, config, store: RedisStore) -> None:
     data_source_id = _resolve_data_source_id(notion, config, store)
     if not data_source_id:
         log.warning(
             "no Notion data source id available; skipping dispatch/result sync"
         )
     else:
-        dispatched = sync_dispatch(
-            notion, data_source_id, config.warroom_path, store=store
-        )
+        dispatched = sync_dispatch(notion, data_source_id, store=store)
         if dispatched:
-            log.info("dispatched %d task(s) to HANDOFFS.md", dispatched)
+            log.info("dispatched %d task(s) to Redis handoff store", dispatched)
 
-        pushed = sync_results(notion, config.warroom_path, store=store)
+        pushed = sync_results(notion, store=store)
         if pushed:
             log.info("pushed %d result(s) back to Notion", pushed)
 
-    sync_mission_control(
-        notion, config.notion_dashboard_page_id, config.warroom_path, store
-    )
+    sync_mission_control(notion, config.notion_dashboard_page_id, store)
     log.info("Mission control dashboard blocks synced")
 
-    screens_pushed = sync_openclaw_screens(notion, config.warroom_path, store)
+    screens_pushed = sync_openclaw_screens(notion, store)
     if screens_pushed:
         log.info("refreshed %d OpenClaw screen(s)", screens_pushed)
 
@@ -82,23 +102,13 @@ def _one_cycle(notion, config, store: StateStore) -> None:
     # page id is configured. Missing config = the feature stays off.
     kb_parent = getattr(config, "notion_knowledge_base_db_id", None)
     if kb_parent:
-        kb_synced = sync_knowledge_base(
-            notion,
-            kb_parent,
-            Path(config.warroom_path) / "KnowledgeBase",
-            store,
-        )
+        kb_synced = sync_knowledge_base(notion, kb_parent, store)
         if kb_synced:
             log.info("synced %d KnowledgeBase doc(s) to Notion", kb_synced)
 
     skills_parent = getattr(config, "notion_runbook_db_id", None)
     if skills_parent:
-        skills_synced = sync_skill_inbox(
-            notion,
-            skills_parent,
-            Path(config.warroom_path) / "Skill_Inbox",
-            store,
-        )
+        skills_synced = sync_skill_inbox(notion, skills_parent, store)
         if skills_synced:
             log.info("synced %d Skill Inbox runbook(s) to Notion", skills_synced)
 
@@ -129,7 +139,7 @@ def main() -> int:
     config = load_config(env_file=env_file if env_file.exists() else None)
 
     notion = build_client(config)
-    store = StateStore(config.warroom_path)
+    store = RedisStore()  # REDIS_URL read from .env / process env
 
     log_path = attach_file_logger(
         config.warroom_path,
@@ -137,7 +147,7 @@ def main() -> int:
     )
 
     log.info(
-        "starting bridge; poll_seconds=%s warroom=%s log=%s",
+        "starting bridge (Redis backend); poll_seconds=%s warroom=%s log=%s",
         config.poll_seconds, config.warroom_path, log_path,
     )
 

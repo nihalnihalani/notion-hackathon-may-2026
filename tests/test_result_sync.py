@@ -1,4 +1,4 @@
-"""Unit tests for src/result_sync.py (plan.md Task 7).
+"""Unit tests for src/result_sync.py (plan.md Task 7) — Redis-backed.
 
 Covers:
 - COMPLETED handoff syncs status + result + next action to Notion.
@@ -14,13 +14,21 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import fakeredis
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.result_sync import parse_handoffs, sync_results  # noqa: E402
-from src.state_store import StateStore, handoff_key_for_page  # noqa: E402
+from src.redis_store import RedisStore  # noqa: E402
+from src.result_sync import sync_results  # noqa: E402
+from src.state_store import handoff_key_for_page  # noqa: E402
+from src.warroom_format import parse_handoffs  # noqa: E402
+
+
+@pytest.fixture
+def store() -> RedisStore:
+    return RedisStore(client=fakeredis.FakeRedis(decode_responses=True))
 
 
 def _make_client():
@@ -33,18 +41,47 @@ def _make_client():
     return client
 
 
-def _seed_dispatch(store: StateStore, page_id: str) -> str:
+def _seed_dispatch(store: RedisStore, page_id: str) -> str:
+    """Record a page→handoff association in the bridge state, mirroring
+    the bridge-state shape produced by `sync_dispatch`."""
     key = handoff_key_for_page(page_id)
-    store.mark_dispatched(
-        key,
-        page_id,
-        context_path=f"/tmp/inbox/{key}.md",
-        last_notion_status="Dispatched",
-        last_local_status="PENDING",
-        last_synced_at="2026-05-17T10:00:00Z",
-        last_sync_hash="dispatch-hash",
-    )
+    state = store.get_bridge_state() or {}
+    pages = state.setdefault("pages", {})
+    pages[page_id] = {
+        "handoff_key": key,
+        "context_path": f"/tmp/inbox/{key}.md",
+        "last_notion_status": "Dispatched",
+        "last_local_status": "PENDING",
+        "last_synced_at": "2026-05-17T10:00:00Z",
+        "last_sync_hash": "dispatch-hash",
+        "last_result_hash": None,
+        "last_next_action_hash": None,
+        "last_result_block_id": None,
+    }
+    store.set_bridge_state(state)
     return key
+
+
+def _upsert_handoff_from_fields(
+    store: RedisStore,
+    key: str,
+    *,
+    task: str = "t",
+    owner: str = "Hermes",
+    files_touched: str = "**",
+    status: str = "COMPLETED",
+    result: str = "Done",
+    next_action: str = "None",
+) -> None:
+    store.upsert_handoff(
+        key,
+        task=task,
+        owner=owner,
+        files_touched=files_touched,
+        status=status,
+        result=result,
+        next_action=next_action,
+    )
 
 
 # ---- parse_handoffs --------------------------------------------------------
@@ -70,21 +107,18 @@ def test_parse_handoffs_extracts_key_and_fields():
 # ---- sync_results end-to-end ----------------------------------------------
 
 
-def test_completed_handoff_syncs_status_result_next_action(tmp_path):
-    store = StateStore(tmp_path)
+def test_completed_handoff_syncs_status_result_next_action(store):
     key = _seed_dispatch(store, "page_aaa")
-    (tmp_path / "HANDOFFS.md").write_text(
-        f"- Task: t [{key}]\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: All clear\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
+    _upsert_handoff_from_fields(
+        store,
+        key,
+        status="COMPLETED",
+        result="All clear",
+        next_action="None",
     )
     client = _make_client()
 
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
 
     assert pushed == 1
     args, _ = client.update_page.call_args
@@ -99,26 +133,24 @@ def test_completed_handoff_syncs_status_result_next_action(tmp_path):
     )
     # A result block was created exactly once.
     client.append_block_children.assert_called_once()
-    persisted = store.load()["pages"]["page_aaa"]
+    persisted = store.get_bridge_state()["pages"]["page_aaa"]
     assert persisted["last_notion_status"] == "Completed"
     assert persisted["last_result_block_id"] == "blk_result_1"
 
 
-def test_blocked_handoff_syncs_blocker(tmp_path):
-    store = StateStore(tmp_path)
+def test_blocked_handoff_syncs_blocker(store):
     key = _seed_dispatch(store, "page_bbb")
-    (tmp_path / "HANDOFFS.md").write_text(
-        f"- Task: t [{key}]\n"
-        "  Owner: OpenClaw\n"
-        "  Files Touched: **\n"
-        "  Status: BLOCKED\n"
-        "  Result: need credentials\n"
-        "  Next Action: Provide PROD_TOKEN env var\n",
-        encoding="utf-8",
+    _upsert_handoff_from_fields(
+        store,
+        key,
+        owner="OpenClaw",
+        status="BLOCKED",
+        result="need credentials",
+        next_action="Provide PROD_TOKEN env var",
     )
     client = _make_client()
 
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
     assert pushed == 1
     props = client.update_page.call_args.args[1]
     assert props["Status"]["status"]["name"] == "Blocked"
@@ -128,23 +160,14 @@ def test_blocked_handoff_syncs_blocker(tmp_path):
     )
 
 
-def test_unchanged_handoff_does_not_call_notion_again(tmp_path):
-    store = StateStore(tmp_path)
+def test_unchanged_handoff_does_not_call_notion_again(store):
     key = _seed_dispatch(store, "page_aaa")
-    (tmp_path / "HANDOFFS.md").write_text(
-        f"- Task: t [{key}]\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: Done\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
-    )
+    _upsert_handoff_from_fields(store, key)
     client = _make_client()
-    sync_results(client, tmp_path, store=store)
+    sync_results(client, store=store)
     client.reset_mock()
 
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
 
     assert pushed == 0
     client.update_page.assert_not_called()
@@ -152,35 +175,19 @@ def test_unchanged_handoff_does_not_call_notion_again(tmp_path):
     client.update_block.assert_not_called()
 
 
-def test_changed_result_triggers_resync_and_block_update(tmp_path):
-    store = StateStore(tmp_path)
+def test_changed_result_triggers_resync_and_block_update(store):
     key = _seed_dispatch(store, "page_aaa")
-    handoffs = tmp_path / "HANDOFFS.md"
-    handoffs.write_text(
-        f"- Task: t [{key}]\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: Done\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
-    )
+    _upsert_handoff_from_fields(store, key, result="Done", next_action="None")
     client = _make_client()
-    sync_results(client, tmp_path, store=store)
+    sync_results(client, store=store)
     client.reset_mock()
 
     # Bump the result text and resync.
-    handoffs.write_text(
-        f"- Task: t [{key}]\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: Done with a follow-up note\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
+    _upsert_handoff_from_fields(
+        store, key, result="Done with a follow-up note", next_action="None"
     )
 
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
     assert pushed == 1
     client.update_page.assert_called_once()
     # Existing block updated in place; no new block appended.
@@ -188,37 +195,20 @@ def test_changed_result_triggers_resync_and_block_update(tmp_path):
     client.append_block_children.assert_not_called()
 
 
-def test_missing_bridge_key_is_ignored(tmp_path):
-    store = StateStore(tmp_path)
-    (tmp_path / "HANDOFFS.md").write_text(
-        "- Task: Manual task with no bridge key\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: Done\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
-    )
+def test_missing_bridge_key_is_ignored(store):
+    # A handoff that was never upserted with a wrb_ key (orphan render) — the
+    # store has no entries at all. sync_results should noop and not call Notion.
     client = _make_client()
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
     assert pushed == 0
     client.update_page.assert_not_called()
 
 
-def test_bridge_key_with_no_state_entry_is_skipped(tmp_path):
-    """A `[wrb_*]` key not present in state must not raise — the bridge is a
-    courier, not a self-creating ledger."""
-    store = StateStore(tmp_path)
-    (tmp_path / "HANDOFFS.md").write_text(
-        "- Task: orphan [wrb_aaaaaaaaaaaa]\n"
-        "  Owner: Hermes\n"
-        "  Files Touched: **\n"
-        "  Status: COMPLETED\n"
-        "  Result: Done\n"
-        "  Next Action: None\n",
-        encoding="utf-8",
-    )
+def test_bridge_key_with_no_state_entry_is_skipped(store):
+    """A `[wrb_*]` handoff that isn't bound to a Notion page in bridge state
+    must not raise — the bridge is a courier, not a self-creating ledger."""
+    _upsert_handoff_from_fields(store, "wrb_aaaaaaaaaaaa")
     client = _make_client()
-    pushed = sync_results(client, tmp_path, store=store)
+    pushed = sync_results(client, store=store)
     assert pushed == 0
     client.update_page.assert_not_called()

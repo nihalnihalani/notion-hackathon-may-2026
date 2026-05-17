@@ -1,8 +1,11 @@
-"""Dashboard observer: mirror `CURRENT_STATE.md` to a single Notion code block.
+"""Dashboard observer: mirror Redis-backed `CURRENT_STATE.md` to one Notion code block.
 
 Per plan.md section 6.C the bridge owns exactly one code block under
-`NOTION_DASHBOARD_PAGE_ID`. The block id is persisted in
-`.notion_bridge_state.json` via the `StateStore` property API:
+`NOTION_DASHBOARD_PAGE_ID`. After the Redis migration the source content
+lives at ``wr:file:CURRENT_STATE.md`` (via ``RedisStore.get_file``) rather
+than on disk; the dashboard block id and the last-pushed content hash both
+live inside the bridge-state JSON blob returned by
+``RedisStore.get_bridge_state``:
 
 - If no block id exists, append exactly one new code block and store its id.
 - If a block id exists, update that block in place.
@@ -17,9 +20,10 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
+from typing import Any, Optional
 
 from src.notion_http import NotionAPIError, NotionHTTPClient
-from src.state_store import StateStore
+from src.redis_store import RedisStore
 
 log = logging.getLogger(__name__)
 
@@ -47,37 +51,72 @@ def _code_block_payload(text: str) -> dict:
     }
 
 
+# ---- Bridge-state helpers (replace StateStore property API) ----------------
+
+
+def _get_dashboard_block_id(state: dict) -> Optional[str]:
+    block_id = state.get("dashboard_block_id")
+    return block_id if isinstance(block_id, str) and block_id else None
+
+
+def _get_dashboard_hash(state: dict) -> Optional[str]:
+    dash_hash = state.get("dashboard_hash")
+    return dash_hash if isinstance(dash_hash, str) and dash_hash else None
+
+
+def _persist_dashboard(
+    store: RedisStore,
+    *,
+    block_id: Optional[Any] = ...,
+    dashboard_hash: Optional[Any] = ...,
+) -> None:
+    """Update the dashboard fields inside the bridge state JSON blob.
+
+    Uses sentinel defaults so callers can update one field independently
+    of the other, matching the old ``set_dashboard_block_id`` /
+    ``set_dashboard_hash`` split. The caller must already hold
+    ``store.locked()`` for the surrounding critical section.
+    """
+    state = store.get_bridge_state()
+    if block_id is not ...:
+        state["dashboard_block_id"] = block_id
+    if dashboard_hash is not ...:
+        state["dashboard_hash"] = dashboard_hash
+    store.set_bridge_state(state)
+
+
 def push_state_to_notion(
     client: NotionHTTPClient,
     dashboard_page_id: str,
-    warroom_path: Path | str,
-    store: StateStore,
+    store: RedisStore,
+    warroom_path: Optional[Path | str] = None,
 ) -> bool:
     """Upsert CURRENT_STATE.md into a single Notion dashboard block.
 
     Returns True if the Notion API was called (block created or updated),
-    False if there was nothing to do (file missing, content unchanged, or
-    the dashboard page id is empty).
+    False if there was nothing to do (file missing in Redis, content
+    unchanged, or the dashboard page id is empty).
+
+    ``warroom_path`` is kept as an optional positional for back-compat;
+    all reads flow through Redis via ``store``.
     """
     if not dashboard_page_id:
         log.debug("no dashboard page id configured; skipping dashboard sync")
         return False
 
-    warroom = Path(warroom_path)
-    state_path = warroom / STATE_FILE
-    if not state_path.exists():
+    with store.locked():
+        content = store.get_file(STATE_FILE)
+    if content is None:
         return False
 
-    with store.locked():
-        content = state_path.read_text(encoding="utf-8")
-
     current_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    if store.dashboard_hash == current_hash:
+    state = store.get_bridge_state()
+    if _get_dashboard_hash(state) == current_hash:
         return False
 
     safe_content = safe_truncate_markdown(content)
     payload = _code_block_payload(safe_content)
-    block_id = store.dashboard_block_id
+    block_id = _get_dashboard_block_id(state)
 
     if block_id:
         try:
@@ -88,7 +127,8 @@ def push_state_to_notion(
                     "dashboard block %s missing in Notion; recreating once",
                     block_id,
                 )
-                store.set_dashboard_block_id(None)
+                with store.locked():
+                    _persist_dashboard(store, block_id=None)
                 block_id = None
             else:
                 log.exception(
@@ -97,7 +137,8 @@ def push_state_to_notion(
                 return False
         except Exception:
             log.exception("unexpected error updating dashboard block; will retry")
-            store.set_dashboard_block_id(None)
+            with store.locked():
+                _persist_dashboard(store, block_id=None)
             return False
 
     if not block_id:
@@ -112,9 +153,11 @@ def push_state_to_notion(
         if not new_id:
             log.error("Notion dashboard create response missing id: %r", new_block)
             return False
-        store.set_dashboard_block_id(new_id)
+        with store.locked():
+            _persist_dashboard(store, block_id=new_id)
 
-    store.set_dashboard_hash(current_hash)
+    with store.locked():
+        _persist_dashboard(store, dashboard_hash=current_hash)
     return True
 
 

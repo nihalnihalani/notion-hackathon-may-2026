@@ -1,10 +1,23 @@
-"""Result sync: parse `HANDOFFS.md` and push status/result back to Notion.
+"""Result sync: iterate Redis-backed handoffs and push status/result to Notion.
 
-Reads the War Room handoff file under the bridge lock owned by
-`StateStore`, looks up every `[wrb_*]` key against the persisted state, and
-upserts the corresponding Notion page (properties + a single bridge-owned
-result block). Hash-based idempotency keeps the daemon from spamming the
-Notion API when handoffs are unchanged.
+This is the Redis-backed rewrite of the result flow. Previously the bridge
+parsed ``HANDOFFS.md`` from disk to discover changed handoffs and consulted
+``StateStore`` for the Notion page mapping plus the per-page result hash.
+The Redis migration replaces both pieces:
+
+- ``RedisStore.list_handoffs`` yields every handoff hash (the authoritative
+  copy — ``HANDOFFS.md`` is just a materialised view now).
+- ``RedisStore.get_bridge_state`` returns the per-page mapping
+  (``pages[page_id] -> {handoff_key, last_result_hash, ...}``) that used to
+  live in the ``.notion_bridge_state.json`` sidecar.
+- The single-block "result code block" tracking still lives in the bridge
+  state JSON (under ``pages[page_id].last_result_block_id``) so the syncer
+  continues to update one block in place per task rather than appending new
+  ones.
+
+Hash-based idempotency is preserved bit-for-bit: the same SHA-256 inputs
+(``status + result + next_action``) and the same skip condition mean
+unchanged handoffs still incur zero Notion API calls.
 """
 
 from __future__ import annotations
@@ -13,12 +26,10 @@ import hashlib
 import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from src.notion_http import NotionHTTPClient
-from src.state_store import StateStore
-from src.warroom_format import extract_bridge_key, parse_handoffs
+from src.redis_store import RedisStore
 
 log = logging.getLogger(__name__)
 
@@ -108,12 +119,58 @@ def _build_properties(
     }
 
 
-def _read_handoffs(store: StateStore, warroom: Path) -> str:
-    path = warroom / HANDOFFS_NAME
-    if not path.exists():
-        return ""
-    with store.locked():
-        return path.read_text(encoding="utf-8")
+# ---- Bridge state helpers (replace StateStore lookups) ---------------------
+
+
+def _page_entry_for_key(state: Mapping[str, Any], handoff_key: str) -> Optional[dict]:
+    """Find the bridge-state page entry matching a handoff key.
+
+    Mirrors what ``StateStore.get_page_by_key`` returned: a copy of the
+    page entry plus a synthesized ``page_id`` field. Returns None if no
+    page in state references the given handoff key.
+    """
+    pages = state.get("pages") if isinstance(state, Mapping) else None
+    if not isinstance(pages, Mapping):
+        return None
+    for page_id, entry in pages.items():
+        if isinstance(entry, Mapping) and entry.get("handoff_key") == handoff_key:
+            result = dict(entry)
+            result["page_id"] = page_id
+            return result
+    return None
+
+
+def _persist_result_sync(
+    store: RedisStore,
+    *,
+    page_id: str,
+    result_hash: str,
+    last_local_status: str,
+    last_notion_status: str,
+    last_synced_at: str,
+    last_result_block_id: Optional[str],
+) -> None:
+    """Atomically update one page entry inside the bridge state JSON blob.
+
+    Replaces ``StateStore.mark_result_synced``. The caller must already
+    hold ``store.locked()`` for the surrounding critical section.
+    """
+    state = store.get_bridge_state()
+    pages = state.get("pages")
+    if not isinstance(pages, dict):
+        return
+    entry = pages.get(page_id)
+    if not isinstance(entry, Mapping):
+        return
+    new_entry = dict(entry)
+    new_entry["last_result_hash"] = result_hash
+    new_entry["last_local_status"] = last_local_status
+    new_entry["last_notion_status"] = last_notion_status
+    new_entry["last_synced_at"] = last_synced_at
+    if last_result_block_id is not None:
+        new_entry["last_result_block_id"] = last_result_block_id
+    pages[page_id] = new_entry
+    store.set_bridge_state(state)
 
 
 def _upsert_result_block(
@@ -150,26 +207,33 @@ def _upsert_result_block(
 
 def sync_results(
     client: NotionHTTPClient,
-    warroom_path: os.PathLike | str,
+    warroom_path: Optional[os.PathLike | str] = None,
     *,
-    store: Optional[StateStore] = None,
+    store: Optional[RedisStore] = None,
 ) -> int:
-    """Push HANDOFFS.md status/result changes back to Notion.
+    """Push Redis-backed handoff status/result changes back to Notion.
 
     Returns the number of pages whose Notion record was updated this call.
     Unchanged entries (same content hash as last sync) skip the API entirely.
-    """
-    warroom = Path(warroom_path)
-    if store is None:
-        store = StateStore(warroom)
 
-    text = _read_handoffs(store, warroom)
-    if not text:
+    ``warroom_path`` is accepted for backwards compatibility but is no
+    longer consulted; all reads/writes flow through Redis via ``store``.
+    """
+    if store is None:
+        store = RedisStore()
+
+    handoffs = store.list_handoffs()
+    if not handoffs:
         return 0
 
     pushed = 0
-    for key, fields in parse_handoffs(text):
-        page = store.get_page_by_key(key)
+    state = store.get_bridge_state()
+
+    for entry in handoffs:
+        key = entry.get("_key")
+        if not key:
+            continue
+        page = _page_entry_for_key(state, key)
         if page is None:
             log.debug("ignoring handoff %s with no state entry", key)
             continue
@@ -177,13 +241,13 @@ def sync_results(
         if not page_id:
             continue
 
-        raw_status = (fields.get("Status") or "").strip().upper()
+        raw_status = (entry.get("status") or "").strip().upper()
         notion_status = STATUS_MAP.get(raw_status)
         if notion_status is None:
             continue
 
-        result_text = (fields.get("Result") or "").strip()
-        next_action = (fields.get("Next Action") or "").strip()
+        result_text = (entry.get("result") or "").strip()
+        next_action = (entry.get("next_action") or "").strip()
         new_hash = _sync_hash(raw_status, result_text, next_action)
 
         if new_hash == page.get("last_result_hash"):
@@ -203,14 +267,25 @@ def sync_results(
             block_payload,
         )
 
-        store.mark_result_synced(
-            key,
-            new_hash,
-            last_local_status=raw_status,
-            last_notion_status=notion_status,
-            last_synced_at=when,
-            last_result_block_id=new_block_id,
-        )
+        with store.locked():
+            _persist_result_sync(
+                store,
+                page_id=page_id,
+                result_hash=new_hash,
+                last_local_status=raw_status,
+                last_notion_status=notion_status,
+                last_synced_at=when,
+                last_result_block_id=new_block_id,
+            )
+            # Reflect the new sync timestamp back onto the handoff record so
+            # any live dashboard render sees the latest activity without
+            # waiting for a separate save.
+            store.upsert_handoff(key, last_updated_at=when)
+            # Refresh local snapshot of state for subsequent iterations in
+            # this loop (so a multi-update cycle doesn't keep diffing against
+            # stale page entries).
+            state = store.get_bridge_state()
+
         pushed += 1
 
     return pushed
