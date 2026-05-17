@@ -122,7 +122,7 @@ def sync_dispatch(client, db_id, warroom_path):
             assignee = _select(props.get("Assignee"), "Hermes")
             context = _rich_text(props.get("Context"))
             work_dir = _rich_text(props.get("Working Directory"))
-            files_touched = _rich_text(props.get("Files Touched"))
+            files_touched = _rich_text(props.get("Files Touched") or props.get("Authorized Files"))
             next_action = _rich_text(props.get("Next Action"))
 
             append_handoff_entry(
