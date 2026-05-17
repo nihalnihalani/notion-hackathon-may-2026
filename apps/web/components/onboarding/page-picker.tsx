@@ -30,7 +30,7 @@
  */
 
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronRight, FileText, Loader2, Search } from 'lucide-react';
+import { ChevronRight, FileText, Loader2, RefreshCw, Search } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -115,6 +115,7 @@ export function PagePicker({
   const [pages, setPages] = useState<PickerPage[]>(initialPages);
   const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
   const [isLoading, setIsLoading] = useState(false);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -175,7 +176,7 @@ export function PagePicker({
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, refreshNonce]);
 
   // ── Pagination ────────────────────────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -257,7 +258,7 @@ export function PagePicker({
       <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-[1fr_360px]">
         {/* ── Left pane: search + virtualized list ─────────────────── */}
         <section className="flex flex-col rounded-lg border bg-card">
-          <div className="border-b p-3">
+          <div className="space-y-3 border-b p-3">
             <div className="relative">
               <Search
                 aria-hidden
@@ -273,6 +274,29 @@ export function PagePicker({
                 aria-label="Search Notion pages"
               />
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  setRefreshNonce((value) => value + 1);
+                  setListError(null);
+                }}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                Refresh
+              </Button>
+              <Button asChild type="button" variant="ghost" size="sm">
+                <a href="/api/auth/notion/start">Connect more pages</a>
+              </Button>
+            </div>
           </div>
 
           <div className="relative flex-1">
@@ -285,10 +309,15 @@ export function PagePicker({
             ) : listError ? (
               <div className="p-4 text-sm text-destructive">Failed to load pages: {listError}</div>
             ) : pages.length === 0 ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                {debouncedQuery
-                  ? `No pages match "${debouncedQuery}".`
-                  : 'No pages found. Share a Notion page with the Forge integration to continue.'}
+              <div className="space-y-3 p-6 text-center text-sm text-muted-foreground">
+                <p>
+                  {debouncedQuery
+                    ? `No pages match "${debouncedQuery}".`
+                    : 'No shared Notion pages found.'}
+                </p>
+                <Button asChild size="sm">
+                  <a href="/api/auth/notion/start">Connect pages in Notion</a>
+                </Button>
               </div>
             ) : (
               <div
