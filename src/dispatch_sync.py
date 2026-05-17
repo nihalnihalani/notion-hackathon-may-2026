@@ -105,7 +105,7 @@ def sync_dispatch(client, db_id, warroom_path):
     while has_more:
         rate_limit_sleep()
         kwargs = {
-            "filter": {"property": "Status", "select": {"equals": "Pending"}},
+            "filter": {"property": "Status", "status": {"equals": "Pending"}},
             "page_size": 50,
         }
         if next_cursor:
@@ -132,7 +132,7 @@ def sync_dispatch(client, db_id, warroom_path):
             rate_limit_sleep()
             client.update_page(
                 page_id=task_id,
-                properties={"Status": {"select": {"name": "Dispatched"}}},
+                properties={"Status": {"status": {"name": "Dispatched"}}},
             )
             dispatched_set.add(task_id)
             ledger["dispatched_tasks"] = sorted(dispatched_set)
