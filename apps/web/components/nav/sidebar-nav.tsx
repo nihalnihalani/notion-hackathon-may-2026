@@ -16,9 +16,11 @@ import {
   Settings,
   Sparkles,
   TestTubes,
+  Wand2,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { isActiveRoute } from '@/components/nav/active-route';
 
 export interface NavItem {
   href: string;
@@ -28,6 +30,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: ReadonlyArray<NavItem> = [
   { href: '/dashboard', label: 'Overview', icon: GaugeCircle },
+  { href: '/dashboard/new', label: 'New agent', icon: Wand2 },
   { href: '/agents', label: 'Agents', icon: Bot },
   { href: '/generations', label: 'Generations', icon: History },
   { href: '/evals', label: 'Evals', icon: TestTubes },
@@ -60,8 +63,7 @@ export function SidebarNav({ className }: { className?: string }) {
       <nav className="flex flex-col gap-0.5 p-3" aria-label="Main">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const active =
-            pathname === item.href || pathname?.startsWith(`${item.href}/`);
+          const active = isActiveRoute(pathname, item.href, NAV_ITEMS);
           return (
             <Link
               key={item.href}
