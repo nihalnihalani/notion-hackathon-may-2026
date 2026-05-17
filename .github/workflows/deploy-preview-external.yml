@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
+      base_sha: ${{ steps.pr.outputs.base_sha }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
     env:
       GH_TOKEN: ${{ github.token }}
@@ -86,7 +87,7 @@ jobs:
           fi
 
           PR_JSON=$(gh pr view "${{ inputs.pr_number }}" \
-            --json headRefName,headRefOid,headRepositoryOwner,headRepository)
+            --json baseRefOid,headRefName,headRefOid,headRepositoryOwner,headRepository)
           HEAD_OWNER=$(printf '%s' "${PR_JSON}" | jq -r '.headRepositoryOwner.login')
           HEAD_REPO=$(printf '%s' "${PR_JSON}" | jq -r '.headRepository.name')
           HEAD_FULL_NAME="${HEAD_OWNER}/${HEAD_REPO}"
@@ -96,6 +97,8 @@ jobs:
           fi
 
           HEAD_SHA=$(printf '%s' "${PR_JSON}" | jq -r '.headRefOid')
+          BASE_SHA=$(printf '%s' "${PR_JSON}" | jq -r '.baseRefOid')
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
 
   verify:
@@ -137,6 +140,8 @@ jobs:
       STRIPE_SECRET_KEY: sk_test_stripe_fake_ci_stub
       STRIPE_WEBHOOK_SECRET: whsec_stripe_fake_ci_stub
       FORGE_INTERNAL_TOKEN: ci_stub_token_0000000000000000000000000000000000000000000000
+      BASE_SHA: ${{ needs.validate.outputs.base_sha }}
+      HEAD_SHA: ${{ needs.validate.outputs.head_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -153,14 +158,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .turbo
-          key: turbo-${{ runner.os }}-preview-external-${{ github.sha }}
+          key: turbo-${{ runner.os }}-preview-external-${{ needs.validate.outputs.head_sha }}
           restore-keys: |
             turbo-${{ runner.os }}-preview-external-
       - run: bash scripts/ci/install.sh
-      - name: Lint / typecheck / test / build / verify-env
+      - name: Lint / format / typecheck / test / build / verify-env
         run: |
           echo "::group::lint"
           pnpm lint -- --max-warnings=0
+          echo "::endgroup::"
+          echo "::group::format changed files"
+          pnpm format:check:changed -- "${BASE_SHA}" "${HEAD_SHA}"
           echo "::endgroup::"
           echo "::group::typecheck"
           pnpm typecheck

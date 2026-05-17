@@ -11,10 +11,11 @@
 # Why only nightly (not per-PR): each full sweep costs real $ + model
 # latency. PR CI runs the *dry* (config-validation) eval only.
 #
-# Required GitHub secrets:
+# Real-API evals run when these GitHub secrets exist:
 #   ANTHROPIC_API_KEY   Production Anthropic key (Opus 4.7 access)
 #   OPENAI_API_KEY      Production OpenAI key (GPT-5 + embeddings)
 #   OPENAI_ORG_ID       OpenAI org id (optional but recommended)
+# Optional GitHub secret:
 #   SLACK_WEBHOOK_URL   Slack #forge-evals channel
 # =============================================================================
 name: Evals (nightly)
@@ -50,8 +51,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
+      enabled: ${{ steps.preflight.outputs.enabled }}
       regressed: ${{ steps.compare.outputs.regressed }}
-      summary: ${{ steps.compare.outputs.summary }}
+      summary: ${{ steps.compare.outputs.summary || steps.preflight.outputs.summary }}
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -59,16 +61,51 @@ jobs:
       REGRESSION_THRESHOLD_PCT: ${{ inputs.regression_threshold_pct || '5' }}
     steps:
       - uses: actions/checkout@v6
+      - id: preflight
+        name: Check eval API secrets
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in ANTHROPIC_API_KEY OPENAI_API_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("${name}")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            SUMMARY="Nightly evals skipped; missing Actions secrets: ${missing[*]}"
+            {
+              echo "enabled=false"
+              echo "summary=${SUMMARY}"
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "### Nightly evals skipped"
+              echo
+              echo "${SUMMARY}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::${SUMMARY}"
+            exit 0
+          fi
+
+          {
+            echo "enabled=true"
+            echo "summary=Nightly evals enabled."
+          } >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v6
+        if: steps.preflight.outputs.enabled == 'true'
         with:
           run_install: false
       - uses: actions/setup-node@v6
+        if: steps.preflight.outputs.enabled == 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-      - run: bash scripts/ci/install.sh
+      - if: steps.preflight.outputs.enabled == 'true'
+        run: bash scripts/ci/install.sh
 
       - name: Run eval suite
+        if: steps.preflight.outputs.enabled == 'true'
         run: |
           echo "::group::promptfoo eval"
           pnpm --filter @forge/eval-harness eval -- --format json --output evals-output/
@@ -76,6 +113,7 @@ jobs:
 
       - id: compare
         name: Compare to baseline
+        if: steps.preflight.outputs.enabled == 'true'
         run: |
           echo "::group::baseline diff"
           pnpm --filter @forge/eval-harness baseline:check -- \
@@ -98,7 +136,7 @@ jobs:
           fi
 
       - name: Generate HTML report
-        if: always()
+        if: always() && steps.preflight.outputs.enabled == 'true'
         run: |
           echo "::group::promptfoo view"
           pnpm --filter @forge/eval-harness eval:report -- \
@@ -107,7 +145,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload report artifact
-        if: always()
+        if: always() && steps.preflight.outputs.enabled == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: evals-html-report
@@ -115,7 +153,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Pages artifact
-        if: always()
+        if: always() && steps.preflight.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: packages/eval-harness/evals-output/html/
@@ -123,7 +161,7 @@ jobs:
   publish:
     name: Publish report to GitHub Pages
     needs: evals
-    if: always() && needs.evals.result != 'cancelled'
+    if: always() && needs.evals.outputs.enabled == 'true' && needs.evals.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
@@ -139,10 +177,12 @@ jobs:
     if: failure() && needs.evals.outputs.regressed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Slack webhook
+        if: env.SLACK_WEBHOOK_URL != ''
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           SUMMARY: ${{ needs.evals.outputs.summary }}
         run: |
           set -euo pipefail
@@ -160,5 +200,10 @@ jobs:
                 ]
               }]
             }')
-          printf '%s' "${PAYLOAD}" | curl -fsS -X POST -H 'Content-Type: application/json' \
-            --data-binary @- "${SLACK_WEBHOOK_URL}" >/dev/null
+          if ! printf '%s' "${PAYLOAD}" | curl -fsS -X POST -H 'Content-Type: application/json' \
+            --data-binary @- "${SLACK_WEBHOOK_URL}" >/dev/null; then
+            echo "::warning::Slack notification failed; eval result is unchanged."
+          fi
+      - name: Slack webhook not configured
+        if: env.SLACK_WEBHOOK_URL == ''
+        run: echo "SLACK_WEBHOOK_URL is not configured; skipping eval regression notification."

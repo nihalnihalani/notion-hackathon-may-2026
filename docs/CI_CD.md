@@ -9,12 +9,12 @@ This document is the source of truth for everything that happens after `git push
 | `.github/workflows/ci.yml`                      | PR + push to `main`, manual     | Lint / changed-file format / typecheck / verify-env / prisma-check / test / safety coverage / evals-dry / build.                   |
 | `.github/workflows/deploy-preview.yml`          | PR to `main`                    | CI-equivalent verify only; no optional provider jobs appear as skipped PR checks.                                                  |
 | `.github/workflows/deploy-preview-external.yml` | manual dispatch                 | Maintainer-run PlanetScale preview branch → Vercel preview deploy → sticky PR comment → optional E2E after provider secrets exist. |
-| `.github/workflows/deploy-prod.yml`             | push to `main`, manual dispatch | Release-candidate verify → build → prisma migrate deploy → Vercel prod → Sentry release → healthz smoke → optional Slack / issue.  |
-| `.github/workflows/evals-nightly.yml`           | cron `0 3 * * *`, manual        | Real-API Promptfoo sweep → baseline diff → HTML report on Pages → Slack on regression.                                             |
+| `.github/workflows/deploy-prod.yml`             | push to `main`, manual dispatch | Release-candidate verify → build always; external prod deploy runs only after provider secrets are configured.                     |
+| `.github/workflows/evals-nightly.yml`           | cron `0 3 * * *`, manual        | Real-API Promptfoo sweep when API secrets exist → baseline diff → HTML report on Pages → Slack on regression.                      |
 | `.github/workflows/security.yml`                | PR + push + Monday 09:00 UTC    | `pnpm audit` (high+critical) plus Gitleaks committed-secret scanning.                                                              |
 | `.github/dependabot.yml`                        | weekly Monday                   | npm + github-actions updates, grouped.                                                                                             |
 
-## Required GitHub secrets
+## Provider/API GitHub secrets
 
 Set in **Repository Settings → Secrets and variables → Actions**.
 
@@ -40,6 +40,10 @@ Set in **Repository Settings → Secrets and variables → Actions**.
 Per-PR CI uses **only** the stub env values inlined in `ci.yml` / `deploy-preview.yml`. No real API key is ever exposed to PR-triggered verification runs.
 
 `deploy-preview.yml` always runs verification and deliberately does not create optional PlanetScale, Vercel, sticky-comment, or E2E jobs. That keeps the PR check list clean while the repository is still missing deploy-provider credentials. Once the preview provider secrets are configured, maintainers can run `deploy-preview-external.yml` manually for a PR.
+
+`deploy-prod.yml` runs release-candidate verification and build on every push to `main`. If the Vercel / database / Sentry secrets are missing, the workflow records a clear preflight warning and skips external production systems instead of failing the whole push. Manual production deploy dispatches still fail fast when required provider secrets are missing.
+
+`evals-nightly.yml` skips the paid real-API sweep when `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` is missing. Once those secrets exist, regressions fail the workflow; Slack notifications are best-effort and never mask the real eval result.
 
 All Node-based jobs install through `scripts/ci/install.sh`, which runs `pnpm install --frozen-lockfile` and then generates the Prisma Client for `@forge/db`. Use that script instead of a raw `pnpm install` step in new workflows so fresh GitHub runners match local builds.
 
