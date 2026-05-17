@@ -20,11 +20,11 @@ from typing import Optional
 
 from src.config import build_client, load_config
 from src.dispatch_sync import sync_dispatch
+from src.knowledge_base_sync import sync_knowledge_base
 from src.log_archive import attach_file_logger
 from src.mission_control_sync import sync_mission_control
-from src.knowledge_sync import sync_knowledge_base
-from src.skill_watcher import sync_skills_to_notion
 from src.result_sync import sync_results
+from src.skill_inbox_sync import sync_skill_inbox
 from src.state_store import StateStore
 
 log = logging.getLogger("notion_warroom_bridge")
@@ -72,15 +72,30 @@ def _one_cycle(notion, config, store: StateStore) -> None:
         notion, config.notion_dashboard_page_id, config.warroom_path, store
     )
     log.info("Mission control dashboard blocks synced")
-    
-    # Phase Two Optional Capabilities
-    kb_synced = sync_knowledge_base(notion, getattr(config, 'notion_knowledge_base_db_id', None), config.warroom_path)
-    if kb_synced:
-        log.info("synced %d new docs to KnowledgeBase", kb_synced)
-        
-    skills_synced = sync_skills_to_notion(notion, getattr(config, 'notion_runbook_db_id', None), config.warroom_path)
-    if skills_synced:
-        log.info("registered %d new skills to Notion Runbooks", skills_synced)
+
+    # Phase-two optional syncs: only fire when the corresponding parent
+    # page id is configured. Missing config = the feature stays off.
+    kb_parent = getattr(config, "notion_knowledge_base_db_id", None)
+    if kb_parent:
+        kb_synced = sync_knowledge_base(
+            notion,
+            kb_parent,
+            Path(config.warroom_path) / "KnowledgeBase",
+            store,
+        )
+        if kb_synced:
+            log.info("synced %d KnowledgeBase doc(s) to Notion", kb_synced)
+
+    skills_parent = getattr(config, "notion_runbook_db_id", None)
+    if skills_parent:
+        skills_synced = sync_skill_inbox(
+            notion,
+            skills_parent,
+            Path(config.warroom_path) / "Skill_Inbox",
+            store,
+        )
+        if skills_synced:
+            log.info("synced %d Skill Inbox runbook(s) to Notion", skills_synced)
 
 
 def main() -> int:

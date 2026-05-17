@@ -326,6 +326,64 @@ def test_update_block_requires_id():
         client.update_block("", {})
 
 
+# ---- create_page -----------------------------------------------------------
+
+
+def test_create_page_posts_pages_endpoint_with_parent_and_title():
+    response = _make_response(200, {"object": "page", "id": "new_page_1"})
+    client, session, _ = _make_client(responses=[response])
+
+    children = [
+        {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": "body"}}]
+            },
+        }
+    ]
+    result = client.create_page("parent_abc", "My Title", children=children)
+
+    args, kwargs = session.request.call_args
+    assert args[0] == "POST"
+    assert args[1] == "https://api.notion.com/v1/pages"
+    assert kwargs["json"] == {
+        "parent": {"page_id": "parent_abc"},
+        "properties": {
+            "title": {
+                "title": [
+                    {"type": "text", "text": {"content": "My Title"}}
+                ]
+            }
+        },
+        "children": children,
+    }
+    assert result == {"object": "page", "id": "new_page_1"}
+
+
+def test_create_page_defaults_children_to_empty_list():
+    response = _make_response(200, {"object": "page", "id": "p2"})
+    client, session, _ = _make_client(responses=[response])
+    client.create_page("parent_abc", "Some Title")
+    assert session.request.call_args.kwargs["json"]["children"] == []
+
+
+def test_create_page_requires_parent_id():
+    client, _, _ = _make_client(responses=[])
+    with pytest.raises(ValueError):
+        client.create_page("", "Title")
+
+
+def test_create_page_uses_untitled_for_empty_title():
+    response = _make_response(200, {"object": "page", "id": "p3"})
+    client, session, _ = _make_client(responses=[response])
+    client.create_page("parent_abc", "")
+    sent_title = session.request.call_args.kwargs["json"]["properties"]["title"][
+        "title"
+    ][0]["text"]["content"]
+    assert sent_title == "Untitled"
+
+
 # ---- Rate-limit pacing -----------------------------------------------------
 
 

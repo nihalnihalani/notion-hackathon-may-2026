@@ -83,6 +83,8 @@ def empty_state() -> dict[str, Any]:
         "dashboard_block_id": None,
         "mission_control": {},
         "pages": {},
+        "kb_pages": {},
+        "skill_pages": {},
     }
 
 
@@ -150,6 +152,12 @@ class StateStore:
         pages = data.get("pages")
         if not isinstance(pages, dict):
             data["pages"] = {}
+        kb_pages = data.get("kb_pages")
+        if not isinstance(kb_pages, dict):
+            data["kb_pages"] = {}
+        skill_pages = data.get("skill_pages")
+        if not isinstance(skill_pages, dict):
+            data["skill_pages"] = {}
         return data
 
     def save(self, state: Mapping[str, Any]) -> None:
@@ -419,3 +427,68 @@ class StateStore:
 
     def set_mc_hash(self, file_key: str, content_hash: Optional[str]) -> None:
         self.set_mission_control_hash(file_key, content_hash)
+
+    # ---- Knowledge Base / Skill Inbox page tracking --------------------------
+
+    def _get_section_page(
+        self, top_level: str, section_key: str
+    ) -> Optional[dict[str, Any]]:
+        if not section_key:
+            return None
+        bucket = self.load().get(top_level)
+        if not isinstance(bucket, dict):
+            return None
+        entry = bucket.get(section_key)
+        if not isinstance(entry, dict):
+            return None
+        return dict(entry)
+
+    def _set_section_page(
+        self,
+        top_level: str,
+        section_key: str,
+        page_id: Optional[str],
+        content_hash: Optional[str],
+    ) -> None:
+        if not section_key:
+            raise ValueError("section_key is required")
+        with self.locked():
+            state = self.load()
+            bucket = state.get(top_level)
+            if not isinstance(bucket, dict):
+                bucket = {}
+                state[top_level] = bucket
+            if page_id is None:
+                bucket.pop(section_key, None)
+            else:
+                bucket[section_key] = {
+                    "page_id": page_id,
+                    "hash": content_hash,
+                }
+            self.save(state)
+
+    def get_kb_page(self, section_key: str) -> Optional[dict[str, Any]]:
+        """Return the persisted `{page_id, hash}` for a KB section, or None."""
+        return self._get_section_page("kb_pages", section_key)
+
+    def set_kb_page(
+        self,
+        section_key: str,
+        page_id: Optional[str],
+        content_hash: Optional[str] = None,
+    ) -> None:
+        """Persist (or clear, when `page_id` is None) a KB page id and hash."""
+        self._set_section_page("kb_pages", section_key, page_id, content_hash)
+
+    def get_skill_page(self, section_key: str) -> Optional[dict[str, Any]]:
+        """Return the persisted `{page_id, hash}` for a Skill Inbox section."""
+        return self._get_section_page("skill_pages", section_key)
+
+    def set_skill_page(
+        self,
+        section_key: str,
+        page_id: Optional[str],
+        content_hash: Optional[str] = None,
+    ) -> None:
+        """Persist (or clear, when `page_id` is None) a Skill Inbox page."""
+        self._set_section_page("skill_pages", section_key, page_id, content_hash)

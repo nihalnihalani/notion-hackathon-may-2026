@@ -525,8 +525,12 @@ def test_empty_state_shape_matches_plan():
         "dashboard_block_id",
         "mission_control",
         "pages",
+        "kb_pages",
+        "skill_pages",
     }
     assert state["version"] == 1
+    assert state["kb_pages"] == {}
+    assert state["skill_pages"] == {}
 
 # ---- Mission Control block/hash aliases ------------------------------------
 
@@ -561,4 +565,86 @@ def test_mc_block_and_hash(tmp_path):
     assert store2.get_mc_block("config_file") == "block_new"
     assert store2.get_mc_hash("config_file") == "hash_abc"
     assert store2.get_mc_block("other_file") == "block_456"
+
+
+# ---- KB / Skill Inbox page helpers ----------------------------------------
+
+
+def test_kb_page_helpers_default_to_none(tmp_path):
+    store = StateStore(tmp_path)
+    assert store.get_kb_page("missing-key") is None
+
+
+def test_kb_page_helpers_round_trip(tmp_path):
+    store = StateStore(tmp_path)
+    store.set_kb_page("section-1", "page_abc", "hash_v1")
+
+    entry = store.get_kb_page("section-1")
+    assert entry == {"page_id": "page_abc", "hash": "hash_v1"}
+
+    # Updating overwrites in place.
+    store.set_kb_page("section-1", "page_abc", "hash_v2")
+    assert store.get_kb_page("section-1") == {
+        "page_id": "page_abc",
+        "hash": "hash_v2",
+    }
+
+    # Other keys untouched.
+    store.set_kb_page("section-2", "page_xyz", "hash_a")
+    assert store.get_kb_page("section-2") == {
+        "page_id": "page_xyz",
+        "hash": "hash_a",
+    }
+    assert store.get_kb_page("section-1") == {
+        "page_id": "page_abc",
+        "hash": "hash_v2",
+    }
+
+
+def test_kb_page_persists_across_store_instances(tmp_path):
+    store = StateStore(tmp_path)
+    store.set_kb_page("section-1", "page_abc", "hash_v1")
+    fresh = StateStore(tmp_path)
+    assert fresh.get_kb_page("section-1") == {
+        "page_id": "page_abc",
+        "hash": "hash_v1",
+    }
+
+
+def test_kb_page_clear_with_none_page_id(tmp_path):
+    store = StateStore(tmp_path)
+    store.set_kb_page("section-1", "page_abc", "hash_v1")
+    store.set_kb_page("section-1", None, None)
+    assert store.get_kb_page("section-1") is None
+
+
+def test_kb_page_requires_section_key(tmp_path):
+    store = StateStore(tmp_path)
+    with pytest.raises(ValueError):
+        store.set_kb_page("", "page_abc", "hash_v1")
+    assert store.get_kb_page("") is None
+
+
+def test_skill_page_helpers_round_trip(tmp_path):
+    store = StateStore(tmp_path)
+    assert store.get_skill_page("skill-key") is None
+    store.set_skill_page("skill-key", "page_xyz", "hash_v1")
+    assert store.get_skill_page("skill-key") == {
+        "page_id": "page_xyz",
+        "hash": "hash_v1",
+    }
+
+
+def test_kb_and_skill_buckets_are_isolated(tmp_path):
+    store = StateStore(tmp_path)
+    store.set_kb_page("shared-key", "page_kb", "hash_kb")
+    store.set_skill_page("shared-key", "page_skill", "hash_skill")
+    assert store.get_kb_page("shared-key") == {
+        "page_id": "page_kb",
+        "hash": "hash_kb",
+    }
+    assert store.get_skill_page("shared-key") == {
+        "page_id": "page_skill",
+        "hash": "hash_skill",
+    }
 
