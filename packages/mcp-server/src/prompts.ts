@@ -52,7 +52,7 @@ const DESCRIBE_PROMPT_DESCRIPTION =
 
 export function renderDescribeAgentPrompt(args: ForgeDescribeAgentArgs): {
   description: string;
-  messages: Array<{ role: 'user'; content: { type: 'text'; text: string } }>;
+  messages: { role: 'user'; content: { type: 'text'; text: string } }[];
 } {
   const inputLine = args.input?.trim()
     ? args.input.trim()
@@ -124,7 +124,7 @@ const DIAGNOSE_PROMPT_DESCRIPTION =
 
 export function renderDiagnoseFailurePrompt(args: ForgeDiagnoseFailureArgs): {
   description: string;
-  messages: Array<{ role: 'user'; content: { type: 'text'; text: string } }>;
+  messages: { role: 'user'; content: { type: 'text'; text: string } }[];
 } {
   const hypothesisBlock = args.hypothesis?.trim()
     ? `\nMy starting hypothesis: ${args.hypothesis.trim()}\n`

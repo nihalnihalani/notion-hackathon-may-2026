@@ -15,7 +15,7 @@ import {
   type GmailMessageStub,
   type GmailSendResponse,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://gmail.googleapis.com/gmail/v1';
 
@@ -28,16 +28,26 @@ function maybeValidate<T>(schema: z.ZodType<T>, data: unknown, validate?: boolea
  * Works in Edge runtimes (no Node Buffer dependency).
  */
 function base64UrlEncode(input: string): string {
-  // TextEncoder produces a Uint8Array. We base64 it, then URL-safe transform.
   const bytes = new TextEncoder().encode(input);
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  const b64 =
-    typeof btoa === 'function'
-      ? btoa(bin)
-      : // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (globalThis as any).Buffer.from(bin, 'binary').toString('base64');
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const b64 = bytesToBase64(bytes);
+  return b64.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] ?? 0;
+    const b = bytes[i + 1] ?? 0;
+    const c = bytes[i + 2] ?? 0;
+    const triplet = (a << 16) | (b << 8) | c;
+    out += alphabet[(triplet >> 18) & 63] ?? '';
+    out += alphabet[(triplet >> 12) & 63] ?? '';
+    out += i + 1 < bytes.length ? alphabet[(triplet >> 6) & 63] ?? '' : '=';
+    out += i + 2 < bytes.length ? alphabet[triplet & 63] ?? '' : '=';
+  }
+  return out;
 }
 
 function buildRfc822(to: string, subject: string, body: string): string {

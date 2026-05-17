@@ -48,13 +48,14 @@ import { noopLogger } from '@forge/agents';
 import type {
   SandboxRunner,
   SchemaSmithOutput,
+  ShipperResult,
   ToolCoderOutput,
 } from '@forge/agents';
 
 import {
   costExceedsBudget,
   sumGenerationCost,
-  sumGenerationLatency,
+  
 } from './cost-accounting.js';
 import {
   checkExistingGeneration,
@@ -289,9 +290,9 @@ export async function runForgeGeneration(
           event.notionRequestRowId,
           schemaResult.output.rationale,
         );
-      } catch (err) {
+      } catch (error) {
         logger.error('workflow.clarification-comment.failed', {
-          err: err instanceof Error ? err.message : String(err),
+          err: error instanceof Error ? error.message : String(error),
         });
       }
       throw new NeedsClarificationError(schemaResult.output.rationale);
@@ -357,7 +358,7 @@ export async function runForgeGeneration(
       toolCoderAttempt++;
     }
 
-    if (lastInspector === undefined || !lastInspector.output.pass) {
+    if (!lastInspector?.output.pass) {
       throw new InspectorRetryExhaustedError(
         `Inspector failed after ${MAX_TOOL_CODER_ATTEMPTS} Tool Coder attempts`,
         lastInspector?.output.errors ?? [],
@@ -393,17 +394,17 @@ export async function runForgeGeneration(
       shipResult: shipResult.output,
       startedAt,
     });
-  } catch (err) {
-    await handleFailure(err, event, config, startedAt);
-    throw err;
+  } catch (error) {
+    await handleFailure(error, event, config, startedAt);
+    throw error;
   } finally {
     // Always close the sandbox if we created one — never leak.
     if (sandbox !== undefined) {
       try {
         await sandbox.close();
-      } catch (closeErr) {
+      } catch (error) {
         logger.error('workflow.sandbox.close-failed', {
-          err: closeErr instanceof Error ? closeErr.message : String(closeErr),
+          err: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -418,7 +419,7 @@ async function finalize(args: {
   event: GenerationRequestedEvent;
   config: WorkflowConfig;
   schema: SchemaSmithOutput;
-  shipResult: import('@forge/agents').ShipperResult;
+  shipResult: ShipperResult;
   startedAt: number;
 }): Promise<WorkflowSuccess> {
   const { event, config, schema, shipResult, startedAt } = args;
@@ -675,9 +676,9 @@ async function safeNotionLog(
       ...entry,
       timestamp: new Date(),
     });
-  } catch (err) {
+  } catch (error) {
     config.logger?.info('workflow.notion-log.swallow', {
-      err: err instanceof Error ? err.message : String(err),
+      err: error instanceof Error ? error.message : String(error),
       step: entry.step,
     });
   }
@@ -692,9 +693,9 @@ function capturePosthog(
   if (config.posthog === undefined) return;
   try {
     config.posthog.capture({ distinctId, event, properties });
-  } catch (err) {
+  } catch (error) {
     config.logger?.info('workflow.posthog.capture-failed', {
-      err: err instanceof Error ? err.message : String(err),
+      err: error instanceof Error ? error.message : String(error),
       event,
     });
   }
@@ -712,9 +713,9 @@ async function safeOpsPublish(
   if (config.opsMetrics === undefined) return;
   try {
     await config.opsMetrics.publishGenerationEvent(event);
-  } catch (err) {
+  } catch (error) {
     config.logger?.info('workflow.ops-metrics.publish-failed', {
-      err: err instanceof Error ? err.message : String(err),
+      err: error instanceof Error ? error.message : String(error),
       generationId: event.generationId,
       status: event.status satisfies OpsGenerationStatus,
     });
@@ -730,4 +731,6 @@ async function safeOpsPublish(
  * generation-detail page) can reuse the same aggregation logic without
  * importing from the cost module directly.
  */
-export { sumGenerationCost, sumGenerationLatency };
+
+
+export {sumGenerationLatency, sumGenerationCost} from './cost-accounting.js';

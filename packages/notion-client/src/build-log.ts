@@ -223,7 +223,9 @@ export async function keepRecentBuildLogEntries(
   keepLast: number,
 ): Promise<void> {
   if (keepLast < 0) {
-    throw new Error(`keepRecentBuildLogEntries: keepLast must be >= 0, got ${keepLast}`);
+    throw new Error(
+      `keepRecentBuildLogEntries: keepLast must be >= 0, got ${String(keepLast)}`,
+    );
   }
 
   // Collect all children first to avoid mutating during pagination.

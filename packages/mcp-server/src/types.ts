@@ -186,7 +186,7 @@ export interface GenerationStatusView {
   readonly completedAt: string | null;
   readonly totalLatencyMs: number | null;
   readonly totalCostUsd: number | null;
-  readonly steps: ReadonlyArray<GenerationStepView>;
+  readonly steps: readonly GenerationStepView[];
 }
 
 export interface GenerationStepView {
@@ -210,7 +210,7 @@ export interface GeneratedAgentView {
   readonly description: string;
   readonly status: AgentStatus;
   readonly avatarUrl: string | null;
-  readonly oauthProviders: ReadonlyArray<string>;
+  readonly oauthProviders: readonly string[];
   readonly createdAt: string;
 }
 
@@ -256,7 +256,7 @@ export interface ForgeMcpConfig {
   readonly listAgents: (
     filter: { status?: AgentStatus },
     context: ForgeMcpContext,
-  ) => Promise<ReadonlyArray<GeneratedAgentView>>;
+  ) => Promise<readonly GeneratedAgentView[]>;
 
   /** Optional structured logger. Defaults to {@link noopLogger}. */
   readonly logger?: Logger;

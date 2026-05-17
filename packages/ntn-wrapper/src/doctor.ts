@@ -14,13 +14,13 @@ interface RawDoctorJson {
   version?: string;
   cliVersion?: string;
   cli_version?: string;
-  checks?: Array<{
+  checks?: {
     name?: string;
     ok?: boolean;
     pass?: boolean;
     message?: string;
     detail?: string;
-  }>;
+  }[];
   [key: string]: unknown;
 }
 
@@ -44,12 +44,12 @@ export async function runDoctor(
       opts,
     );
     return normalise(data);
-  } catch (err) {
+  } catch (error) {
     // Older CLI versions may exit non-zero with `--json` if the install is
     // unhealthy. Try to recover the JSON from the exec error's stdout.
-    if (err instanceof NtnExecError) {
+    if (error instanceof NtnExecError) {
       try {
-        const parsed: unknown = JSON.parse(err.stdout.trim());
+        const parsed: unknown = JSON.parse(error.stdout.trim());
         return normalise(parsed as RawDoctorJson);
       } catch {
         // Fall through to the plain-text fallback below.
@@ -60,13 +60,13 @@ export async function runDoctor(
           {
             name: 'ntn doctor',
             ok: false,
-            message: (err.stderr || err.stdout || err.message).slice(0, 4000),
+            message: (error.stderr || error.stdout || error.message).slice(0, 4000),
           },
         ],
-        raw: { stderr: err.stderr, stdout: err.stdout, exitCode: err.exitCode },
+        raw: { stderr: error.stderr, stdout: error.stdout, exitCode: error.exitCode },
       };
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -77,7 +77,7 @@ function normalise(raw: RawDoctorJson): DoctorReport {
     return {
       name: c.name ?? 'unknown',
       ok,
-      ...(message !== undefined ? { message } : {}),
+      ...(message === undefined ? {} : { message }),
     };
   });
 
@@ -90,8 +90,8 @@ function normalise(raw: RawDoctorJson): DoctorReport {
 
   return {
     ok,
-    ...(loggedIn !== undefined ? { loggedIn } : {}),
-    ...(cliVersion !== undefined ? { cliVersion } : {}),
+    ...(loggedIn === undefined ? {} : { loggedIn }),
+    ...(cliVersion === undefined ? {} : { cliVersion }),
     checks,
     raw: raw as unknown,
   };

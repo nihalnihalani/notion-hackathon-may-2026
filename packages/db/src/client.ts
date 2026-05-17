@@ -19,7 +19,7 @@
 import { PrismaClient } from "@prisma/client";
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/naming-convention, no-var
+  // eslint-disable-next-line no-var
   var __forge_prisma__: PrismaClient | undefined;
 }
 

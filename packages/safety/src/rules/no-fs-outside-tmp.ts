@@ -70,7 +70,7 @@ export const noFsOutsideTmp: Rule = {
 
       const segments = path.split('.');
       const root = segments[0];
-      const method = segments[segments.length - 1];
+      const method = segments.at(-1);
       if (root === undefined || method === undefined) return;
       if (!FS_ROOTS.has(root)) return;
       if (!FS_METHODS.has(method)) return;

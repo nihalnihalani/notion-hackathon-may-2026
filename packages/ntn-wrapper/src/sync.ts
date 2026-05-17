@@ -72,10 +72,10 @@ export async function getSyncState(
  */
 export async function resetSyncState(
   name: WorkerName,
-  opts: NtnRunOptions & { confirm: true } = { confirm: true },
+  opts?: NtnRunOptions & { confirm: true },
 ): Promise<NtnRunResult> {
   assertWorkerName(name);
-  if (opts.confirm !== true) {
+  if (opts?.confirm !== true) {
     throw new NtnInvalidArgumentError(
       'resetSyncState requires { confirm: true } to acknowledge the destructive operation.',
     );

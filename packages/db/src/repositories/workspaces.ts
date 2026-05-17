@@ -74,6 +74,6 @@ export async function getForgePageIds(
     select: { forgePageId: true, forgeDbId: true },
   });
 
-  if (!w || !w.forgePageId || !w.forgeDbId) return null;
+  if (!w?.forgePageId || !w.forgeDbId) return null;
   return { forgePageId: w.forgePageId, forgeDbId: w.forgeDbId };
 }

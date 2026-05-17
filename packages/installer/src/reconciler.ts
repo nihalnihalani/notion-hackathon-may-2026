@@ -115,14 +115,14 @@ export async function reconcileForgePage(
         { step: 'reconcile', workspaceId: opts.workspaceId },
       );
     }
-  } catch (err) {
-    if (isGone(err)) {
+  } catch (error) {
+    if (isGone(error)) {
       throw new InstallerError(
         'forge page returned 404; full re-install required',
-        { step: 'reconcile', workspaceId: opts.workspaceId, cause: err },
+        { step: 'reconcile', workspaceId: opts.workspaceId, cause: error },
       );
     }
-    throw err;
+    throw error;
   }
 
   // ── 2. button block ────────────────────────────────────────────────────
@@ -135,8 +135,8 @@ export async function reconcileForgePage(
     try {
       const blk = await getBlock(notionConfig, asBlockId(row.forgeButtonBlockId));
       if (!blk.archived && !blk.in_trash) buttonOk = true;
-    } catch (err) {
-      if (!isGone(err)) throw err;
+    } catch (error) {
+      if (!isGone(error)) throw error;
     }
   }
   if (!buttonOk) {
@@ -161,8 +161,8 @@ export async function reconcileForgePage(
         asBlockId(row.forgeBuildLogBlockId),
       );
       if (!blk.archived && !blk.in_trash) buildLogOk = true;
-    } catch (err) {
-      if (!isGone(err)) throw err;
+    } catch (error) {
+      if (!isGone(error)) throw error;
     }
   }
   if (!buildLogOk) {

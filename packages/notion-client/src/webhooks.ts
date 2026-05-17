@@ -74,10 +74,10 @@ function constantTimeEqual(a: string, b: string): boolean {
   const B = enc.encode(b);
   if (A.length !== B.length) return false;
   let diff = 0;
-  for (let i = 0; i < A.length; i++) {
-    // Both bytes guaranteed defined by the length-check + loop bound; the !
-    // is safe under noUncheckedIndexedAccess.
-    diff |= A[i]! ^ B[i]!;
+  for (const [i, element] of A.entries()) {
+    const expected = B[i];
+    if (expected === undefined) return false;
+    diff |= element ^ expected;
   }
   return diff === 0;
 }
@@ -86,8 +86,8 @@ function constantTimeEqual(a: string, b: string): boolean {
 function toHex(bytes: ArrayBuffer): string {
   const view = new Uint8Array(bytes);
   let out = '';
-  for (let i = 0; i < view.length; i++) {
-    out += view[i]!.toString(16).padStart(2, '0');
+  for (const element of view) {
+    out += element.toString(16).padStart(2, '0');
   }
   return out;
 }

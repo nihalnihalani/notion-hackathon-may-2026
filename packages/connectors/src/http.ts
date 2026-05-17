@@ -116,7 +116,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 function backoffDelay(
   attempt: number,
   opts: RetryOptions,
-  retryAfterSec: number | undefined,
+  retryAfterSec?: number,
 ): number {
   if (retryAfterSec !== undefined && Number.isFinite(retryAfterSec)) {
     return Math.min(retryAfterSec * 1000, opts.maxDelayMs);
@@ -183,9 +183,9 @@ export async function makeRequest<T>(
   const retry: RetryOptions = { ...DEFAULT_RETRY, ...retryOverride };
 
   const headers: Record<string, string> = {
-    ...(ctx.defaultHeaders ?? {}),
+    ...ctx.defaultHeaders,
     [ctx.authHeader.name]: ctx.authHeader.value,
-    ...(opts.headers ?? {}),
+    ...opts.headers,
   };
 
   let body: BodyInit | undefined;
@@ -219,14 +219,14 @@ export async function makeRequest<T>(
     let res: Response;
     try {
       res = await fetchImpl(url, init);
-    } catch (cause) {
+    } catch (error) {
       // Network error — treat as retryable up to the limit.
       lastError = new ConnectorError(
-        `${ctx.provider} network error: ${(cause as Error).message}`,
-        { status: 0, body: null, provider: ctx.provider, cause },
+        `${ctx.provider} network error: ${(error as Error).message}`,
+        { status: 0, body: null, provider: ctx.provider, cause: error },
       );
       if (attempt === retry.retries) throw lastError;
-      await delay(backoffDelay(attempt, retry, undefined), opts.signal);
+      await delay(backoffDelay(attempt, retry), opts.signal);
       continue;
     }
 
@@ -253,7 +253,7 @@ export async function makeRequest<T>(
     const wait =
       err instanceof RateLimitError
         ? backoffDelay(attempt, retry, err.retryAfter)
-        : backoffDelay(attempt, retry, undefined);
+        : backoffDelay(attempt, retry);
     await delay(wait, opts.signal);
   }
 

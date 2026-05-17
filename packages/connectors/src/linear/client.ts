@@ -39,7 +39,7 @@ const COMMENT_FIELDS = `id body createdAt user { id name email displayName }`;
 
 interface GraphQLResponse<T> {
   data?: T;
-  errors?: Array<{ message: string; extensions?: unknown }>;
+  errors?: { message: string; extensions?: unknown }[];
 }
 
 function maybeValidate<T>(schema: z.ZodType<T>, data: unknown, validate?: boolean): T {

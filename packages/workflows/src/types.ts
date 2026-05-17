@@ -244,8 +244,8 @@ export interface WorkflowDbHelpers {
           cacheReadTokens?: number | null;
           cacheWriteTokens?: number | null;
           costUsd?: number | null;
-          outputJson?: unknown | null;
-          errorJson?: unknown | null;
+          outputJson?: unknown;
+          errorJson?: unknown;
           latencyMs?: number | null;
           completedAt?: Date | null;
         },

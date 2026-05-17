@@ -18,6 +18,8 @@ import { NtnJsonParseError } from './errors';
  *   2. Fallback: locate the first `{` or `[`, scan to its matching close,
  *      parse that slice. Handles leading banners/preambles.
  */
+// Generic T is a caller-owned decode shape; JSON parsing itself returns unknown.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export function parseNtnJson<T>(stdout: string, args: readonly string[]): T {
   const trimmed = stdout.trim();
   if (trimmed.length === 0) {
@@ -46,8 +48,8 @@ export function parseNtnJson<T>(stdout: string, args: readonly string[]): T {
 
   try {
     return JSON.parse(slice) as T;
-  } catch (err) {
-    throw new NtnJsonParseError({ args, stdout, cause: err });
+  } catch (error) {
+    throw new NtnJsonParseError({ args, stdout, cause: error });
   }
 }
 

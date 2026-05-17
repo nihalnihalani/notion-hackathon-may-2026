@@ -118,22 +118,22 @@ export async function runSchemaSmith(
       costUsd: 0, // sub-agent emits cost via logger; aggregation is the orchestrator's job
       stepRowId: stepRow.id,
     };
-  } catch (err) {
+  } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'failed',
-      errorJson: errorToJson(err),
+      errorJson: errorToJson(error),
       latencyMs,
       completedAt: new Date(),
     });
     await safeLog(config, args.buildLogBlockId, {
       step: 'Schema Smith',
       status: 'failed',
-      message: `error: ${truncate(errMessage(err), 200)}`,
+      message: `error: ${truncate(errMessage(error), 200)}`,
     });
-    throw err;
+    throw error;
   }
 }
 
@@ -219,22 +219,22 @@ export async function runToolCoder(
       costUsd: 0,
       stepRowId: stepRow.id,
     };
-  } catch (err) {
+  } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'failed',
-      errorJson: errorToJson(err),
+      errorJson: errorToJson(error),
       latencyMs,
       completedAt: new Date(),
     });
     await safeLog(config, args.buildLogBlockId, {
       step: 'Tool Coder',
       status: 'failed',
-      message: `error: ${truncate(errMessage(err), 200)}`,
+      message: `error: ${truncate(errMessage(error), 200)}`,
     });
-    throw err;
+    throw error;
   }
 }
 
@@ -327,22 +327,22 @@ export async function runInspector(
       costUsd: 0,
       stepRowId: stepRow.id,
     };
-  } catch (err) {
+  } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'failed',
-      errorJson: errorToJson(err),
+      errorJson: errorToJson(error),
       latencyMs,
       completedAt: new Date(),
     });
     await safeLog(config, args.buildLogBlockId, {
       step: 'Inspector',
       status: 'failed',
-      message: `infrastructure error: ${truncate(errMessage(err), 200)}`,
+      message: `infrastructure error: ${truncate(errMessage(error), 200)}`,
     });
-    throw err;
+    throw error;
   }
 }
 
@@ -405,21 +405,11 @@ export async function runShipper(
     },
   });
 
-  // The Shipper sub-agent requires a `sandbox` on its config — Inspector
-  // already created one for this generation; the orchestrator passes it
-  // through. Caller wiring (runShipper from forge.ts) supplies it on
-  // `args` when it has one, or builds a fresh one from the sandbox factory.
-  if (args.sandbox === undefined) {
-    throw new Error(
-      'runShipper: sandbox is required (Shipper needs it for ntn workers deploy)',
-    );
-  }
-
   const subInput: ShipperInput = {
     generationId,
     workspaceId,
     notionWorkspaceId,
-    ...(description !== undefined && { description }),
+    description,
     schema,
     code,
     config: {
@@ -480,22 +470,22 @@ export async function runShipper(
       costUsd: 0,
       stepRowId: stepRow.id,
     };
-  } catch (err) {
+  } catch (error) {
     const latencyMs = Math.round(performance.now() - startedAt);
     await config.db.recordStep({
       kind: 'finish',
       id: stepRow.id,
       status: 'failed',
-      errorJson: errorToJson(err),
+      errorJson: errorToJson(error),
       latencyMs,
       completedAt: new Date(),
     });
     await safeLog(config, args.buildLogBlockId, {
       step: 'Shipper',
       status: 'failed',
-      message: `error: ${truncate(errMessage(err), 200)}`,
+      message: `error: ${truncate(errMessage(error), 200)}`,
     });
-    throw err;
+    throw error;
   }
 }
 
@@ -578,9 +568,9 @@ async function safeLog(
       ...entry,
       timestamp: new Date(),
     });
-  } catch (err) {
+  } catch (error) {
     config.logger?.info('workflow.notion-log.swallow', {
-      err: errMessage(err),
+      err: errMessage(error),
       step: entry.step,
       status: entry.status,
     });

@@ -63,16 +63,16 @@ async function runWorkerCmd(
 ): Promise<NtnRunResult> {
   try {
     return await runNtn(args, opts);
-  } catch (err) {
-    if (err instanceof NtnExecError && looksLikeAuthFailure(err.stderr, err.stdout)) {
+  } catch (error) {
+    if (error instanceof NtnExecError && looksLikeAuthFailure(error.stderr, error.stdout)) {
       throw new NtnAuthError({
-        args: err.args,
-        stderr: err.stderr,
-        stdout: err.stdout,
-        exitCode: err.exitCode,
+        args: error.args,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        exitCode: error.exitCode,
       });
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -83,16 +83,16 @@ async function runWorkerJson<T>(
   try {
     const { data } = await runNtnJson<T>(args, opts);
     return data;
-  } catch (err) {
-    if (err instanceof NtnExecError && looksLikeAuthFailure(err.stderr, err.stdout)) {
+  } catch (error) {
+    if (error instanceof NtnExecError && looksLikeAuthFailure(error.stderr, error.stdout)) {
       throw new NtnAuthError({
-        args: err.args,
-        stderr: err.stderr,
-        stdout: err.stdout,
-        exitCode: err.exitCode,
+        args: error.args,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        exitCode: error.exitCode,
       });
     }
-    throw err;
+    throw error;
   }
 }
 
@@ -137,8 +137,8 @@ export async function deployWorker(
   const workerId = extractWorkerId(result.stdout);
   return {
     workerName: name,
-    ...(workerId !== undefined ? { workerId } : {}),
-    ...(deployUrl !== undefined ? { deployUrl } : {}),
+    ...(workerId === undefined ? {} : { workerId }),
+    ...(deployUrl === undefined ? {} : { deployUrl }),
     dryRun: opts.dryRun === true,
     rawStdout: result.stdout,
   };
@@ -152,6 +152,8 @@ export async function deployWorker(
  * as JSON; if the CLI returns non-JSON output the raw stdout is surfaced as
  * the `raw` field of the typed result.
  */
+// Generic TOut lets generated-agent callers type their expected Worker output.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export async function execWorker<TOut = unknown>(
   name: WorkerName,
   input: unknown,
@@ -161,10 +163,10 @@ export async function execWorker<TOut = unknown>(
   let inputJson: string;
   try {
     inputJson = JSON.stringify(input);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `execWorker input is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }

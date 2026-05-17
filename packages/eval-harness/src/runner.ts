@@ -76,8 +76,8 @@ export function validateEvalConfigs(): { agent: AgentName; cases: number }[] {
     let parsed: PromptfooYaml;
     try {
       parsed = parseYaml(raw) as PromptfooYaml;
-    } catch (err) {
-      errors.push(`[${agent}] YAML parse error: ${(err as Error).message}`);
+    } catch (error) {
+      errors.push(`[${agent}] YAML parse error: ${(error as Error).message}`);
       continue;
     }
     const cases = Array.isArray(parsed.tests) ? parsed.tests.length : 0;

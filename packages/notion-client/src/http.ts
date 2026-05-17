@@ -86,7 +86,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 function backoffDelay(
   attempt: number,
   opts: RetryOptions,
-  retryAfterSec: number | undefined,
+  retryAfterSec?: number,
 ): number {
   if (retryAfterSec !== undefined && Number.isFinite(retryAfterSec)) {
     return Math.min(retryAfterSec * 1000, opts.maxDelayMs);
@@ -150,7 +150,7 @@ export async function notionRequest<T>(
     Authorization: `Bearer ${config.token}`,
     'Notion-Version': config.notionVersion ?? DEFAULT_NOTION_VERSION,
     Accept: 'application/json',
-    ...(init.headers ?? {}),
+    ...init.headers,
   };
 
   let body: BodyInit | undefined;
@@ -190,13 +190,13 @@ export async function notionRequest<T>(
     let res: Response;
     try {
       res = await fetchImpl(url, requestInit);
-    } catch (cause) {
+    } catch (error) {
       lastError = new NotionError(
-        `notion network error: ${(cause as Error).message}`,
-        { status: 0, body: null, cause },
+        `notion network error: ${(error as Error).message}`,
+        { status: 0, body: null, cause: error },
       );
       if (attempt === retry.retries) throw lastError;
-      await delay(backoffDelay(attempt, retry, undefined), init.signal);
+      await delay(backoffDelay(attempt, retry), init.signal);
       continue;
     }
 
@@ -228,7 +228,7 @@ export async function notionRequest<T>(
     const wait =
       err instanceof NotionRateLimitError
         ? backoffDelay(attempt, retry, err.retryAfter)
-        : backoffDelay(attempt, retry, undefined);
+        : backoffDelay(attempt, retry);
     await delay(wait, init.signal);
   }
 

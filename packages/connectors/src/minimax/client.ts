@@ -23,7 +23,7 @@ import {
   type MinimaxT2AResponse,
   type MinimaxTranscribeResponse,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://api.minimax.io/v1';
 
@@ -48,12 +48,24 @@ function checkBaseResp(
  * passing a URL). Works in Edge runtimes (no Node Buffer dependency).
  */
 function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  if (typeof btoa === 'function') return btoa(bin);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (globalThis as any).Buffer.from(bin, 'binary').toString('base64');
+  return bytesToBase64(new Uint8Array(buf));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] ?? 0;
+    const b = bytes[i + 1] ?? 0;
+    const c = bytes[i + 2] ?? 0;
+    const triplet = (a << 16) | (b << 8) | c;
+    out += alphabet[(triplet >> 18) & 63] ?? '';
+    out += alphabet[(triplet >> 12) & 63] ?? '';
+    out += i + 1 < bytes.length ? alphabet[(triplet >> 6) & 63] ?? '' : '=';
+    out += i + 2 < bytes.length ? alphabet[triplet & 63] ?? '' : '=';
+  }
+  return out;
 }
 
 export interface TranscribeParams {
@@ -150,13 +162,13 @@ export function createMinimaxClient(config: ConnectorConfig): MinimaxClient {
         text: params.text,
         voice_setting: {
           voice_id: params.voice ?? 'male-qn-qingse',
-          speed: params.speed ?? 1.0,
-          vol: params.vol ?? 1.0,
+          speed: params.speed ?? 1,
+          vol: params.vol ?? 1,
           pitch: params.pitch ?? 0,
         },
         audio_setting: {
-          sample_rate: params.sampleRate ?? 32000,
-          bitrate: 128000,
+          sample_rate: params.sampleRate ?? 32_000,
+          bitrate: 128_000,
           format: params.format ?? 'mp3',
           channel: 1,
         },

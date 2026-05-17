@@ -13,7 +13,7 @@ import {
   type CalendarEvent,
   type CalendarTime,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://www.googleapis.com/calendar/v3';
 

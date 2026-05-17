@@ -110,12 +110,12 @@ export function renderSchema(spec: JSchemaSpec): string {
 /**
  * Convert a Worker description into a one-line JSDoc summary the model can't
  * extend with stray newlines. Templates inline this as the file-header
- * comment, so it must be safe inside `/** ... *​/`.
+ * comment, so it must be safe inside a block comment terminator.
  */
 export function describeAsJsdoc(description: string): string {
   return description
-    .replace(/\*\//gu, '*\\/')
-    .replace(/\r?\n+/gu, ' ')
+    .replaceAll('*/', String.raw`*\/`)
+    .replaceAll(/\r?\n+/gu, ' ')
     .trim();
 }
 

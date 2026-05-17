@@ -103,5 +103,5 @@ function toNumberSafe(value: unknown): number {
  * Build Log.
  */
 function round4(n: number): number {
-  return Math.round(n * 10000) / 10000;
+  return Math.round(n * 10_000) / 10_000;
 }

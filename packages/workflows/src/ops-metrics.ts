@@ -192,7 +192,7 @@ export function createOpsMetricsAdapterFromEnv(
 
   const notionVersion = env.get('FORGE_OPS_NOTION_VERSION');
 
-  const overrideEntries: Array<[keyof OpsMetricsPropertyNames, string]> = [];
+  const overrideEntries: [keyof OpsMetricsPropertyNames, string][] = [];
   const titleOverride = env.get('FORGE_OPS_PROPERTY_TITLE');
   if (titleOverride !== undefined) overrideEntries.push(['title', titleOverride]);
   const statusOverride = env.get('FORGE_OPS_PROPERTY_STATUS');

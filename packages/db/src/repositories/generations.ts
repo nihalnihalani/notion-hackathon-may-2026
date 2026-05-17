@@ -86,11 +86,11 @@ export async function updateGenerationStatus(
         totalCostUsd: patch.totalCostUsd,
       }),
       // Default completedAt on terminal states if caller didn't specify.
-      ...(patch.completedAt !== undefined
-        ? { completedAt: patch.completedAt }
-        : isTerminal
+      ...(patch.completedAt === undefined
+        ? (isTerminal
           ? { completedAt: new Date() }
-          : {}),
+          : {})
+        : { completedAt: patch.completedAt }),
     },
   });
 }

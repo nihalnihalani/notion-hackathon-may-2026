@@ -59,12 +59,14 @@ export async function lookupByHash(
  *
  * @throws Always — until pgvector is wired up.
  */
-export async function lookupByEmbedding(
+export function lookupByEmbedding(
   _embedding: Float32Array,
   _options?: { topK?: number; minSimilarity?: number },
-): Promise<ReadonlyArray<PromptCache>> {
-  throw new Error(
+): Promise<readonly PromptCache[]> {
+  return Promise.reject(
+    new Error(
     "[@forge/db] lookupByEmbedding: pgvector not configured. " +
       "See packages/db/src/repositories/prompt-cache.ts for the implementation plan.",
+    ),
   );
 }

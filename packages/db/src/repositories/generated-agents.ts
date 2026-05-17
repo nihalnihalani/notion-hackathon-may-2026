@@ -31,7 +31,7 @@ export async function createGeneratedAgent(input: {
   sourceBlobUrl: string;
   avatarUrl?: string | null;
   capabilities: Prisma.InputJsonValue;
-  oauthProviders: ReadonlyArray<string>;
+  oauthProviders: readonly string[];
   webhookUrl?: string | null;
 }): Promise<GeneratedAgent> {
   return prisma.generatedAgent.create({

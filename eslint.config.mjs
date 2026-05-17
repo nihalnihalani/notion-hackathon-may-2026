@@ -38,12 +38,34 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      '@typescript-eslint/restrict-template-expressions': [
+        'error',
+        {
+          allowAny: false,
+          allowBoolean: true,
+          allowNever: false,
+          allowNullish: false,
+          allowNumber: true,
+          allowRegExp: true,
+        },
+      ],
       'unicorn/prevent-abbreviations': 'off',
+      'unicorn/import-style': 'off',
       'unicorn/no-null': 'off',
+      'unicorn/prefer-top-level-await': 'off',
       'unicorn/filename-case': [
         'error',
         { cases: { kebabCase: true, pascalCase: true } },
       ],
+    },
+  },
+  {
+    files: ['packages/safety/src/**/*.ts'],
+    rules: {
+      // TSESTree node discriminants are runtime strings, but strict type-aware
+      // enum comparison reports false positives while walking the AST union.
+      '@typescript-eslint/no-unsafe-enum-comparison': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
     },
   },
 );

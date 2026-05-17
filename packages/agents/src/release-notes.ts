@@ -76,7 +76,7 @@ function tidy(markdown: string): string {
     .split('\n')
     .map((line) => line.replace(/[\t ]+$/u, ''))
     .join('\n')
-    .replace(/\n{3,}/gu, '\n\n')
+    .replaceAll(/\n{3,}/gu, '\n\n')
     .trim();
 }
 

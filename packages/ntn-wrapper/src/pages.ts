@@ -26,10 +26,10 @@ function assertPageId(id: string): void {
 function safeStringify(payload: unknown, what: string): string {
   try {
     return JSON.stringify(payload);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `${what} payload is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }

@@ -39,6 +39,10 @@ import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import type { ForgeMcpContext, Logger } from './types.js';
 import { noopLogger } from './types.js';
 
+function noopResolve(): void {
+  // Replaced immediately when the response wait promise is constructed.
+}
+
 /**
  * Web-standard MCP request handler.
  *
@@ -97,10 +101,10 @@ export async function handleMcpHttpRequest(
       return jsonRpcParseError(null, 'Request body was empty');
     }
     body = JSON.parse(text);
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.transport.parse_error', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcParseError(null, 'Failed to parse JSON-RPC payload');
   }
@@ -123,7 +127,7 @@ export async function handleMcpHttpRequest(
   const collected: JSONRPCMessage[] = [];
 
   // Resolver wiring up the wait loop below.
-  let resolve: (value: void | PromiseLike<void>) => void = () => undefined;
+  let resolve: (value: void | PromiseLike<void>) => void = noopResolve;
   const done = new Promise<void>((r) => {
     resolve = r;
   });
@@ -133,21 +137,29 @@ export async function handleMcpHttpRequest(
    // which already knows how to read the id off any shape.
   const targetId = isRequest ? extractId(body) : null;
 
+  // InMemoryTransport exposes callback properties, not EventTarget methods.
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
   clientSide.onmessage = (message) => {
     collected.push(message);
     if (targetId !== null && isJsonRpcResponseMatching(message, targetId)) {
       resolve();
     }
   };
-  clientSide.onclose = () => resolve();
-  clientSide.onerror = () => resolve();
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  clientSide.onclose = () => {
+    resolve();
+  };
+  // eslint-disable-next-line unicorn/prefer-add-event-listener
+  clientSide.onerror = () => {
+    resolve();
+  };
 
   try {
     await server.connect(serverSide);
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.transport.connect_failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcInternalError(extractId(body), 'Server failed to attach to transport');
   }
@@ -155,11 +167,11 @@ export async function handleMcpHttpRequest(
   // Deliver the request to the server.
   try {
     await clientSide.send(body);
-  } catch (cause) {
+  } catch (error) {
     await safeClose(server, clientSide);
     logger.error('mcp.transport.send_failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
     return jsonRpcInternalError(extractId(body), 'Failed to deliver request to server');
   }
@@ -235,7 +247,7 @@ function jsonRpcParseError(id: string | number | null, message: string): Respons
       jsonrpc: '2.0',
       // Parse errors per spec use a null id when the offending id can't be determined.
       id: id ?? null,
-      error: { code: -32700, message },
+      error: { code: -32_700, message },
     } as JSONRPCMessage,
     400,
   );
@@ -246,7 +258,7 @@ function jsonRpcInternalError(id: string | number | null, message: string): Resp
     {
       jsonrpc: '2.0',
       id: id ?? null,
-      error: { code: -32603, message },
+      error: { code: -32_603, message },
     } as JSONRPCMessage,
     500,
   );

@@ -18,10 +18,10 @@ const ENDPOINT_REGEX = /^\/?[A-Za-z0-9/_.{}:-]{1,512}$/u;
 function safeStringify(payload: unknown): string {
   try {
     return JSON.stringify(payload);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `callNotionApi data is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }

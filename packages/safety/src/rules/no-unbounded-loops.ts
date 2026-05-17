@@ -25,8 +25,7 @@ export const noUnboundedLoops: Rule = {
 
     walk(ast, (node) => {
       // while(true) { ... }
-      if (node.type === 'WhileStatement' && isTruthyConstant(node.test)) {
-        if (!hasExitStatement(node.body)) {
+      if (node.type === 'WhileStatement' && isTruthyConstant(node.test) && !hasExitStatement(node.body)) {
           violations.push(
             makeViolation({
               rule: RULE,
@@ -37,10 +36,8 @@ export const noUnboundedLoops: Rule = {
             }),
           );
         }
-      }
       // do { ... } while(true)
-      if (node.type === 'DoWhileStatement' && isTruthyConstant(node.test)) {
-        if (!hasExitStatement(node.body)) {
+      if (node.type === 'DoWhileStatement' && isTruthyConstant(node.test) && !hasExitStatement(node.body)) {
           violations.push(
             makeViolation({
               rule: RULE,
@@ -51,10 +48,8 @@ export const noUnboundedLoops: Rule = {
             }),
           );
         }
-      }
       // for(;;) — `test === null` means empty
-      if (node.type === 'ForStatement' && node.test === null) {
-        if (!hasExitStatement(node.body)) {
+      if (node.type === 'ForStatement' && node.test === null && !hasExitStatement(node.body)) {
           violations.push(
             makeViolation({
               rule: RULE,
@@ -65,7 +60,6 @@ export const noUnboundedLoops: Rule = {
             }),
           );
         }
-      }
     });
 
     return violations;

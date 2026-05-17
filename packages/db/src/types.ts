@@ -107,7 +107,7 @@ export type AuditEventInput =
       action: "oauth.granted";
       metadata: {
         provider: string; // "notion" | "github" | "linear" | ...
-        scopes?: ReadonlyArray<string>;
+        scopes?: readonly string[];
       };
     }
   | {

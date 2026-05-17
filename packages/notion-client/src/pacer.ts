@@ -62,7 +62,7 @@ export function createPacer(opts: PacerOptions): Pacer {
   let lastRefill = now();
   // FIFO queue of waiters. Ensures fairness — first to call acquire() first
   // to get a token once one is available.
-  const waiters: Array<() => void> = [];
+  const waiters: (() => void)[] = [];
 
   function refill(): void {
     const t = now();
@@ -77,11 +77,7 @@ export function createPacer(opts: PacerOptions): Pacer {
     // every elapsed ms grants its share of tokens, and we drain them in FIFO
     // order. This matches the intuition "3 req/sec sustained" even under
     // back-pressure: a long delay in scheduling shouldn't punish waiters.
-    if (waiters.length > 0) {
-      tokens = tokens + refillAmount;
-    } else {
-      tokens = Math.min(capacity, tokens + refillAmount);
-    }
+    tokens = waiters.length > 0 ? tokens + refillAmount : Math.min(capacity, tokens + refillAmount);
     lastRefill = t;
   }
 

@@ -21,7 +21,7 @@ import {
   type SlackMessage,
   type SlackUser,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://slack.com/api';
 

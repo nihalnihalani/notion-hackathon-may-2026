@@ -46,11 +46,11 @@ export async function readForgeAgentsResource(
   context: ForgeMcpContext,
   config: ForgeMcpConfig,
 ): Promise<{
-  contents: Array<{
+  contents: {
     uri: string;
     mimeType: string;
     text: string;
-  }>;
+  }[];
 }> {
   const logger: Logger = config.logger ?? noopLogger;
   try {
@@ -60,7 +60,7 @@ export async function readForgeAgentsResource(
       workspaceId: context.workspaceId,
       generatedAt: new Date().toISOString(),
       total: safe.length,
-      agents: safe satisfies ReadonlyArray<GeneratedAgentView>,
+      agents: safe satisfies readonly GeneratedAgentView[],
     };
     return {
       contents: [
@@ -71,12 +71,12 @@ export async function readForgeAgentsResource(
         },
       ],
     };
-  } catch (cause) {
+  } catch (error) {
     logger.error('mcp.resource.forge_agents.failed', {
       workspaceId: context.workspaceId,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: error instanceof Error ? error.message : String(error),
     });
-    const errorPayload = toMcpErrorContent(cause);
+    const errorPayload = toMcpErrorContent(error);
     return {
       contents: [
         {

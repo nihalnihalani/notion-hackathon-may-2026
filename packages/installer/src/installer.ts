@@ -96,12 +96,12 @@ async function step<T>(
     const out = await body();
     emit(ctx.logger, name, 'completed', description);
     return out;
-  } catch (cause) {
-    if (cause instanceof InstallerError) throw cause;
+  } catch (error) {
+    if (error instanceof InstallerError) throw error;
     throw new InstallerError(`installer step "${name}" failed`, {
       step: name,
       workspaceId: ctx.workspaceId,
-      cause,
+      cause: error,
     });
   }
 }
@@ -141,8 +141,7 @@ export async function installForgePage(
   );
 
   if (
-    existing &&
-    existing.forgePageId &&
+    existing?.forgePageId &&
     existing.forgeDbId &&
     existing.forgeAgentsDbId &&
     existing.forgeButtonBlockId &&
@@ -157,8 +156,8 @@ export async function installForgePage(
       // If the user archived the page we still treat it as gone — they
       // explicitly removed the Forge surface.
       pageStillThere = !page.archived && !page.in_trash;
-    } catch (err) {
-      if (!(err instanceof NotionNotFoundError)) throw err;
+    } catch (error) {
+      if (!(error instanceof NotionNotFoundError)) throw error;
     }
 
     if (pageStillThere) {
@@ -187,7 +186,8 @@ export async function installForgePage(
   // The Notion API REQUIRES a parent for every created page. There is no
   // "workspace root" create; integrations must own at least one page
   // explicitly granted to them. Fail fast if the caller didn't supply one.
-  if (!opts.parentPageId) {
+  const parentPageId = opts.parentPageId;
+  if (!parentPageId) {
     throw new InstallerError(
       'parentPageId is required: the Notion REST API does not support ' +
         'creating a page with parent.workspace; the caller must surface a ' +
@@ -226,7 +226,7 @@ export async function installForgePage(
         typeof createPage
       >[1]['children'];
       return createPage(notionConfig, {
-        parent: { type: 'page_id', page_id: opts.parentPageId! },
+        parent: { type: 'page_id', page_id: parentPageId },
         properties: {
           title: {
             title: [
@@ -343,11 +343,11 @@ export async function installForgePage(
           buildBuildLogHeading(),
           buildBuildLogSyncedBlock(),
         ]);
-      } catch (err) {
+      } catch (error) {
         // Workspaces on the Free tier sometimes cannot create
         // synced_blocks (validation_error). Retry with a toggle fallback.
         logger?.warn?.('synced_block creation failed; falling back to toggle', {
-          err: String(err),
+          err: String(error),
         });
         return appendBlocks(notionConfig, asBlockId(pageId), [
           buildDivider(),
@@ -360,7 +360,7 @@ export async function installForgePage(
   // The last block of the three is the synced_block / toggle — that's our
   // container ID. Notion returns blocks in the order we sent them.
   const buildLogContainer =
-    buildLogResp.results[buildLogResp.results.length - 1];
+    buildLogResp.results.at(-1);
   if (!buildLogContainer) {
     throw new InstallerError(
       'Notion returned no blocks for the Build Log append',
@@ -381,7 +381,7 @@ export async function installForgePage(
         buildDivider(),
         buildSettingsToggle(),
       ]);
-      const toggleBlock = toggleResp.results[toggleResp.results.length - 1];
+      const toggleBlock = toggleResp.results.at(-1);
       if (!toggleBlock) return;
       // Append children to the toggle block we just created.
       await appendBlocks(

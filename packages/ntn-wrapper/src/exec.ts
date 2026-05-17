@@ -35,14 +35,18 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_STDOUT_BYTES = 10 * 1024 * 1024; // 10 MiB
 const DEFAULT_MAX_STDERR_BYTES = 1 * 1024 * 1024; // 1 MiB
 /** Grace period between SIGTERM and SIGKILL when killing a runaway child. */
-const KILL_GRACE_MS = 1_500;
+const KILL_GRACE_MS = 1500;
+
+function noopLog(): void {
+  // Intentionally empty default logger.
+}
 
 /** No-op logger used when the caller does not supply one. */
 const NOOP_LOGGER: NtnLogger = {
-  debug: () => undefined,
-  info: () => undefined,
-  warn: () => undefined,
-  error: () => undefined,
+  debug: noopLog,
+  info: noopLog,
+  warn: noopLog,
+  error: noopLog,
 };
 
 /**
@@ -85,12 +89,12 @@ export async function runNtn(
         // Detach=false so signals propagate. windowsHide for cleanliness.
         windowsHide: true,
       });
-    } catch (err) {
+    } catch (error) {
       // Synchronous spawn errors (e.g. invalid args) are rare; treat as exec error.
       reject(
         new NtnError('Failed to spawn ntn process', {
           args,
-          cause: err,
+          cause: error,
         }),
       );
       return;
@@ -179,9 +183,9 @@ export async function runNtn(
             /* already dead */
           }
         }, KILL_GRACE_MS);
-        killTimeoutHandle.unref?.();
+        killTimeoutHandle.unref();
       }, timeoutMs);
-      timeoutHandle.unref?.();
+      timeoutHandle.unref();
     }
 
     // ---------------- AbortSignal ----------------
@@ -201,7 +205,7 @@ export async function runNtn(
           /* already dead */
         }
       }, KILL_GRACE_MS);
-      escalate.unref?.();
+      escalate.unref();
     };
 
     if (opts.signal) {
@@ -328,6 +332,8 @@ function abortReason(
  * and surface parse failures as `NtnJsonParseError`. Used by `--json`-aware
  * wrappers (workers list, capabilities, runs, doctor, webhooks, ...).
  */
+// Generic T is the typed wrapper contract for callers that validate by command.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export async function runNtnJson<T>(
   args: readonly string[],
   opts: NtnRunOptions = {},

@@ -13,10 +13,10 @@ const FILE_ID_REGEX = /^[A-Za-z0-9-]{8,128}$/u;
 function safeStringify(payload: unknown, what: string): string {
   try {
     return JSON.stringify(payload);
-  } catch (err) {
+  } catch (error) {
     throw new NtnInvalidArgumentError(
       `${what} payload is not JSON-serialisable: ${
-        err instanceof Error ? err.message : String(err)
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }

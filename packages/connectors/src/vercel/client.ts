@@ -15,7 +15,7 @@ import {
   type VercelDeployment,
   type VercelProject,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DEFAULT_BASE = 'https://api.vercel.com';
 

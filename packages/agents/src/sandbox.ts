@@ -103,7 +103,7 @@ export interface SandboxFile {
  * runner). Inspector uses `try/finally` to guarantee teardown.
  */
 export interface SandboxRunner {
-  writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void>;
+  writeFiles(files: readonly SandboxFile[]): Promise<void>;
   run(opts: SandboxRunOptions): Promise<SandboxRunResult>;
   close(): Promise<void>;
 }
@@ -164,7 +164,7 @@ export interface VercelSandboxConfig {
  * an integration test in the orchestrator package.
  */
 interface VercelSandboxInstance {
-  writeFiles(files: Array<{ path: string; content: Buffer; mode?: number }>): Promise<void>;
+  writeFiles(files: { path: string; content: Buffer; mode?: number }[]): Promise<void>;
   runCommand(
     params: {
       cmd: string;
@@ -226,11 +226,11 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   // — not in this sub-agent package — to keep the agent bundle slim).
   let sdk: VercelSandboxModule;
   try {
-    sdk = (await loadVercelSandboxSdk()) as unknown as VercelSandboxModule;
-  } catch (err) {
+    sdk = (await loadVercelSandboxSdk()) as VercelSandboxModule;
+  } catch (error) {
     throw new InspectorError(
       'createVercelSandbox: failed to load @vercel/sandbox SDK. Install with `pnpm add @vercel/sandbox`.',
-      { cause: err },
+      { cause: error },
     );
   }
 
@@ -253,14 +253,14 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
   let instance: VercelSandboxInstance;
   try {
     instance = await sdk.Sandbox.create(createOpts);
-  } catch (err) {
-    throw new InspectorError('createVercelSandbox: Sandbox.create failed', { cause: err });
+  } catch (error) {
+    throw new InspectorError('createVercelSandbox: Sandbox.create failed', { cause: error });
   }
 
   let closed = false;
 
   return {
-    async writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void> {
+    async writeFiles(files: readonly SandboxFile[]): Promise<void> {
       if (closed) {
         throw new InspectorError('writeFiles called after sandbox close', {});
       }
@@ -314,11 +314,11 @@ export async function createVercelSandbox(config: VercelSandboxConfig): Promise<
       closed = true;
       try {
         await instance.stop({ blocking: true });
-      } catch (err) {
+      } catch (error) {
         // Stop is idempotent per the SDK; treat residual errors as best-effort.
         // We swallow rather than throw because the Inspector's `finally` block
         // calls close — a throw here would mask the actual inspection error.
-        throw new InspectorError('createVercelSandbox: sandbox.stop failed', { cause: err });
+        throw new InspectorError('createVercelSandbox: sandbox.stop failed', { cause: error });
       }
     },
   };
@@ -394,7 +394,7 @@ export async function createInProcessSandbox(
   };
 
   return {
-    async writeFiles(files: ReadonlyArray<SandboxFile>): Promise<void> {
+    async writeFiles(files: readonly SandboxFile[]): Promise<void> {
       if (closed) {
         throw new InspectorError('writeFiles called after sandbox close', {});
       }
@@ -429,9 +429,9 @@ export async function createInProcessSandbox(
             stdio: ['ignore', 'pipe', 'pipe'],
             windowsHide: true,
           });
-        } catch (err) {
+        } catch (error) {
           rejectPromise(
-            new InspectorError(`in-process sandbox: failed to spawn ${opts.cmd}`, { cause: err }),
+            new InspectorError(`in-process sandbox: failed to spawn ${opts.cmd}`, { cause: error }),
           );
           return;
         }

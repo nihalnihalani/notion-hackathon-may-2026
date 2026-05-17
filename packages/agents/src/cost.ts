@@ -174,7 +174,7 @@ export const OPENAI_PRICES_USD_PER_MTOK = {
  */
 const OPENAI_UNVERIFIED_PRICES: ReadonlySet<string> = new Set();
 
-const OPENAI_UNVERIFIED_WARNED: Set<string> = new Set();
+const OPENAI_UNVERIFIED_WARNED = new Set<string>();
 
 function warnUnverifiedOpenaiPrice(model: string): void {
   if (!OPENAI_UNVERIFIED_PRICES.has(model)) return;
@@ -182,7 +182,7 @@ function warnUnverifiedOpenaiPrice(model: string): void {
   OPENAI_UNVERIFIED_WARNED.add(model);
   // Single warning per model id per process — chatter-free in tests, loud
   // enough to notice in CI logs and production stdout.
-  // eslint-disable-next-line no-console
+   
   console.warn(
     `[forge/agents/cost] OpenAI model '${model}' is priced from a placeholder. ` +
       `Verify against openai.com/api/pricing and update OPENAI_PRICES_USD_PER_MTOK.`,

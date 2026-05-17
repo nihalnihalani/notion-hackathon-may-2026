@@ -112,7 +112,7 @@ export function errorFromNotionStatus(args: {
   const { status, body, retryAfter } = args;
   const code = extractNotionCode(body);
   const apiMsg = extractNotionMessage(body);
-  const baseMsg = `notion request failed: HTTP ${status}${
+  const baseMsg = `notion request failed: HTTP ${String(status)}${
     code ? ` (${code})` : ''
   }${apiMsg ? ` — ${apiMsg}` : ''}`;
 

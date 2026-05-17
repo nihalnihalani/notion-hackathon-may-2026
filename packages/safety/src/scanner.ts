@@ -26,10 +26,10 @@ function parseSource(source: string): TSESTree.Program {
   try {
     // `parse` returns AST.Program; cast to the TSESTree type used by rules.
     return parse(source, PARSER_OPTIONS) as TSESTree.Program;
-  } catch (err) {
+  } catch (error) {
     const message =
-      err instanceof Error ? err.message : 'unknown parser error';
-    throw new ScannerParseError(`Failed to parse source: ${message}`, err);
+      error instanceof Error ? error.message : 'unknown parser error';
+    throw new ScannerParseError(`Failed to parse source: ${message}`, error);
   }
 }
 

@@ -84,11 +84,11 @@ async function resolveRunner(
     };
     cachedRunner = { start: mod.start, ...(mod.resumeHook !== undefined && { resumeHook: mod.resumeHook }) };
     return cachedRunner;
-  } catch (err) {
+  } catch (error) {
     throw new Error(
       `Vercel Workflow SDK not available: could not import '${moduleName}'. ` +
         `Install the 'workflow' package or pass an explicit runner. ` +
-        `Original error: ${err instanceof Error ? err.message : String(err)}`,
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

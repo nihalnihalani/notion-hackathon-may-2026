@@ -19,7 +19,7 @@ import {
   type OpenaiChatResponse,
   type OpenaiEmbeddingResponse,
 } from './types.js';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 const DIRECT_BASE = 'https://api.openai.com/v1';
 
@@ -60,8 +60,11 @@ export interface OpenaiClient {
 }
 
 export function createOpenaiClient(config: OpenaiConfig): OpenaiClient {
-  const useGateway = typeof config.gatewayUrl === 'string' && config.gatewayUrl.length > 0;
-  const base = useGateway ? config.gatewayUrl! : config.baseUrl ?? DIRECT_BASE;
+  const gatewayUrl =
+    typeof config.gatewayUrl === 'string' && config.gatewayUrl.length > 0
+      ? config.gatewayUrl
+      : undefined;
+  const base = gatewayUrl ?? config.baseUrl ?? DIRECT_BASE;
 
   const defaultHeaders: Record<string, string> = { Accept: 'application/json' };
   if (config.organization) defaultHeaders['OpenAI-Organization'] = config.organization;

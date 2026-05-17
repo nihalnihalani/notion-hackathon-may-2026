@@ -80,7 +80,7 @@ export function parseTscErrors(stderr: string): TscError[] {
     }
     // Continuation: starts with whitespace AND we have a prior diagnostic.
     if (/^\s+\S/u.test(line) && errors.length > 0) {
-      const previous = errors[errors.length - 1];
+      const previous = errors.at(-1);
       if (previous === undefined) {
         continue;
       }

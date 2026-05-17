@@ -32,7 +32,7 @@ export async function uninstallForgePage(
 ): Promise<void> {
   const row = await db.getWorkspaceForgeRecord(opts.workspaceId);
 
-  if (!row || !row.forgePageId) {
+  if (!row?.forgePageId) {
     // Nothing to do — but we don't throw, so the caller can use this as
     // an idempotent "remove me" endpoint.
     logger?.info?.('[uninstaller] no forge page on record; nothing to archive', {
@@ -53,11 +53,11 @@ export async function uninstallForgePage(
 
   try {
     await archivePage(notionConfig, asPageId(row.forgePageId));
-  } catch (cause) {
+  } catch (error) {
     throw new InstallerError('failed to archive Forge root page', {
       step: 'archive-root-page',
       workspaceId: opts.workspaceId,
-      cause,
+      cause: error,
     });
   }
 

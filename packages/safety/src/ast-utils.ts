@@ -63,7 +63,7 @@ export function snippetOf(source: string, node: TSESTree.Node): string {
   const [start, end] = node.range;
   const raw = source.slice(start, Math.min(end, start + 200));
   // Collapse to one line for log readability — Notion blocks don't wrap nicely.
-  const oneLine = raw.replace(/\s+/g, ' ').trim();
+  const oneLine = raw.replaceAll(/\s+/g, ' ').trim();
   return oneLine.length > 160 ? `${oneLine.slice(0, 157)}...` : oneLine;
 }
 
@@ -83,8 +83,8 @@ export function makeViolation(args: {
     rule: args.rule,
     severity: args.severity,
     message: args.message,
-    line: loc?.start.line ?? 0,
-    column: (loc?.start.column ?? 0) + 1,
+    line: loc.start.line ?? 0,
+    column: (loc.start.column ?? 0) + 1,
     snippet: snippetOf(args.source, args.node),
   };
 }

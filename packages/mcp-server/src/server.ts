@@ -143,7 +143,7 @@ export function createForgeMcpServer(
       description: describe.description,
       argsSchema: describe.argsShape,
     },
-    async (args) => describe.render(args),
+    (args) => describe.render(args),
   );
 
   const diagnose = PROMPT_CATALOG.forge_diagnose_failure;
@@ -154,7 +154,7 @@ export function createForgeMcpServer(
       description: diagnose.description,
       argsSchema: diagnose.argsShape,
     },
-    async (args) => diagnose.render(args),
+    (args) => diagnose.render(args),
   );
 
   // ── Resource ───────────────────────────────────────────────────────────

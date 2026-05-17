@@ -38,8 +38,7 @@ export const noChildProcess: Rule = {
 
     walk(ast, (node) => {
       // 1. Static imports
-      if (node.type === 'ImportDeclaration') {
-        if (
+      if (node.type === 'ImportDeclaration' && 
           typeof node.source.value === 'string' &&
           FORBIDDEN_MODULES.has(node.source.value)
         ) {
@@ -53,7 +52,6 @@ export const noChildProcess: Rule = {
             }),
           );
         }
-      }
 
       // 2. CJS-style require('child_process') — generated code shouldn't use
       // CJS, but bias strict.
@@ -61,7 +59,7 @@ export const noChildProcess: Rule = {
         node.type === 'CallExpression' &&
         node.callee.type === 'Identifier' &&
         node.callee.name === 'require' &&
-        node.arguments.length >= 1
+        node.arguments.length > 0
       ) {
         const arg = node.arguments[0];
         if (

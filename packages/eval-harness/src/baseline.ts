@@ -78,8 +78,8 @@ export function readBaseline(path: string = defaultBaselinePath()): Baseline {
       }
     }
     return merged;
-  } catch (err) {
-    throw new Error(`failed to read baseline at ${path}: ${(err as Error).message}`);
+  } catch (error) {
+    throw new Error(`failed to read baseline at ${path}: ${(error as Error).message}`);
   }
 }
 
@@ -109,7 +109,7 @@ export function compareToBaseline(
 ): BaselineDiff {
   const perAgent: BaselineDiff['perAgent'] = [];
   for (const r of result.results) {
-    const base = baseline.agents[r.agent]?.passRate ?? null;
+    const base = baseline.agents[r.agent].passRate ?? null;
     const cur = r.passRate;
     let deltaPct: number | null = null;
     let regressed = false;
