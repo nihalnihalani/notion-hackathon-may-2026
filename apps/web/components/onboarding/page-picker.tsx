@@ -41,10 +41,7 @@ import { cn } from '@/lib/utils';
 export interface PickerPage {
   id: string;
   title: string;
-  icon:
-    | { type: 'emoji'; emoji: string }
-    | { type: 'url'; url: string }
-    | null;
+  icon: { type: 'emoji'; emoji: string } | { type: 'url'; url: string } | null;
   breadcrumb: string;
   url: string;
   archived: boolean;
@@ -81,8 +78,12 @@ const ROW_HEIGHT = 64;
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const handle = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(handle);
+    const handle = setTimeout(() => {
+      setDebounced(value);
+    }, delayMs);
+    return () => {
+      clearTimeout(handle);
+    };
   }, [value, delayMs]);
   return debounced;
 }
@@ -90,20 +91,11 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 function PageIcon({ page }: { page: PickerPage }) {
   if (page.icon?.type === 'emoji') {
     return (
-      <span className="flex h-8 w-8 items-center justify-center text-xl">
-        {page.icon.emoji}
-      </span>
+      <span className="flex h-8 w-8 items-center justify-center text-xl">{page.icon.emoji}</span>
     );
   }
   if (page.icon?.type === 'url') {
-    // eslint-disable-next-line @next/next/no-img-element
-    return (
-      <img
-        src={page.icon.url}
-        alt=""
-        className="h-8 w-8 rounded object-cover"
-      />
-    );
+    return <img src={page.icon.url} alt="" className="h-8 w-8 rounded object-cover" />;
   }
   return (
     <span className="flex h-8 w-8 items-center justify-center rounded bg-muted text-muted-foreground">
@@ -121,9 +113,7 @@ export function PagePicker({
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const [pages, setPages] = useState<PickerPage[]>(initialPages);
-  const [nextCursor, setNextCursor] = useState<string | null>(
-    initialNextCursor,
-  );
+  const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -174,9 +164,9 @@ export function PagePicker({
         setPages(data.pages);
         setNextCursor(data.nextCursor);
       })
-      .catch((err: Error) => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        setListError(err.message);
+        setListError(error instanceof Error ? error.message : String(error));
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -211,8 +201,8 @@ export function PagePicker({
         return [...prev, ...data.pages.filter((p) => !seen.has(p.id))];
       });
       setNextCursor(data.nextCursor);
-    } catch (err) {
-      setListError(err instanceof Error ? err.message : 'Failed to load more');
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : 'Failed to load more');
     } finally {
       setIsLoadingMore(false);
     }
@@ -230,7 +220,7 @@ export function PagePicker({
   // Detect when we're near the bottom of the rendered window and prefetch.
   const virtualItems = rowVirtualizer.getVirtualItems();
   useEffect(() => {
-    const last = virtualItems[virtualItems.length - 1];
+    const last = virtualItems.at(-1);
     if (!last) return;
     if (last.index >= pages.length - 1 - PREFETCH_THRESHOLD_ROWS) {
       void loadMore();
@@ -254,9 +244,9 @@ export function PagePicker({
       }
       // Hard navigation — server components on /dashboard should re-fetch
       // the Workspace row with the freshly populated forgePageId.
-      window.location.href = body.redirect ?? '/dashboard';
-    } catch (err) {
-      setInstallError(err instanceof Error ? err.message : 'Install failed');
+      globalThis.location.href = body.redirect ?? '/dashboard';
+    } catch (error) {
+      setInstallError(error instanceof Error ? error.message : 'Install failed');
       setIsInstalling(false);
     }
   }, [selectedId, isInstalling]);
@@ -275,7 +265,9 @@ export function PagePicker({
               />
               <Input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                }}
                 placeholder="Search your Notion pages..."
                 className="pl-9"
                 aria-label="Search Notion pages"
@@ -291,9 +283,7 @@ export function PagePicker({
                 ))}
               </div>
             ) : listError ? (
-              <div className="p-4 text-sm text-destructive">
-                Failed to load pages: {listError}
-              </div>
+              <div className="p-4 text-sm text-destructive">Failed to load pages: {listError}</div>
             ) : pages.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {debouncedQuery
@@ -343,9 +333,7 @@ export function PagePicker({
                       >
                         <PageIcon page={page} />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">
-                            {page.title}
-                          </div>
+                          <div className="truncate text-sm font-medium">{page.title}</div>
                           <div className="truncate text-xs text-muted-foreground">
                             {page.breadcrumb}
                           </div>
@@ -373,24 +361,17 @@ export function PagePicker({
               <div className="flex items-start gap-3">
                 <PageIcon page={selectedPage} />
                 <div className="min-w-0">
-                  <div className="break-words text-base font-semibold">
-                    {selectedPage.title}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {selectedPage.breadcrumb}
-                  </div>
+                  <div className="break-words text-base font-semibold">{selectedPage.title}</div>
+                  <div className="text-xs text-muted-foreground">{selectedPage.breadcrumb}</div>
                 </div>
               </div>
 
               <div className="rounded-md border border-dashed bg-muted/30 p-3 text-sm">
-                <div className="font-medium">
-                  Forge will appear inside this page.
-                </div>
+                <div className="font-medium">Forge will appear inside this page.</div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  We&apos;ll create a subpage called &quot;Forge — your agents,
-                  in plain English&quot; with your Requests database, Build
-                  Log, and the &quot;Forge this Agent&quot; button. You can
-                  move or rename it later.
+                  We&apos;ll create a subpage called &quot;Forge — your agents, in plain
+                  English&quot; with your Requests database, Build Log, and the &quot;Forge this
+                  Agent&quot; button. You can move or rename it later.
                 </p>
               </div>
 
@@ -405,10 +386,7 @@ export function PagePicker({
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-              <FileText
-                aria-hidden
-                className="h-8 w-8 text-muted-foreground/50"
-              />
+              <FileText aria-hidden className="h-8 w-8 text-muted-foreground/50" />
               <div className="text-sm text-muted-foreground">
                 Pick a page on the left to preview.
               </div>
@@ -430,11 +408,7 @@ export function PagePicker({
             </span>
           )}
         </div>
-        <Button
-          variant="forge"
-          onClick={handleInstall}
-          disabled={!selectedId || isInstalling}
-        >
+        <Button variant="forge" onClick={handleInstall} disabled={!selectedId || isInstalling}>
           {isInstalling ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />

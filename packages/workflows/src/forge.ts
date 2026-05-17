@@ -52,15 +52,8 @@ import type {
   ToolCoderOutput,
 } from '@forge/agents';
 
-import {
-  costExceedsBudget,
-  sumGenerationCost,
-  
-} from './cost-accounting.js';
-import {
-  checkExistingGeneration,
-  DEFAULT_IDEMPOTENCY_WINDOW_MS,
-} from './idempotency.js';
+import { costExceedsBudget, sumGenerationCost } from './cost-accounting.js';
+import { checkExistingGeneration, DEFAULT_IDEMPOTENCY_WINDOW_MS } from './idempotency.js';
 import type { OpsGenerationEvent, OpsGenerationStatus } from './ops-metrics.js';
 import {
   discoverContext,
@@ -69,11 +62,7 @@ import {
   runShipper,
   runToolCoder,
 } from './step-handlers.js';
-import type {
-  GenerationRequestedEvent,
-  WorkflowConfig,
-  WorkflowSuccess,
-} from './types.js';
+import type { GenerationRequestedEvent, WorkflowConfig, WorkflowSuccess } from './types.js';
 
 /**
  * Concurrency intent — applied by the Vercel Workflow runtime via the
@@ -441,7 +430,7 @@ async function finalize(args: {
   await config.db.updateGenerationStatus(event.generationId, {
     status: 'succeeded',
     pattern: schema.pattern, // pattern: null already short-circuited
-    agentId: shipResult.customAgentId ?? null,
+    agentId: shipResult.generatedAgentId,
     completedAt: new Date(),
     totalLatencyMs,
     totalCostUsd,
@@ -453,6 +442,7 @@ async function finalize(args: {
     pattern: schema.pattern,
     deployUrl: shipResult.deployUrl,
     customAgentId: shipResult.customAgentId,
+    generatedAgentId: shipResult.generatedAgentId,
     totalLatencyMs,
   });
 
@@ -482,7 +472,8 @@ async function finalize(args: {
   return {
     generationId: event.generationId,
     status: 'succeeded',
-    ...(shipResult.customAgentId !== null && { agentId: shipResult.customAgentId }),
+    agentId: shipResult.generatedAgentId,
+    generatedAgentId: shipResult.generatedAgentId,
     customAgentId: shipResult.customAgentId,
     deployUrl: shipResult.deployUrl,
     totalCostUsd,
@@ -706,10 +697,7 @@ function capturePosthog(
  * hasn't configured an `opsMetrics` adapter, this is a no-op. Publish errors
  * are swallowed and logged so a misconfigured ops DB never blocks a run.
  */
-async function safeOpsPublish(
-  config: WorkflowConfig,
-  event: OpsGenerationEvent,
-): Promise<void> {
+async function safeOpsPublish(config: WorkflowConfig, event: OpsGenerationEvent): Promise<void> {
   if (config.opsMetrics === undefined) return;
   try {
     await config.opsMetrics.publishGenerationEvent(event);
@@ -732,5 +720,4 @@ async function safeOpsPublish(
  * importing from the cost module directly.
  */
 
-
-export {sumGenerationLatency, sumGenerationCost} from './cost-accounting.js';
+export { sumGenerationLatency, sumGenerationCost } from './cost-accounting.js';

@@ -39,10 +39,7 @@
  */
 
 import { prisma, recordAuditEvent } from '@forge/db';
-import type {
-  InstallerDbClient,
-  WorkspaceForgeRecord,
-} from '@forge/installer';
+import type { InstallerDbClient, WorkspaceForgeRecord } from '@forge/installer';
 import { InstallerError, installForgePage } from '@forge/installer';
 import { asPageId, getPage, NotionNotFoundError } from '@forge/notion-client';
 import * as Sentry from '@sentry/nextjs';
@@ -64,7 +61,8 @@ export const dynamic = 'force-dynamic';
  * compact (32-char hex) forms. Match either. We do not normalize because
  * `getPage` accepts both.
  */
-const parentPageIdRegex = /^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$/;
+const parentPageIdRegex =
+  /^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$/;
 
 const installBodySchema = z.object({
   parentPageId: z
@@ -109,14 +107,12 @@ function buildInstallerDbAdapter(): InstallerDbClient {
       const data: Partial<WorkspaceForgeRecord> = {};
       if (patch.forgePageId !== undefined) data.forgePageId = patch.forgePageId;
       if (patch.forgeDbId !== undefined) data.forgeDbId = patch.forgeDbId;
-      if (patch.forgeAgentsDbId !== undefined)
-        data.forgeAgentsDbId = patch.forgeAgentsDbId;
+      if (patch.forgeAgentsDbId !== undefined) data.forgeAgentsDbId = patch.forgeAgentsDbId;
       if (patch.forgeButtonBlockId !== undefined)
         data.forgeButtonBlockId = patch.forgeButtonBlockId;
       if (patch.forgeBuildLogBlockId !== undefined)
         data.forgeBuildLogBlockId = patch.forgeBuildLogBlockId;
-      if (patch.webhookSecret !== undefined)
-        data.webhookSecret = patch.webhookSecret;
+      if (patch.webhookSecret !== undefined) data.webhookSecret = patch.webhookSecret;
       await prisma.workspace.update({
         where: { id: workspaceId },
         data,
@@ -134,16 +130,10 @@ export const POST = withSentry(
     // Per-user rate limit: 10/min. The installer is idempotent but each
     // call touches Notion (page fetch + block creates) and we don't want
     // a stuck UI to drum the Notion API.
-    const rl = await checkRateLimit(
-      createRateLimiter('onboarding.install', 10, '1 m'),
-      user.id,
-    );
+    const rl = await checkRateLimit(createRateLimiter('onboarding.install', 10, '1 m'), user.id);
     if (!rl.success) {
       const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
-      const resp = apiError(
-        'rate_limited',
-        `Rate limit exceeded. Retry in ${resetSeconds}s.`,
-      );
+      const resp = apiError('rate_limited', `Rate limit exceeded. Retry in ${resetSeconds}s.`);
       resp.headers.set('Retry-After', String(resetSeconds));
       resp.headers.set('X-RateLimit-Limit', String(rl.limit));
       resp.headers.set('X-RateLimit-Remaining', String(rl.remaining));
@@ -193,23 +183,19 @@ export const POST = withSentry(
           'The picked Notion page is archived. Pick a non-archived page.',
         );
       }
-    } catch (err) {
-      if (err instanceof NotionNotFoundError) {
+    } catch (error) {
+      if (error instanceof NotionNotFoundError) {
         return apiError(
           'validation',
           'Notion could not find this page, or the Forge integration does not have access. Share the page with the Forge integration and try again.',
         );
       }
-      const message = err instanceof Error ? err.message : 'unknown';
-      return apiError(
-        'upstream_failure',
-        `Notion getPage failed: ${message}`,
-      );
+      const message = error instanceof Error ? error.message : 'unknown';
+      return apiError('upstream_failure', `Notion getPage failed: ${message}`);
     }
 
     // ── Run the installer (idempotent) ────────────────────────────────────
-    const appUrl =
-      process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+    const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
 
     try {
       const result = await installForgePage(
@@ -236,8 +222,8 @@ export const POST = withSentry(
             forgeDbId: result.requestsDbId,
           },
         });
-      } catch (auditErr) {
-        Sentry.captureException(auditErr, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'audit.workspace.installed' },
         });
       }
@@ -249,8 +235,8 @@ export const POST = withSentry(
           workspaceId: workspace.id,
           properties: { forgePageId: result.pageId, viaPicker: true },
         });
-      } catch (captureErr) {
-        Sentry.captureException(captureErr, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'posthog.workspace.installed' },
         });
       }
@@ -264,29 +250,26 @@ export const POST = withSentry(
         buildLogBlockId: result.buildLogBlockId,
         buttonBlockId: result.buttonBlockId,
       });
-    } catch (installErr) {
-      Sentry.captureException(installErr, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: {
           phase: 'installer.onboarding',
           workspaceId: workspace.id,
         },
       });
 
-      if (installErr instanceof InstallerError) {
+      if (error instanceof InstallerError) {
         return NextResponse.json(
           {
             error: 'upstream_failure',
-            message: `Forge install failed at step "${installErr.step}".`,
-            step: installErr.step,
+            message: `Forge install failed at step "${error.step}".`,
+            step: error.step,
           },
           { status: 502 },
         );
       }
 
-      const message =
-        installErr instanceof Error
-          ? installErr.message
-          : 'unexpected installer error';
+      const message = error instanceof Error ? error.message : 'unexpected installer error';
       return apiError('internal', message);
     }
   },

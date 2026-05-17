@@ -27,7 +27,7 @@ const DEFAULT_LOCALE = 'en-US';
  */
 export function formatUsd(
   value: number | string | null | undefined,
-  locale: string = DEFAULT_LOCALE
+  locale: string = DEFAULT_LOCALE,
 ): string {
   if (value === null || value === undefined || value === '') return '—';
   const n = typeof value === 'string' ? Number(value) : value;
@@ -56,9 +56,7 @@ export function formatUsd(
  *
  * Compact by design — used in dense tables where vertical alignment matters.
  */
-export function formatDuration(
-  ms: number | null | undefined
-): string {
+export function formatDuration(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return '—';
   if (!Number.isFinite(ms)) return '—';
   if (ms === 0) return '0ms';
@@ -81,15 +79,15 @@ export function formatDuration(
 // Relative dates
 // ─────────────────────────────────────────────────────────────────────────────
 
-const RELATIVE_DIVISIONS: ReadonlyArray<{
+const RELATIVE_DIVISIONS: readonly {
   amount: number;
   unit: Intl.RelativeTimeFormatUnit;
-}> = [
+}[] = [
   { amount: 60, unit: 'second' },
   { amount: 60, unit: 'minute' },
   { amount: 24, unit: 'hour' },
   { amount: 7, unit: 'day' },
-  { amount: 4.34524, unit: 'week' },
+  { amount: 4.345_24, unit: 'week' },
   { amount: 12, unit: 'month' },
   { amount: Number.POSITIVE_INFINITY, unit: 'year' },
 ];
@@ -104,7 +102,7 @@ const RELATIVE_DIVISIONS: ReadonlyArray<{
  */
 export function formatRelativeDate(
   input: Date | string | number | null | undefined,
-  options?: { now?: Date; locale?: string }
+  options?: { now?: Date; locale?: string },
 ): string {
   if (input === null || input === undefined) return '—';
   const d = input instanceof Date ? input : new Date(input);
@@ -130,7 +128,7 @@ export function formatRelativeDate(
  */
 export function formatAbsoluteDate(
   input: Date | string | number | null | undefined,
-  locale: string = DEFAULT_LOCALE
+  locale: string = DEFAULT_LOCALE,
 ): string {
   if (input === null || input === undefined) return '—';
   const d = input instanceof Date ? input : new Date(input);
@@ -156,7 +154,7 @@ const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'] as const;
  */
 export function formatBytes(
   bytes: number | null | undefined,
-  options?: { decimals?: number }
+  options?: { decimals?: number },
 ): string {
   if (bytes === null || bytes === undefined) return '—';
   if (!Number.isFinite(bytes) || bytes < 0) return '—';
@@ -164,12 +162,10 @@ export function formatBytes(
 
   const decimals = options?.decimals ?? 1;
   const k = 1024;
-  const i = Math.min(
-    Math.floor(Math.log(bytes) / Math.log(k)),
-    BYTE_UNITS.length - 1
-  );
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), BYTE_UNITS.length - 1);
   const value = bytes / Math.pow(k, i);
-  return `${value.toFixed(decimals)} ${BYTE_UNITS[i]}`;
+  const unit = BYTE_UNITS[i] ?? 'B';
+  return `${value.toFixed(decimals)} ${unit}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,10 +176,7 @@ export function formatBytes(
  * Format an integer with locale-aware separators ("1,234"). Returns "—" for
  * null/undefined.
  */
-export function formatCount(
-  n: number | null | undefined,
-  locale: string = DEFAULT_LOCALE
-): string {
+export function formatCount(n: number | null | undefined, locale: string = DEFAULT_LOCALE): string {
   if (n === null || n === undefined) return '—';
   if (!Number.isFinite(n)) return '—';
   return new Intl.NumberFormat(locale).format(n);
@@ -195,10 +188,7 @@ export function formatCount(
  * Caller is responsible for division-by-zero handling (pass `null` to render
  * a dash rather than "NaN%").
  */
-export function formatPercent(
-  ratio: number | null | undefined,
-  decimals: number = 1
-): string {
+export function formatPercent(ratio: number | null | undefined, decimals = 1): string {
   if (ratio === null || ratio === undefined) return '—';
   if (!Number.isFinite(ratio)) return '—';
   return `${(ratio * 100).toFixed(decimals)}%`;
@@ -209,10 +199,7 @@ export function formatPercent(
  * Returns `null` (not 0) when there are no generations so the caller can
  * render a dash; rendering "0%" would falsely suggest 100% failure.
  */
-export function computeSuccessRate(
-  succeeded: number,
-  total: number
-): number | null {
+export function computeSuccessRate(succeeded: number, total: number): number | null {
   if (!Number.isFinite(succeeded) || !Number.isFinite(total)) return null;
   if (total <= 0) return null;
   return Math.max(0, Math.min(1, succeeded / total));

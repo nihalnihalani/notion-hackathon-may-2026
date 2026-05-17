@@ -16,12 +16,7 @@
  * redeploy reaches the same workflow runtime.
  */
 
-import {
-  createGeneration,
-  descriptionHash,
-  prisma,
-  recordAuditEvent,
-} from '@forge/db';
+import { createGeneration, descriptionHash, prisma, recordAuditEvent } from '@forge/db';
 import { asBlockId } from '@forge/notion-client';
 import { publishGenerationRequested } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
@@ -46,23 +41,14 @@ export const POST = withSentry<{ id: string }>(
 
     const rl = await checkRateLimit(limiters.forgeTrigger(), user.id);
     if (!rl.success) {
-      const resetSeconds = Math.max(
-        0,
-        Math.ceil((rl.reset - Date.now()) / 1000),
-      );
-      const resp = apiError(
-        'rate_limited',
-        `Rate limit exceeded. Retry in ${resetSeconds}s.`,
-      );
+      const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
+      const resp = apiError('rate_limited', `Rate limit exceeded. Retry in ${resetSeconds}s.`);
       resp.headers.set('Retry-After', String(resetSeconds));
       return resp;
     }
 
     if (!workspace.forgeBuildLogBlockId || !workspace.notionWorkspaceId) {
-      return apiError(
-        'forbidden',
-        'Workspace install incomplete — finish Notion install first.',
-      );
+      return apiError('forbidden', 'Workspace install incomplete — finish Notion install first.');
     }
 
     // Re-pull the description from the existing agent row so a redeploy is
@@ -101,14 +87,11 @@ export const POST = withSentry<{ id: string }>(
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: '',
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'workflow.enqueue', generationId: generation.id },
       });
-      return apiError(
-        'upstream_failure',
-        'Could not enqueue redeploy. Try again.',
-      );
+      return apiError('upstream_failure', 'Could not enqueue redeploy. Try again.');
     }
 
     try {
@@ -124,8 +107,8 @@ export const POST = withSentry<{ id: string }>(
           newGenerationId: generation.id,
         },
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'audit.agent.redeployed' },
       });
     }

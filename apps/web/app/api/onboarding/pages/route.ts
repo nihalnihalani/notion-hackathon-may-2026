@@ -66,10 +66,7 @@ const querySchema = z.object({
 interface PickerPage {
   id: string;
   title: string;
-  icon:
-    | { type: 'emoji'; emoji: string }
-    | { type: 'url'; url: string }
-    | null;
+  icon: { type: 'emoji'; emoji: string } | { type: 'url'; url: string } | null;
   breadcrumb: string;
   url: string;
   archived: boolean;
@@ -90,7 +87,7 @@ function extractPageTitle(page: NotionPage): string {
       value.type === 'title' &&
       Array.isArray((value as { title?: unknown[] }).title)
     ) {
-      const rt = (value as { title: Array<{ plain_text?: string; text?: { content?: string } }> }).title;
+      const rt = (value as { title: { plain_text?: string; text?: { content?: string } }[] }).title;
       const parts: string[] = [];
       for (const seg of rt) {
         if (typeof seg.plain_text === 'string') parts.push(seg.plain_text);
@@ -131,16 +128,21 @@ function parentTypeOf(page: NotionPage): PickerPage['parentType'] {
  */
 function buildBreadcrumb(page: NotionPage): string {
   switch (page.parent.type) {
-    case 'workspace':
+    case 'workspace': {
       return 'Workspace';
-    case 'page_id':
+    }
+    case 'page_id': {
       return 'Subpage';
-    case 'database_id':
+    }
+    case 'database_id': {
       return 'Database item';
-    case 'block_id':
+    }
+    case 'block_id': {
       return 'Nested';
-    default:
+    }
+    default: {
       return '';
+    }
   }
 }
 
@@ -155,9 +157,7 @@ export const GET = withSentry(
     const { clerkId } = r.ctx;
 
     const url = new URL(req.url);
-    const parsed = querySchema.safeParse(
-      Object.fromEntries(url.searchParams.entries()),
-    );
+    const parsed = querySchema.safeParse(Object.fromEntries(url.searchParams.entries()));
     if (!parsed.success) {
       return apiError('validation', 'Invalid query.', {
         issues: parsed.error.issues,
@@ -179,15 +179,15 @@ export const GET = withSentry(
       resp = await search(config, {
         filter: { value: 'page' },
         ...(q !== undefined && q.length > 0 ? { query: q } : {}),
-        ...(cursor !== undefined ? { start_cursor: cursor } : {}),
+        ...(cursor === undefined ? {} : { start_cursor: cursor }),
         page_size: limit,
         // Always sort by last edited so blank-query pages are sensible.
         sort: { direction: 'descending', timestamp: 'last_edited_time' },
       });
-    } catch (err) {
+    } catch (error) {
       // Surface upstream failure rather than 500 so the client can render a
       // typed error state. Sentry will capture via `withSentry`.
-      const message = err instanceof Error ? err.message : 'notion search failed';
+      const message = error instanceof Error ? error.message : 'notion search failed';
       return apiError('upstream_failure', `Notion search failed: ${message}`);
     }
 

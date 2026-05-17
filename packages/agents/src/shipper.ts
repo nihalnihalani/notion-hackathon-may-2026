@@ -83,6 +83,8 @@ import {
   type ToolCoderOutput,
 } from './types.js';
 
+const SANDBOX_CWD = '/forge';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public surface
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,24 +177,24 @@ export interface ShipperResendClient {
  * `PutBlobResult` shape (https://vercel.com/docs/vercel-blob/using-blob-sdk).
  */
 export type VercelBlobPutFn = (
-    pathname: string,
-    body: string | ArrayBuffer | Uint8Array | Blob | ReadableStream,
-    options: {
-      access: 'public' | 'private';
-      token: string;
-      contentType?: string;
-      addRandomSuffix?: boolean;
-      cacheControlMaxAge?: number;
-      allowOverwrite?: boolean;
-      abortSignal?: AbortSignal;
-    },
-  ) => Promise<{
-    url: string;
-    pathname: string;
+  pathname: string,
+  body: string | ArrayBuffer | Uint8Array | Blob | ReadableStream,
+  options: {
+    access: 'public' | 'private';
+    token: string;
     contentType?: string;
-    contentDisposition?: string;
-    downloadUrl?: string;
-  }>;
+    addRandomSuffix?: boolean;
+    cacheControlMaxAge?: number;
+    allowOverwrite?: boolean;
+    abortSignal?: AbortSignal;
+  },
+) => Promise<{
+  url: string;
+  pathname: string;
+  contentType?: string;
+  contentDisposition?: string;
+  downloadUrl?: string;
+}>;
 
 /**
  * MiniMax client config for avatar generation. Only required when the caller
@@ -338,10 +340,7 @@ interface DbHelpers {
     resourceId: string;
     metadata: { ntnWorkerName: string; pattern: string; generationId: string };
   }) => Promise<void>;
-  recordUsage: (
-    workspaceId: string,
-    fields: { deploysCount?: number },
-  ) => Promise<void>;
+  recordUsage: (workspaceId: string, fields: { deploysCount?: number }) => Promise<void>;
 }
 
 /**
@@ -365,16 +364,16 @@ async function loadDbHelpers(
     return {
       recordAuditEvent:
         override?.recordAuditEvent ??
-        (mod.recordAuditEvent ??
-          (async () => {
-            /* no-op */
-          })),
+        mod.recordAuditEvent ??
+        (async () => {
+          /* no-op */
+        }),
       recordUsage:
         override?.recordUsage ??
-        (mod.recordUsage ??
-          (async () => {
-            /* no-op */
-          })),
+        mod.recordUsage ??
+        (async () => {
+          /* no-op */
+        }),
     };
   } catch (error) {
     logger.error('shipper.db_helpers.load_failed', {
@@ -409,9 +408,9 @@ async function resolveBlobPut(config: ShipperSubAgentConfig): Promise<VercelBlob
     // installed yet (the brief forbids running pnpm install). The dynamic
     // string + `as any` keeps tsc from following the (potentially missing)
     // module resolution path.
-    const mod = (await import(
-      /* @vite-ignore */ '@vercel/blob' as string
-    )) as { put?: VercelBlobPutFn };
+    const mod = (await import(/* @vite-ignore */ '@vercel/blob' as string)) as {
+      put?: VercelBlobPutFn;
+    };
     if (typeof mod.put !== 'function') {
       throw new TypeError('`@vercel/blob` resolved but does not export `put`');
     }
@@ -513,6 +512,7 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
   try {
     const deployResult = await deployWorker(workerName, {
       dryRun: false,
+      cwd: SANDBOX_CWD,
       ...(config.abortSignal === undefined ? {} : { signal: config.abortSignal }),
     });
     if (deployResult.deployUrl === undefined || deployResult.deployUrl.length === 0) {
@@ -577,10 +577,10 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
           oauthRedirectUrl = oauth.redirectUrl;
         }
       } catch (error) {
-        throw new ShipperError(
-          `Shipper failed at OAuth bootstrap for provider "${provider}"`,
-          { cause: error, detail: { step: 'oauth_bootstrap', provider } },
-        );
+        throw new ShipperError(`Shipper failed at OAuth bootstrap for provider "${provider}"`, {
+          cause: error,
+          detail: { step: 'oauth_bootstrap', provider },
+        });
       }
     }
   }
@@ -768,6 +768,7 @@ export async function shipper(input: ShipperInput): Promise<ShipperResult> {
 
   // ── Final result ────────────────────────────────────────────────────────
   return {
+    generatedAgentId: persistedAgent.id,
     customAgentId: wireResult.customAgentId,
     deployUrl,
     ntnWorkerName: workerName,

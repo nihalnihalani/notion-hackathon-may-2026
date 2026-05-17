@@ -89,10 +89,7 @@ export const GET = withSentry<{ id: string }>(
     if (limitParam !== null) {
       const parsed = Number(limitParam);
       if (!Number.isInteger(parsed) || parsed <= 0 || parsed > MAX_LIMIT) {
-        return apiError(
-          'validation',
-          `\`limit\` must be a positive integer ≤ ${MAX_LIMIT}.`,
-        );
+        return apiError('validation', `\`limit\` must be a positive integer ≤ ${MAX_LIMIT}.`);
       }
       limit = parsed;
     }
@@ -109,20 +106,20 @@ export const GET = withSentry<{ id: string }>(
       // off the latest page. This is good enough for the FE's "show me 50
       // more" affordance and avoids an extra abstraction in the wrapper.
       runs = await listRuns(agent.ntnWorkerName, { limit: limit + 1 });
-    } catch (err) {
-      if (err instanceof NtnNotInstalledError) {
-        Sentry.captureException(err, {
+    } catch (error) {
+      if (error instanceof NtnNotInstalledError) {
+        Sentry.captureException(error, {
           tags: { phase: 'ntn.listRuns', ntnWorkerName: agent.ntnWorkerName },
         });
         return apiError('upstream_failure', 'ntn CLI not available.');
       }
-      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      const message = error instanceof Error ? error.message.toLowerCase() : '';
       // Treat "no such worker" as an empty list — the underlying agent
       // record might be retracted and the user is just seeing a stale tab.
       if (message.includes('not found') || message.includes('404')) {
         return NextResponse.json({ runs: [], nextCursor: null });
       }
-      Sentry.captureException(err, {
+      Sentry.captureException(error, {
         tags: { phase: 'ntn.listRuns', ntnWorkerName: agent.ntnWorkerName },
       });
       return apiError('upstream_failure', 'ntn listRuns failed.');
@@ -135,24 +132,19 @@ export const GET = withSentry<{ id: string }>(
     let windowed = runs;
     if (cursor) {
       const idx = runs.findIndex((r) => r.id === cursor);
-      if (idx >= 0) windowed = runs.slice(idx + 1);
+      if (idx !== -1) windowed = runs.slice(idx + 1);
     }
 
     const hasMore = windowed.length > limit;
-    const page = (hasMore ? windowed.slice(0, limit) : windowed).map(
-      toResponseItem,
-    );
-    const last = page.length > 0 ? (page[page.length - 1] as RunResponseItem) : null;
+    const page = (hasMore ? windowed.slice(0, limit) : windowed).map(toResponseItem);
+    const last = page.length > 0 ? page.at(-1)! : null;
     const nextCursor = hasMore && last ? last.runId : null;
 
     const body = { runs: page, nextCursor };
     const resp = NextResponse.json(body);
     // Cache on Vercel edge for 60s; stale-while-revalidate keeps the tab
     // snappy if the user re-opens it inside the cache window.
-    resp.headers.set(
-      'Cache-Control',
-      'private, max-age=60, stale-while-revalidate=30',
-    );
+    resp.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=30');
     return resp;
   },
   { routeName: 'agents.runs' },

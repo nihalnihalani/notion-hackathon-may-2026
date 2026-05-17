@@ -35,13 +35,15 @@ interface HealthBody {
   timestamp: string;
 }
 
-const TIMEOUT_MS = 1_500;
+const TIMEOUT_MS = 1500;
 
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms),
+      setTimeout(() => {
+        reject(new Error(`timeout after ${ms}ms`));
+      }, ms),
     ),
   ]);
 }
@@ -51,11 +53,11 @@ async function checkDatabase(): Promise<CheckResult> {
   try {
     await withTimeout(prisma.$queryRaw`SELECT 1`, TIMEOUT_MS);
     return { ok: true, latencyMs: Date.now() - t0 };
-  } catch (err) {
+  } catch (error) {
     return {
       ok: false,
       latencyMs: Date.now() - t0,
-      error: err instanceof Error ? err.message : 'unknown',
+      error: error instanceof Error ? error.message : 'unknown',
     };
   }
 }
@@ -71,11 +73,11 @@ async function checkRedis(): Promise<CheckResult> {
     const redis = new Redis({ url, token });
     await withTimeout(redis.ping(), TIMEOUT_MS);
     return { ok: true, latencyMs: Date.now() - t0 };
-  } catch (err) {
+  } catch (error) {
     return {
       ok: false,
       latencyMs: Date.now() - t0,
-      error: err instanceof Error ? err.message : 'unknown',
+      error: error instanceof Error ? error.message : 'unknown',
     };
   }
 }
@@ -97,12 +99,12 @@ async function checkNotion(): Promise<CheckResult> {
   if (!clientId || !clientSecret) {
     return { ok: false, latencyMs: 0, error: 'notion_oauth_not_configured' };
   }
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
-    'base64',
-  );
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, TIMEOUT_MS);
     try {
       const res = await fetch('https://api.notion.com/v1/oauth/token', {
         method: 'GET',
@@ -122,23 +124,19 @@ async function checkNotion(): Promise<CheckResult> {
     } finally {
       clearTimeout(timer);
     }
-  } catch (err) {
+  } catch (error) {
     // AbortError (timeout) or DNS/network failure → genuinely down.
     return {
       ok: false,
       latencyMs: Date.now() - t0,
-      error: err instanceof Error ? err.message : 'unknown',
+      error: error instanceof Error ? error.message : 'unknown',
     };
   }
 }
 
 export const GET = withSentry(
   async () => {
-    const [db, redis, notion] = await Promise.all([
-      checkDatabase(),
-      checkRedis(),
-      checkNotion(),
-    ]);
+    const [db, redis, notion] = await Promise.all([checkDatabase(), checkRedis(), checkNotion()]);
     const body: HealthBody = {
       status: db.ok && redis.ok && notion.ok ? 'ok' : 'degraded',
       checks: { database: db, redis, notion },

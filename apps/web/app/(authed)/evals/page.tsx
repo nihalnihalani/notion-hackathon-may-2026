@@ -5,37 +5,16 @@ import { TestTubes } from 'lucide-react';
 
 import { FailureRow, type FailureRowData } from '@/components/evals/failure-row';
 import { PassRateChart, type PassRatePoint } from '@/components/evals/pass-rate-chart';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { prisma } from '@/lib/db';
-import {
-  computeSuccessRate,
-  formatCount,
-  formatPercent,
-} from '@/lib/formatters';
+import { computeSuccessRate, formatCount, formatPercent } from '@/lib/formatters';
 import { AGENT_NAME_LABEL } from '@/lib/colors';
 import type { AgentName } from '@forge/db';
 
-const AGENT_NAMES: ReadonlyArray<AgentName> = [
-  'schema_smith',
-  'tool_coder',
-  'inspector',
-  'shipper',
-];
+const AGENT_NAMES: readonly AgentName[] = ['schema_smith', 'tool_coder', 'inspector', 'shipper'];
 
 export const dynamic = 'force-dynamic';
 
@@ -54,9 +33,7 @@ export default async function EvalsPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          Evals
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Evals</h1>
         <p className="text-sm text-muted-foreground">
           How well each sub-agent is performing against the golden test set.
         </p>
@@ -122,7 +99,10 @@ async function PassRateSection() {
   }
 
   // Bucket by day + agent.
-  type Bucket = { date: string; rates: Partial<Record<AgentName, { pass: number; total: number }>> };
+  interface Bucket {
+    date: string;
+    rates: Partial<Record<AgentName, { pass: number; total: number }>>;
+  }
   const buckets = new Map<string, Bucket>();
   for (const r of rows) {
     const day = r.runAt.toISOString().slice(0, 10);
@@ -137,12 +117,12 @@ async function PassRateSection() {
     b.rates[r.agent] = slot;
   }
 
-  const data: PassRatePoint[] = Array.from(buckets.values())
+  const data: PassRatePoint[] = [...buckets.values()]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((b) => {
       const rates: Partial<Record<AgentName, number>> = {};
       for (const [agent, v] of Object.entries(b.rates)) {
-        const rate = computeSuccessRate(v!.pass, v!.total);
+        const rate = computeSuccessRate(v.pass, v.total);
         if (rate !== null) rates[agent as AgentName] = rate;
       }
       return { date: b.date, rates };
@@ -162,7 +142,7 @@ async function AgentStats() {
         }),
       ]);
       return { agent, total, passed };
-    })
+    }),
   );
 
   return (
@@ -172,12 +152,8 @@ async function AgentStats() {
         return (
           <Card key={agent}>
             <CardContent className="space-y-2 p-5">
-              <p className="text-sm text-muted-foreground">
-                {AGENT_NAME_LABEL[agent]}
-              </p>
-              <p className="text-2xl font-semibold tabular-nums">
-                {formatPercent(rate)}
-              </p>
+              <p className="text-sm text-muted-foreground">{AGENT_NAME_LABEL[agent]}</p>
+              <p className="text-2xl font-semibold tabular-nums">{formatPercent(rate)}</p>
               <p className="text-xs text-muted-foreground">
                 {formatCount(passed)} / {formatCount(total)} passed (30d)
               </p>

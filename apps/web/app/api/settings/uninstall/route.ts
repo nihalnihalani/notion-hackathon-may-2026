@@ -28,10 +28,7 @@
 
 import { prisma, recordAuditEvent } from '@forge/db';
 import { uninstallForgePage } from '@forge/installer';
-import type {
-  InstallerDbClient,
-  WorkspaceForgeRecord,
-} from '@forge/installer';
+import type { InstallerDbClient, WorkspaceForgeRecord } from '@forge/installer';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -84,14 +81,12 @@ function buildInstallerDbAdapter(): InstallerDbClient {
       const data: Partial<WorkspaceForgeRecord> = {};
       if (patch.forgePageId !== undefined) data.forgePageId = patch.forgePageId;
       if (patch.forgeDbId !== undefined) data.forgeDbId = patch.forgeDbId;
-      if (patch.forgeAgentsDbId !== undefined)
-        data.forgeAgentsDbId = patch.forgeAgentsDbId;
+      if (patch.forgeAgentsDbId !== undefined) data.forgeAgentsDbId = patch.forgeAgentsDbId;
       if (patch.forgeButtonBlockId !== undefined)
         data.forgeButtonBlockId = patch.forgeButtonBlockId;
       if (patch.forgeBuildLogBlockId !== undefined)
         data.forgeBuildLogBlockId = patch.forgeBuildLogBlockId;
-      if (patch.webhookSecret !== undefined)
-        data.webhookSecret = patch.webhookSecret;
+      if (patch.webhookSecret !== undefined) data.webhookSecret = patch.webhookSecret;
       await prisma.workspace.update({
         where: { id: workspaceId },
         data,
@@ -116,10 +111,7 @@ export const POST = withSentry(
     // callback). Anyone else on the workspace (future multi-user) gets
     // 403 — they should ask the owner to uninstall.
     if (workspace.ownerUserId !== clerkId) {
-      return apiError(
-        'forbidden',
-        'Only the workspace owner can uninstall Forge.',
-      );
+      return apiError('forbidden', 'Only the workspace owner can uninstall Forge.');
     }
 
     // Body parse + confirm-string check. We treat an empty/JSON-less body
@@ -134,19 +126,14 @@ export const POST = withSentry(
     }
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {
-      return apiError(
-        'validation',
-        'Body must include `{ "confirm": "UNINSTALL" }`.',
-        { issues: parsed.error.issues },
-      );
+      return apiError('validation', 'Body must include `{ "confirm": "UNINSTALL" }`.', {
+        issues: parsed.error.issues,
+      });
     }
 
     const token = await getNotionTokenForClerkUser(clerkId);
     if (!token) {
-      return apiError(
-        'forbidden',
-        'Notion OAuth token missing — sign in with Notion first.',
-      );
+      return apiError('forbidden', 'Notion OAuth token missing — sign in with Notion first.');
     }
 
     try {
@@ -155,13 +142,12 @@ export const POST = withSentry(
           notionToken: token,
           workspaceId: workspace.id,
           notionWorkspaceId: workspace.notionWorkspaceId,
-          appUrl:
-            process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
+          appUrl: process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000',
         },
         buildInstallerDbAdapter(),
       );
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'installer.uninstall', workspaceId: workspace.id },
       });
       return apiError('upstream_failure', 'uninstallForgePage failed.');
@@ -177,8 +163,8 @@ export const POST = withSentry(
         where: { workspaceId: workspace.id, status: { not: 'retracted' } },
         data: { status: 'retracted' },
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: {
           phase: 'workspace.uninstall.retract_agents',
           workspaceId: workspace.id,
@@ -195,8 +181,8 @@ export const POST = withSentry(
         resourceId: workspace.id,
         metadata: {},
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'audit.workspace.uninstalled' },
       });
     }

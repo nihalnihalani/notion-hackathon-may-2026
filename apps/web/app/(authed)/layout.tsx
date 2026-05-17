@@ -22,11 +22,7 @@ import { prisma } from '@/lib/db';
  * "Pending install" workspace label rather than redirecting — this lets the
  * user reach Settings and re-trigger install.
  */
-export default async function AuthedLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default async function AuthedLayout({ children }: { children: ReactNode }) {
   const user = await currentUser();
   if (!user) {
     redirect('/');
@@ -39,7 +35,7 @@ export default async function AuthedLayout({
 
   const workspaceName = dbUser?.workspace.name ?? 'Pending install';
   const forgePageUrl = dbUser?.workspace.forgePageId
-    ? `https://www.notion.so/${dbUser.workspace.forgePageId.replace(/-/g, '')}`
+    ? `https://www.notion.so/${dbUser.workspace.forgePageId.replaceAll('-', '')}`
     : null;
 
   return (
@@ -48,9 +44,7 @@ export default async function AuthedLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar workspaceName={workspaceName} forgePageUrl={forgePageUrl} />
         <main className="flex-1">
-          <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">
-            {children}
-          </div>
+          <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8 md:py-10">{children}</div>
         </main>
       </div>
     </div>

@@ -18,7 +18,7 @@ export interface NavRouteLike {
 export function isActiveRoute(
   pathname: string | null | undefined,
   href: string,
-  items: ReadonlyArray<NavRouteLike>,
+  items: readonly NavRouteLike[],
 ): boolean {
   if (!pathname) return false;
   if (pathname === href) return true;

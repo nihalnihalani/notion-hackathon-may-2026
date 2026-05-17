@@ -61,16 +61,13 @@ function generatePlaintextKey(): string {
   const b64 = Buffer.from(bytes)
     .toString('base64')
     .replace(/=+$/, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+    .replaceAll('+', '-')
+    .replaceAll('/', '_');
   return `forge_sk_${b64}`;
 }
 
 async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(input),
-  );
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   const view = new Uint8Array(buf);
   let out = '';
   for (const b of view) out += b.toString(16).padStart(2, '0');
@@ -145,7 +142,7 @@ export const POST = withSentry(
     }
     // `name` is the canonical field; we already refined that at least one of
     // the two fields is present, so the fallback is safe.
-    const keyName = (parsed.data.name ?? parsed.data.label) as string;
+    const keyName = (parsed.data.name ?? parsed.data.label)!;
 
     const plaintext = generatePlaintextKey();
     const hashedKey = await sha256Hex(plaintext);
@@ -183,8 +180,8 @@ export const POST = withSentry(
         resourceId: row.id,
         metadata: { keyId: row.id, prefix: row.prefix, name: row.name },
       });
-    } catch (err) {
-      Sentry.captureException(err, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'audit.api_key.created' },
       });
     }

@@ -41,7 +41,7 @@ function extractPageTitle(page: NotionPage): string {
     ) {
       const rt = (
         value as {
-          title: Array<{ plain_text?: string; text?: { content?: string } }>;
+          title: { plain_text?: string; text?: { content?: string } }[];
         }
       ).title;
       const parts: string[] = [];
@@ -72,16 +72,21 @@ function normalizeIcon(page: NotionPage): PickerPage['icon'] {
 
 function buildBreadcrumb(page: NotionPage): string {
   switch (page.parent.type) {
-    case 'workspace':
+    case 'workspace': {
       return 'Workspace';
-    case 'page_id':
+    }
+    case 'page_id': {
       return 'Subpage';
-    case 'database_id':
+    }
+    case 'database_id': {
       return 'Database item';
-    case 'block_id':
+    }
+    case 'block_id': {
       return 'Nested';
-    default:
+    }
+    default: {
       return '';
+    }
   }
 }
 
@@ -119,8 +124,8 @@ async function fetchInitialPages(token: string): Promise<{
     }
 
     return { pages, nextCursor: resp.next_cursor, error: null };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'unknown';
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown';
     return { pages: [], nextCursor: null, error: message };
   }
 }
@@ -148,18 +153,17 @@ export default async function PickParentPage(): Promise<React.ReactElement> {
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Step 1 of 1 — finish setup
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Choose where to install Forge
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Choose where to install Forge</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">
-          Forge will create a workspace inside the page you pick — a subpage
-          with your Requests database, Build Log, and the &quot;Forge this
-          Agent&quot; button. You can move or rename it later. Only pages you
-          have shared with the Forge integration appear here.
+          Forge will create a workspace inside the page you pick — a subpage with your Requests
+          database, Build Log, and the &quot;Forge this Agent&quot; button. You can move or rename
+          it later. Only pages you have shared with the Forge integration appear here.
         </p>
       </header>
 
-      {!token ? (
+      {token ? (
+        <InitialPickerLoader token={token} workspaceName={workspace.name} />
+      ) : (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
           <div className="font-medium text-destructive">
             We couldn&apos;t find your Notion access token.
@@ -172,8 +176,6 @@ export default async function PickParentPage(): Promise<React.ReactElement> {
             and try again.
           </p>
         </div>
-      ) : (
-        <InitialPickerLoader token={token} workspaceName={workspace.name} />
       )}
     </div>
   );
@@ -191,12 +193,9 @@ async function InitialPickerLoader({
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
-        <div className="font-medium text-destructive">
-          Couldn&apos;t list your Notion pages.
-        </div>
+        <div className="font-medium text-destructive">Couldn&apos;t list your Notion pages.</div>
         <p className="mt-1 text-muted-foreground">
-          {error}. Try refreshing — if it keeps failing, re-link Notion from
-          sign-in.
+          {error}. Try refreshing — if it keeps failing, re-link Notion from sign-in.
         </p>
       </div>
     );
@@ -205,8 +204,7 @@ async function InitialPickerLoader({
   return (
     <>
       <div className="rounded-lg border bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-        Installing into{' '}
-        <span className="font-medium text-foreground">{workspaceName}</span>
+        Installing into <span className="font-medium text-foreground">{workspaceName}</span>
       </div>
       <PagePicker initialPages={pages} initialNextCursor={nextCursor} />
     </>

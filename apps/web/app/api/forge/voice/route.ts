@@ -54,14 +54,20 @@ function inferMinimaxFormat(mime: string, filename: string | undefined): string 
   if (lowered.includes('webm')) return 'webm';
   if (lowered.includes('ogg')) return 'ogg';
   if (lowered.includes('wav') || lowered.includes('wave')) return 'wav';
-  if (lowered.includes('mp4') || lowered.includes('m4a') || lowered.includes('aac'))
-    return 'm4a';
+  if (lowered.includes('mp4') || lowered.includes('m4a') || lowered.includes('aac')) return 'm4a';
   if (lowered.includes('flac')) return 'flac';
   if (lowered.includes('mpeg') || lowered.includes('mp3')) return 'mp3';
 
   const ext = filename?.split('.').pop()?.toLowerCase();
-  if (ext === 'webm' || ext === 'ogg' || ext === 'wav' || ext === 'mp3' ||
-      ext === 'm4a' || ext === 'flac' || ext === 'aac') {
+  if (
+    ext === 'webm' ||
+    ext === 'ogg' ||
+    ext === 'wav' ||
+    ext === 'mp3' ||
+    ext === 'm4a' ||
+    ext === 'flac' ||
+    ext === 'aac'
+  ) {
     return ext === 'aac' ? 'm4a' : ext;
   }
   return 'mp3';
@@ -78,10 +84,7 @@ export const POST = withSentry(
     const rl = await checkRateLimit(limiter, user.id);
     if (!rl.success) {
       const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
-      const resp = apiError(
-        'rate_limited',
-        `Rate limit exceeded. Retry in ${resetSeconds}s.`,
-      );
+      const resp = apiError('rate_limited', `Rate limit exceeded. Retry in ${resetSeconds}s.`);
       resp.headers.set('Retry-After', String(resetSeconds));
       resp.headers.set('X-RateLimit-Limit', String(rl.limit));
       resp.headers.set('X-RateLimit-Remaining', String(rl.remaining));
@@ -117,23 +120,17 @@ export const POST = withSentry(
       return apiError('validation', 'Audio payload is empty.');
     }
     if (audio.size > MAX_AUDIO_BYTES) {
-      return apiError(
-        'validation',
-        `Audio exceeds ${MAX_AUDIO_BYTES} bytes (got ${audio.size}).`,
-      );
+      return apiError('validation', `Audio exceeds ${MAX_AUDIO_BYTES} bytes (got ${audio.size}).`);
     }
 
     const mime = audio.type || '';
-    if (!ACCEPTED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix))) {
-      // Browsers occasionally drop the MIME on Blob — treat empty as audio
+    if (
+      !ACCEPTED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) && // Browsers occasionally drop the MIME on Blob — treat empty as audio
       // and let MiniMax reject if it really isn't. Reject only confirmed
       // wrong types like image/png.
-      if (mime.length > 0) {
-        return apiError(
-          'validation',
-          `Unsupported audio MIME type: ${mime}.`,
-        );
-      }
+      mime.length > 0
+    ) {
+      return apiError('validation', `Unsupported audio MIME type: ${mime}.`);
     }
     const filename = audio instanceof File ? audio.name : undefined;
     const format = inferMinimaxFormat(mime, filename);
@@ -145,22 +142,17 @@ export const POST = withSentry(
     try {
       const bytes = await audio.arrayBuffer();
       resp = await client.transcribe({ audio: bytes, format });
-    } catch (err) {
+    } catch (error) {
       return apiError(
         'upstream_failure',
-        err instanceof Error ? err.message : 'MiniMax transcription failed.',
+        error instanceof Error ? error.message : 'MiniMax transcription failed.',
       );
     }
     const latencyMs = Date.now() - startedAt;
 
-    const text = (resp.text ??
-      resp.segments?.map((s) => s.text).join(' ') ??
-      '').trim();
+    const text = (resp.text ?? resp.segments?.map((s) => s.text).join(' ') ?? '').trim();
     if (text.length === 0) {
-      return apiError(
-        'upstream_failure',
-        'No speech detected. Try recording again.',
-      );
+      return apiError('upstream_failure', 'No speech detected. Try recording again.');
     }
 
     await capture({

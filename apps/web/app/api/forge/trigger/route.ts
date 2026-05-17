@@ -23,11 +23,7 @@
  * idempotency hash and creates the Generation directly.
  */
 
-import {
-  createGeneration,
-  descriptionHash,
-  findRecentByHash,
-} from '@forge/db';
+import { createGeneration, descriptionHash, findRecentByHash } from '@forge/db';
 import { asBlockId } from '@forge/notion-client';
 import { publishGenerationRequested } from '@forge/workflows';
 import * as Sentry from '@sentry/nextjs';
@@ -81,10 +77,7 @@ export const POST = withSentry(
     const rl = await checkRateLimit(limiters.forgeTrigger(), user.id);
     if (!rl.success) {
       const resetSeconds = Math.max(0, Math.ceil((rl.reset - Date.now()) / 1000));
-      const resp = apiError(
-        'rate_limited',
-        `Rate limit exceeded. Retry in ${resetSeconds}s.`,
-      );
+      const resp = apiError('rate_limited', `Rate limit exceeded. Retry in ${resetSeconds}s.`);
       resp.headers.set('Retry-After', String(resetSeconds));
       resp.headers.set('X-RateLimit-Limit', String(rl.limit));
       resp.headers.set('X-RateLimit-Remaining', String(rl.remaining));
@@ -118,10 +111,7 @@ export const POST = withSentry(
     // and post clarification comments. If install never completed these are
     // null — we 412 (Precondition Failed) so the UI can show "finish install".
     if (!workspace.forgeBuildLogBlockId || !workspace.notionWorkspaceId) {
-      return apiError(
-        'forbidden',
-        'Workspace install incomplete — finish Notion install first.',
-      );
+      return apiError('forbidden', 'Workspace install incomplete — finish Notion install first.');
     }
 
     const generation = await createGeneration({
@@ -145,15 +135,12 @@ export const POST = withSentry(
         buildLogBlockId: asBlockId(workspace.forgeBuildLogBlockId),
         notionRequestRowId: notionRowId,
       });
-    } catch (err) {
+    } catch (error) {
       // Mark the row failed; we don't want a dangling `queued` row on enqueue failure.
-      Sentry.captureException(err, {
+      Sentry.captureException(error, {
         tags: { phase: 'workflow.enqueue', generationId: generation.id },
       });
-      return apiError(
-        'upstream_failure',
-        'Could not enqueue generation. Try again.',
-      );
+      return apiError('upstream_failure', 'Could not enqueue generation. Try again.');
     }
 
     await capture({

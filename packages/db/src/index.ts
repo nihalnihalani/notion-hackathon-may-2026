@@ -15,37 +15,35 @@
  */
 
 // --- Runtime clients ---------------------------------------------------------
-export { disconnect, prisma } from "./client.js";
+export { disconnect, prisma } from './client.js';
 
 // --- Pure helpers ------------------------------------------------------------
-export { descriptionHash, normalize } from "./idempotency.js";
+export { descriptionHash, normalize } from './idempotency.js';
 
 // --- Audit writer ------------------------------------------------------------
-export { recordAuditEvent } from "./audit.js";
+export { recordAuditEvent } from './audit.js';
 
 // --- Usage meter -------------------------------------------------------------
-export { getUsageSince, recordUsage } from "./usage-meter.js";
+export { getUsageSince, recordUsage } from './usage-meter.js';
 
 // --- Repository: workspaces --------------------------------------------------
 export {
   findWorkspaceByNotionId,
   getForgePageIds,
   upsertWorkspace,
-} from "./repositories/workspaces.js";
+} from './repositories/workspaces.js';
 
 // --- Repository: generations -------------------------------------------------
 export {
   createGeneration,
   findRecentByHash,
+  findStaleGenerations,
   getGenerationWithSteps,
   updateGenerationStatus,
-} from "./repositories/generations.js";
+} from './repositories/generations.js';
 
 // --- Repository: generation steps --------------------------------------------
-export {
-  listStepsForGeneration,
-  recordStep,
-} from "./repositories/generation-steps.js";
+export { listStepsForGeneration, recordStep } from './repositories/generation-steps.js';
 
 // --- Repository: generated agents --------------------------------------------
 export {
@@ -53,13 +51,10 @@ export {
   findActiveAgentsByWorkspace,
   markAgentStatus,
   softDeleteAgent,
-} from "./repositories/generated-agents.js";
+} from './repositories/generated-agents.js';
 
 // --- Repository: prompt cache ------------------------------------------------
-export {
-  lookupByEmbedding,
-  lookupByHash,
-} from "./repositories/prompt-cache.js";
+export { lookupByEmbedding, lookupByHash } from './repositories/prompt-cache.js';
 
 // --- Types -------------------------------------------------------------------
 export type {
@@ -84,4 +79,4 @@ export type {
   UsageMeterFields,
   User,
   Workspace,
-} from "./types.js";
+} from './types.js';

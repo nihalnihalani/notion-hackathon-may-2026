@@ -1,15 +1,9 @@
-/**
- * Twitter card image route.
- *
- * Re-exports the OpenGraph image so the two URLs always emit the same
- * artifact. 1200×630 satisfies both `og:image` and Twitter's
- * `summary_large_image` aspect-ratio requirement.
- */
+import { renderSocialImage } from '@/lib/social-image';
 
-export {
-  default,
-  runtime,
-  alt,
-  size,
-  contentType,
-} from './opengraph-image';
+export const alt = 'Forge — describe an agent, ship a deployed Notion Custom Agent in 90 seconds';
+export const size = { width: 1200, height: 630 };
+export const contentType = 'image/png';
+
+export default function TwitterImage() {
+  return renderSocialImage();
+}

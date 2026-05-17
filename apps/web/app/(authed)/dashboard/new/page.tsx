@@ -4,13 +4,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { ArrowLeft, BookOpen, Mic, Sparkles, Wand2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { NewAgentForm } from '@/components/dashboard/new-agent-form';
 import { prisma } from '@/lib/db';
 
@@ -42,8 +36,7 @@ export default async function NewAgentPage() {
   });
 
   const installComplete = Boolean(
-    dbUser?.workspace.forgeBuildLogBlockId &&
-      dbUser?.workspace.notionWorkspaceId,
+    dbUser?.workspace.forgeBuildLogBlockId && dbUser.workspace.notionWorkspaceId,
   );
 
   return (
@@ -66,8 +59,8 @@ export default async function NewAgentPage() {
             Forge a new agent
           </h1>
           <p className="text-sm text-muted-foreground">
-            Describe what you want and Forge ships a real, deployed Notion
-            Custom Agent in about 90 seconds.
+            Describe what you want and Forge ships a real, deployed Notion Custom Agent in about 90
+            seconds.
           </p>
         </header>
       </div>
@@ -76,17 +69,9 @@ export default async function NewAgentPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Describe</CardTitle>
-            <CardDescription>
-              Plain English — the orchestrator handles the rest.
-            </CardDescription>
+            <CardDescription>Plain English — the orchestrator handles the rest.</CardDescription>
           </CardHeader>
-          <CardContent>
-            {installComplete ? (
-              <NewAgentForm />
-            ) : (
-              <FinishInstallNotice />
-            )}
-          </CardContent>
+          <CardContent>{installComplete ? <NewAgentForm /> : <FinishInstallNotice />}</CardContent>
         </Card>
 
         <div className="space-y-4">
@@ -100,18 +85,16 @@ export default async function NewAgentPage() {
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <Tip>
                 Name the trigger. &ldquo;When a Linear issue is labeled
-                <em> P0</em>&hellip;&rdquo; signals a webhook agent;
-                &ldquo;Every Monday at 9am&hellip;&rdquo; signals a scheduled
-                agent.
+                <em> P0</em>&hellip;&rdquo; signals a webhook agent; &ldquo;Every Monday at
+                9am&hellip;&rdquo; signals a scheduled agent.
               </Tip>
               <Tip>
-                Name the source + destination. Mention the Notion page,
-                database, or external API the agent should read from and
-                write back into.
+                Name the source + destination. Mention the Notion page, database, or external API
+                the agent should read from and write back into.
               </Tip>
               <Tip>
-                Be explicit about format. &ldquo;Post a bullet list with
-                severity, owner, and a link.&rdquo;
+                Be explicit about format. &ldquo;Post a bullet list with severity, owner, and a
+                link.&rdquo;
               </Tip>
             </CardContent>
           </Card>
@@ -124,9 +107,8 @@ export default async function NewAgentPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Click the mic and dictate — your transcript appends to the
-              draft so you can keep typing afterwards. Microphone permission
-              is requested on first use.
+              Click the mic and dictate — your transcript appends to the draft so you can keep
+              typing afterwards. Microphone permission is requested on first use.
             </CardContent>
           </Card>
 
@@ -138,9 +120,8 @@ export default async function NewAgentPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Open <em>Forge Requests</em> in your Notion workspace and click
-              the <strong>Forge this Agent</strong> button — same engine,
-              same audit trail.
+              Open <em>Forge Requests</em> in your Notion workspace and click the{' '}
+              <strong>Forge this Agent</strong> button — same engine, same audit trail.
             </CardContent>
           </Card>
         </div>
@@ -152,10 +133,7 @@ export default async function NewAgentPage() {
 function Tip({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2">
-      <span
-        className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-        aria-hidden="true"
-      />
+      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
       <p className="leading-relaxed">{children}</p>
     </div>
   );
@@ -166,8 +144,8 @@ function FinishInstallNotice() {
     <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4 text-sm">
       <p className="font-medium">Finish installing Forge first</p>
       <p className="text-muted-foreground">
-        Forge needs to know about your Notion workspace before it can build
-        agents for you. Re-run the Notion install from Settings.
+        Forge needs to know about your Notion workspace before it can build agents for you. Re-run
+        the Notion install from Settings.
       </p>
       <Button asChild size="sm">
         <Link href="/settings">Go to Settings</Link>

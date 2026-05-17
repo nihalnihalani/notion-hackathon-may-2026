@@ -8,10 +8,11 @@ describe('dep-allowlist', () => {
       name: 'generated-agent',
       dependencies: {
         '@notionhq/client': '^3.0.0',
-        'zod': '^3.23.0',
+        '@forge/connectors': 'workspace:*',
+        zod: '^3.23.0',
       },
       devDependencies: {
-        'typescript': '5.7.2', // NOT on the allowlist — should block
+        typescript: '5.7.2', // NOT on the allowlist — should block
       },
     };
     const v = checkPackageJson(pkg, TEST_OPTS);
@@ -31,7 +32,7 @@ describe('dep-allowlist', () => {
 
   it('blocks unknown runtime dep', () => {
     const pkg = {
-      dependencies: { 'request': '^2.88.2', '@notionhq/client': '^3.0.0' },
+      dependencies: { request: '^2.88.2', '@notionhq/client': '^3.0.0' },
     };
     const v = checkPackageJson(pkg, TEST_OPTS);
     expect(v).toHaveLength(1);
@@ -42,8 +43,8 @@ describe('dep-allowlist', () => {
   it('blocks multiple unknown deps at once', () => {
     const pkg = {
       dependencies: {
-        'lodash': '^4.0.0',
-        'underscore': '^1.0.0',
+        lodash: '^4.0.0',
+        underscore: '^1.0.0',
         '@notionhq/client': '^3.0.0',
       },
     };
@@ -61,7 +62,7 @@ describe('dep-allowlist', () => {
   });
 
   it('respects caller-provided allowlist', () => {
-    const pkg = { dependencies: { 'undici': '^6.0.0' } };
+    const pkg = { dependencies: { undici: '^6.0.0' } };
     const v = checkPackageJson(pkg, {
       ...TEST_OPTS,
       depAllowlist: ['undici'],

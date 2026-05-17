@@ -66,9 +66,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const ph = getPosthog();
     if (!ph || !pathname) return;
-    const url = searchParams?.toString()
-      ? `${pathname}?${searchParams.toString()}`
-      : pathname;
+    const url = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
     ph.capture('$pageview', { $current_url: url });
   }, [pathname, searchParams]);
 

@@ -17,16 +17,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-export type DefaultModel =
-  | 'claude-opus-4-7'
-  | 'gpt-5-thinking-mini'
-  | 'auto';
+export type DefaultModel = 'claude-opus-4-7' | 'gpt-5-thinking-mini' | 'auto';
 
 interface ModelSelectorProps {
   initial: DefaultModel;
 }
 
-const OPTIONS: ReadonlyArray<{ value: DefaultModel; label: string }> = [
+const OPTIONS: readonly { value: DefaultModel; label: string }[] = [
   { value: 'auto', label: 'Auto (Forge picks)' },
   { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
   { value: 'gpt-5-thinking-mini', label: 'GPT-5 thinking mini' },
@@ -50,13 +47,9 @@ export function ModelSelector({ initial }: ModelSelectorProps) {
           throw new Error(`HTTP ${res.status}`);
         }
         toast.success('Default model updated');
-      } catch (err) {
+      } catch (error) {
         setValue(prev);
-        toast.error(
-          err instanceof Error
-            ? `Couldn't save: ${err.message}`
-            : "Couldn't save"
-        );
+        toast.error(error instanceof Error ? `Couldn't save: ${error.message}` : "Couldn't save");
       }
     });
   };

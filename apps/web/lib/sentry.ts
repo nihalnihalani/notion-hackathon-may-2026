@@ -20,13 +20,13 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { type NextRequest, NextResponse } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 
-import { type ApiErrorBody, apiError } from './errors';
+import { apiError } from './errors';
 
-export type ApiRouteContext<TParams = Record<string, string>> = {
+export interface ApiRouteContext<TParams = Record<string, string>> {
   params: Promise<TParams>;
-};
+}
 
 export type ApiHandler<TParams = Record<string, string>> = (
   req: NextRequest,
@@ -73,10 +73,9 @@ export function withSentry<TParams = Record<string, string>>(
         });
         return handler(req, ctx);
       });
-    } catch (err) {
-      Sentry.captureException(err);
-      const message =
-        err instanceof Error ? err.message : 'unexpected_internal_error';
+    } catch (error) {
+      Sentry.captureException(error);
+      const message = error instanceof Error ? error.message : 'unexpected_internal_error';
       return apiError('internal', message);
     }
 
@@ -94,4 +93,5 @@ export function withSentry<TParams = Record<string, string>>(
 }
 
 /** Helper so route handlers can re-export the error body type without two imports. */
-export type { ApiErrorBody };
+
+export { type ApiErrorBody } from './errors';

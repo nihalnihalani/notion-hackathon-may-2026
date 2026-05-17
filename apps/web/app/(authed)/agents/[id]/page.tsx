@@ -10,26 +10,12 @@ import { AgentRuns } from '@/components/agents/agent-runs';
 import { AgentSourceViewer } from '@/components/agents/agent-source-viewer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CopyButton } from '@/components/shared/copy-button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatusBadge } from '@/components/shared/status-badge';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import {
-  Avatar,
-  AvatarFallback,
-} from '@/components/ui/avatar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { prisma } from '@/lib/db';
 import { AGENT_PATTERN_LABEL } from '@/lib/colors';
 
@@ -42,11 +28,7 @@ export const dynamic = 'force-dynamic';
  * Below: deploy/webhook URLs with copy buttons.
  * Tabs:  Runs (live fetch) · Source · Logs (placeholder until logs endpoint).
  */
-export default async function AgentDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await currentUser();
   if (!user) redirect('/');
@@ -70,12 +52,7 @@ export default async function AgentDetailPage({
 
   return (
     <div className="space-y-6">
-      <Button
-        asChild
-        variant="ghost"
-        size="sm"
-        className="gap-1 -ml-3"
-      >
+      <Button asChild variant="ghost" size="sm" className="gap-1 -ml-3">
         <Link href="/agents">
           <ArrowLeft className="h-4 w-4" /> Back to agents
         </Link>
@@ -107,17 +84,11 @@ export default async function AgentDetailPage({
               </Avatar>
             )}
             <div className="space-y-1.5">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {agent.ntnWorkerName}
-              </h1>
-              <p className="max-w-prose text-sm text-muted-foreground">
-                {agent.description}
-              </p>
+              <h1 className="text-2xl font-semibold tracking-tight">{agent.ntnWorkerName}</h1>
+              <p className="max-w-prose text-sm text-muted-foreground">{agent.description}</p>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <StatusBadge kind="agent" status={agent.status} />
-                <Badge variant="outline">
-                  {AGENT_PATTERN_LABEL[agent.pattern]}
-                </Badge>
+                <Badge variant="outline">{AGENT_PATTERN_LABEL[agent.pattern]}</Badge>
                 {agent.oauthProviders.map((p) => (
                   <Badge key={p} variant="muted">
                     {p}
@@ -126,11 +97,7 @@ export default async function AgentDetailPage({
               </div>
             </div>
           </div>
-          <AgentActions
-            agentId={agent.id}
-            agentName={agent.ntnWorkerName}
-            status={agent.status}
-          />
+          <AgentActions agentId={agent.id} agentName={agent.ntnWorkerName} status={agent.status} />
         </CardContent>
       </Card>
 
@@ -173,8 +140,7 @@ export default async function AgentDetailPage({
             <CardHeader>
               <CardTitle>Generated source</CardTitle>
               <CardDescription>
-                The TypeScript Worker shipped by Tool Coder, deployed via
-                Shipper.
+                The TypeScript Worker shipped by Tool Coder, deployed via Shipper.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -195,14 +161,13 @@ export default async function AgentDetailPage({
             </CardHeader>
             <CardContent>
               <div className="rounded-md border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-                Live log streaming lands with the logs endpoint. Use the
-                Vercel dashboard for raw Worker logs in the meantime.
+                Live log streaming lands with the logs endpoint. Use the Vercel dashboard for raw
+                Worker logs in the meantime.
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
     </div>
   );
 }
@@ -229,9 +194,7 @@ function UrlCard({
             <CopyButton value={url} label="Copy" size="sm" variant="ghost" />
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Not yet provisioned.
-          </p>
+          <p className="text-sm text-muted-foreground">Not yet provisioned.</p>
         )}
       </CardContent>
     </Card>
@@ -250,19 +213,17 @@ async function AgentSource({ sourceBlobUrl }: { sourceBlobUrl: string }) {
       // version, so the URL itself is a stable cache key.
       next: { revalidate: 60 * 60 },
     });
-    if (!res.ok) {
-      error = `Couldn't fetch source (HTTP ${res.status}).`;
-    } else {
+    if (res.ok) {
       source = await res.text();
+    } else {
+      error = `Couldn't fetch source (HTTP ${res.status}).`;
     }
-  } catch (e) {
-    error = e instanceof Error ? e.message : 'Couldn’t fetch source.';
+  } catch (error_) {
+    error = error_ instanceof Error ? error_.message : 'Couldn’t fetch source.';
   }
 
   if (error) {
-    return (
-      <p className="text-sm text-destructive">{error}</p>
-    );
+    return <p className="text-sm text-destructive">{error}</p>;
   }
   if (!source.trim()) {
     return (
@@ -280,8 +241,7 @@ function SourceSkeleton() {
       <Skeleton className="h-8 w-full" />
       <Skeleton className="h-72 w-full" />
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Loader2 className="h-3 w-3 animate-spin" /> Fetching source from
-        Blob…
+        <Loader2 className="h-3 w-3 animate-spin" /> Fetching source from Blob…
       </p>
     </div>
   );

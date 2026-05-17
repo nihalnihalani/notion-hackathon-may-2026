@@ -32,11 +32,7 @@ import {
 } from '@forge/agents';
 import type { InspectorInput } from '@forge/agents';
 
-import type {
-  DiscoveredContext,
-  WorkflowConfig,
-  WorkflowStepResult,
-} from './types.js';
+import type { DiscoveredContext, WorkflowConfig, WorkflowStepResult } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema Smith
@@ -449,6 +445,7 @@ export async function runShipper(
       id: stepRow.id,
       status: 'succeeded',
       outputJson: {
+        generatedAgentId: output.generatedAgentId,
         deployUrl: output.deployUrl,
         customAgentId: output.customAgentId,
         ntnWorkerName: output.ntnWorkerName,
@@ -508,9 +505,7 @@ export interface DiscoverContextArgs {
  * Returns `null` if the workspace is unknown — the orchestrator turns this
  * into a clean `failed` generation rather than an opaque crash.
  */
-export async function discoverContext(
-  args: DiscoverContextArgs,
-): Promise<DiscoveredContext> {
+export async function discoverContext(args: DiscoverContextArgs): Promise<DiscoveredContext> {
   const { workspaceId, config } = args;
 
   await safeLog(config, args.buildLogBlockId, {
@@ -521,9 +516,7 @@ export async function discoverContext(
 
   const workspace = await config.db.getWorkspaceContext(workspaceId);
   if (workspace === null) {
-    throw new Error(
-      `discover-context: workspace ${workspaceId} not found in PlanetScale`,
-    );
+    throw new Error(`discover-context: workspace ${workspaceId} not found in PlanetScale`);
   }
 
   const [databases, existingAgents] = await Promise.all([

@@ -36,7 +36,7 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 interface TriggerErrorBody {
   error?: string;
   message?: string;
-  issues?: ReadonlyArray<{ message?: string; path?: ReadonlyArray<string | number> }>;
+  issues?: readonly { message?: string; path?: readonly (string | number)[] }[];
 }
 
 interface TriggerCachedBody {
@@ -110,15 +110,13 @@ export function NewAgentForm() {
 
       if (!res.ok) {
         const body = (await safeJson<TriggerErrorBody>(res)) ?? {};
-        toast.error(
-          body.message ?? "Couldn't enqueue your agent. Try again in a moment.",
-        );
+        toast.error(body.message ?? "Couldn't enqueue your agent. Try again in a moment.");
         return;
       }
 
       const body = (await safeJson<TriggerBody>(res)) ?? null;
       if (!body) {
-        toast.error("Forge returned an empty response. Try again.");
+        toast.error('Forge returned an empty response. Try again.');
         return;
       }
       if (body.status === 'cached' && 'agentId' in body && body.agentId) {
@@ -130,12 +128,8 @@ export function NewAgentForm() {
         return;
       }
       toast.error('Unexpected response from Forge. Try again.');
-    } catch (err) {
-      toast.error(
-        err instanceof Error
-          ? `Couldn't forge: ${err.message}`
-          : "Couldn't forge.",
-      );
+    } catch (error) {
+      toast.error(error instanceof Error ? `Couldn't forge: ${error.message}` : "Couldn't forge.");
     } finally {
       setSubmitting(false);
     }
@@ -147,13 +141,8 @@ export function NewAgentForm() {
     <form onSubmit={onSubmit} className="space-y-5">
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <Label htmlFor="new-agent-description">
-            Describe your agent
-          </Label>
-          <span
-            aria-live="polite"
-            className={`text-xs tabular-nums ${counterTone}`}
-          >
+          <Label htmlFor="new-agent-description">Describe your agent</Label>
+          <span aria-live="polite" className={`text-xs tabular-nums ${counterTone}`}>
             {trimmed.length}/{MAX_DESCRIPTION_LENGTH}
           </span>
         </div>
@@ -161,7 +150,9 @@ export function NewAgentForm() {
           <Textarea
             id="new-agent-description"
             value={description}
-            onChange={(e) => setDescription(e.currentTarget.value)}
+            onChange={(e) => {
+              setDescription(e.currentTarget.value);
+            }}
             placeholder="e.g. Every Monday, summarize last week's Linear bugs by severity and post into the Engineering Standup page."
             rows={6}
             maxLength={MAX_DESCRIPTION_LENGTH + 200}
@@ -172,18 +163,12 @@ export function NewAgentForm() {
             required
           />
           <div className="absolute right-2 top-2">
-            <VoiceInputButton
-              onTranscribed={onTranscribed}
-              disabled={submitting}
-            />
+            <VoiceInputButton onTranscribed={onTranscribed} disabled={submitting} />
           </div>
         </div>
-        <p
-          id="new-agent-description-help"
-          className="text-xs text-muted-foreground"
-        >
-          Plain English. The orchestrator picks the right pattern (assistant,
-          scheduled, webhook…) and connectors from your description.
+        <p id="new-agent-description-help" className="text-xs text-muted-foreground">
+          Plain English. The orchestrator picks the right pattern (assistant, scheduled, webhook…)
+          and connectors from your description.
         </p>
       </div>
 
@@ -193,8 +178,8 @@ export function NewAgentForm() {
             Force a fresh build
           </Label>
           <p className="text-xs text-muted-foreground">
-            Bypass the 1-hour dedupe cache — useful when you tweaked the
-            prompt and want a brand-new agent.
+            Bypass the 1-hour dedupe cache — useful when you tweaked the prompt and want a brand-new
+            agent.
           </p>
         </div>
         <Switch

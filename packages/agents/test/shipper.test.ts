@@ -72,9 +72,7 @@ const CODE: ToolCoderOutput = {
   workerName: 'bug-triager',
 };
 
-const CAPABILITIES: WorkerCapability[] = [
-  { kind: 'tool', key: 'fetch_bugs', title: 'Fetch bugs' },
-];
+const CAPABILITIES: WorkerCapability[] = [{ kind: 'tool', key: 'fetch_bugs', title: 'Fetch bugs' }];
 
 // ── Mock builders ───────────────────────────────────────────────────────────
 
@@ -114,9 +112,7 @@ function makeDbClient(opts?: {
  * urls. Pass `null` to simulate "no urls returned" (image_urls undefined);
  * pass `[]` for an empty array.
  */
-function makeMinimaxFactory(
-  image_urls: string[] | null = ['https://cdn/avatar.png'],
-) {
+function makeMinimaxFactory(image_urls: string[] | null = ['https://cdn/avatar.png']) {
   const generateImage = vi.fn(async () => ({
     base_resp: { status_code: 0, status_msg: 'ok' },
     data: image_urls === null ? undefined : { image_urls },
@@ -223,6 +219,7 @@ describe('shipper — happy path', () => {
       }),
     );
 
+    expect(result.generatedAgentId).toBe('agent-new');
     expect(result.ntnWorkerName).toBe('bug-triager');
     expect(result.deployUrl).toBe('https://bug-triager.notion.app/agent');
     expect(result.capabilitiesDiscovered).toBe(1);
@@ -397,10 +394,7 @@ describe('shipper — OAuth bootstrap', () => {
     };
     const result = await shipper(input);
     expect(result.oauthRedirectUrl).toBe('https://github.com/login/oauth/authorize?x');
-    expect(vi.mocked(startProviderOAuth)).toHaveBeenCalledWith(
-      'github',
-      expect.any(Object),
-    );
+    expect(vi.mocked(startProviderOAuth)).toHaveBeenCalledWith('github', expect.any(Object));
   });
 
   it('omits oauthRedirectUrl when requiredOAuth is empty', async () => {
@@ -422,9 +416,7 @@ describe('shipper — OAuth bootstrap', () => {
 describe('shipper — webhook URL discovery', () => {
   it('populates webhookUrl when a webhook capability + listing match', async () => {
     const dbClient = makeDbClient();
-    vi.mocked(listCapabilities).mockResolvedValueOnce([
-      { kind: 'webhook', key: 'on_bug' },
-    ]);
+    vi.mocked(listCapabilities).mockResolvedValueOnce([{ kind: 'webhook', key: 'on_bug' }]);
     vi.mocked(listWebhooks).mockResolvedValueOnce([
       { id: 'wh_1', url: 'https://hooks.notion.so/abc', workerName: 'bug-triager' },
     ]);
@@ -440,9 +432,7 @@ describe('shipper — webhook URL discovery', () => {
 
   it('continues without webhook URL when listWebhooks fails', async () => {
     const dbClient = makeDbClient();
-    vi.mocked(listCapabilities).mockResolvedValueOnce([
-      { kind: 'webhook', key: 'on_bug' },
-    ]);
+    vi.mocked(listCapabilities).mockResolvedValueOnce([{ kind: 'webhook', key: 'on_bug' }]);
     vi.mocked(listWebhooks).mockRejectedValueOnce(new Error('webhooks api down'));
     const result = await shipper(baseInput({ dbClient }));
     // Best-effort: result still ships, no webhook URL.
@@ -567,10 +557,7 @@ describe('shipper — email', () => {
       }),
     );
     expect(resend.send).not.toHaveBeenCalled();
-    expect(error).toHaveBeenCalledWith(
-      'shipper.email.skipped_no_recipient',
-      expect.any(Object),
-    );
+    expect(error).toHaveBeenCalledWith('shipper.email.skipped_no_recipient', expect.any(Object));
   });
 });
 

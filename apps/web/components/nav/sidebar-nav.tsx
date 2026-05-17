@@ -9,15 +9,7 @@
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Bot,
-  GaugeCircle,
-  History,
-  Settings,
-  Sparkles,
-  TestTubes,
-  Wand2,
-} from 'lucide-react';
+import { Bot, GaugeCircle, History, Settings, Sparkles, TestTubes, Wand2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { isActiveRoute } from '@/components/nav/active-route';
@@ -28,7 +20,7 @@ export interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-export const NAV_ITEMS: ReadonlyArray<NavItem> = [
+export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/dashboard', label: 'Overview', icon: GaugeCircle },
   { href: '/dashboard/new', label: 'New agent', icon: Wand2 },
   { href: '/agents', label: 'Agents', icon: Bot },
@@ -44,18 +36,12 @@ export function SidebarNav({ className }: { className?: string }) {
     <aside
       className={cn(
         'flex h-full w-60 shrink-0 flex-col border-r border-border bg-card/40',
-        className
+        className,
       )}
     >
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-2 border-b border-border px-5 py-4"
-      >
+      <Link href="/dashboard" className="flex items-center gap-2 border-b border-border px-5 py-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-forge-gradient shadow-sm shadow-forge-primary/30">
-          <Sparkles
-            className="h-4 w-4 text-primary-foreground"
-            aria-hidden="true"
-          />
+          <Sparkles className="h-4 w-4 text-primary-foreground" aria-hidden="true" />
         </div>
         <span className="text-base font-semibold tracking-tight">Forge</span>
       </Link>
@@ -72,14 +58,14 @@ export function SidebarNav({ className }: { className?: string }) {
                 'group flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 active
                   ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
               )}
               aria-current={active ? 'page' : undefined}
             >
               <Icon
                 className={cn(
                   'h-4 w-4 shrink-0',
-                  active ? 'text-primary' : 'text-muted-foreground'
+                  active ? 'text-primary' : 'text-muted-foreground',
                 )}
                 aria-hidden="true"
               />

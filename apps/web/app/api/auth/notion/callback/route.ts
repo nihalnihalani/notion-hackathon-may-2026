@@ -22,10 +22,7 @@
 import { clerkClient } from '@clerk/nextjs/server';
 import { prisma, recordAuditEvent, upsertWorkspace } from '@forge/db';
 import { InstallerError, installForgePage } from '@forge/installer';
-import type {
-  InstallerDbClient,
-  WorkspaceForgeRecord,
-} from '@forge/installer';
+import type { InstallerDbClient, WorkspaceForgeRecord } from '@forge/installer';
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 
@@ -71,14 +68,12 @@ function buildInstallerDbAdapter(): InstallerDbClient {
       const data: Partial<WorkspaceForgeRecord> = {};
       if (patch.forgePageId !== undefined) data.forgePageId = patch.forgePageId;
       if (patch.forgeDbId !== undefined) data.forgeDbId = patch.forgeDbId;
-      if (patch.forgeAgentsDbId !== undefined)
-        data.forgeAgentsDbId = patch.forgeAgentsDbId;
+      if (patch.forgeAgentsDbId !== undefined) data.forgeAgentsDbId = patch.forgeAgentsDbId;
       if (patch.forgeButtonBlockId !== undefined)
         data.forgeButtonBlockId = patch.forgeButtonBlockId;
       if (patch.forgeBuildLogBlockId !== undefined)
         data.forgeBuildLogBlockId = patch.forgeBuildLogBlockId;
-      if (patch.webhookSecret !== undefined)
-        data.webhookSecret = patch.webhookSecret;
+      if (patch.webhookSecret !== undefined) data.webhookSecret = patch.webhookSecret;
       await prisma.workspace.update({
         where: { id: workspaceId },
         data,
@@ -130,8 +125,7 @@ export const POST = withSentry(
     // surfaces these on the linked-account object. Fall back to publicMetadata
     // where Clerk versions vary.
     const notionWorkspaceId =
-      account.workspaceId ??
-      (account.publicMetadata?.['workspace_id'] as string | undefined);
+      account.workspaceId ?? (account.publicMetadata?.['workspace_id'] as string | undefined);
     const notionWorkspaceName =
       account.workspaceName ??
       (account.publicMetadata?.['workspace_name'] as string | undefined) ??
@@ -142,10 +136,7 @@ export const POST = withSentry(
         level: 'error',
         tags: { clerkUserId },
       });
-      return apiError(
-        'upstream_failure',
-        'Notion OAuth response did not include a workspace id.',
-      );
+      return apiError('upstream_failure', 'Notion OAuth response did not include a workspace id.');
     }
 
     const workspace = await upsertWorkspace({
@@ -197,10 +188,8 @@ export const POST = withSentry(
     // separately — for now we attempt install only when present, and let
     // the install retry on the next page load.
     const parentPageId =
-      (account.publicMetadata?.['parent_page_id'] as string | undefined) ??
-      undefined;
-    const appUrl =
-      process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
+      (account.publicMetadata?.['parent_page_id'] as string | undefined) ?? undefined;
+    const appUrl = process.env['NEXT_PUBLIC_APP_URL'] ?? 'http://localhost:3000';
 
     try {
       const result = await installForgePage(
@@ -228,8 +217,8 @@ export const POST = withSentry(
             forgeDbId: result.requestsDbId,
           },
         });
-      } catch (auditErr) {
-        Sentry.captureException(auditErr, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'audit.workspace.installed' },
         });
       }
@@ -245,8 +234,8 @@ export const POST = withSentry(
           resourceId: 'notion',
           metadata: { provider: 'notion', scopes: [] },
         });
-      } catch (auditErr) {
-        Sentry.captureException(auditErr, {
+      } catch (error) {
+        Sentry.captureException(error, {
           tags: { phase: 'audit.oauth.granted' },
         });
       }
@@ -257,8 +246,8 @@ export const POST = withSentry(
         workspaceId: workspace.id,
         properties: { forgePageId: result.pageId },
       });
-    } catch (installErr) {
-      Sentry.captureException(installErr, {
+    } catch (error) {
+      Sentry.captureException(error, {
         tags: { phase: 'installer', workspaceId: workspace.id },
       });
 
@@ -268,9 +257,7 @@ export const POST = withSentry(
       // can choose a page; the picker re-calls the installer with the
       // selected id.
       const isMissingParent =
-        installErr instanceof InstallerError &&
-        installErr.step === 'create-root-page' &&
-        !parentPageId;
+        error instanceof InstallerError && error.step === 'create-root-page' && !parentPageId;
       if (isMissingParent) {
         const pickerUrl = new URL(
           '/onboarding/pick-parent',
