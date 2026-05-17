@@ -184,7 +184,7 @@ export_ci_stub_env() {
   export NOTION_OAUTH_CLIENT_SECRET="notion-secret-fake-ci-stub"
   export NOTION_OAUTH_REDIRECT_URI="https://forge.example.com/api/auth/notion/callback"
   export NOTION_WEBHOOK_SECRET="notion-webhook-fake-ci-stub"
-  export NTN_VERSION="0.1.x"
+  export NTN_VERSION="0.14.x"
   export CLERK_SECRET_KEY="sk_test_fake_ci_stub"
   export NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_fake_ci_stub"
   export CLERK_WEBHOOK_SECRET="whsec_fake_ci_stub"

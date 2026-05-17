@@ -85,7 +85,18 @@ export {
 } from './oauth';
 
 // ---------------- Pages ----------------
-export { createPage, getPage, trashPage, updatePage } from './pages';
+export {
+  createPage,
+  createPageMarkdown,
+  getPage,
+  trashPage,
+  updatePage,
+  updatePageMarkdown,
+} from './pages';
+export type { PageParent } from './pages';
+
+// ---------------- Comments ----------------
+export { createComment, type CreateCommentInput } from './comments';
 
 // ---------------- Webhooks ----------------
 export { listWebhooks } from './webhooks';
@@ -97,8 +108,15 @@ export { queryDatasource, resolveDatasource } from './datasources';
 export { createFile, getFile, listFiles, runFilesCommand } from './files';
 
 // ---------------- Generic API escape hatch ----------------
-export { callNotionApi, type CallNotionApiOptions } from './api';
+export {
+  callNotionApi,
+  getApiEndpointDocs,
+  getApiEndpointHelp,
+  getApiEndpointSpec,
+  listApiEndpoints,
+  type CallNotionApiOptions,
+} from './api';
 
 // ---------------- Doctor & auth ----------------
 export { runDoctor, runDoctorRaw } from './doctor';
-export { isLoggedIn, loginInstructions } from './auth';
+export { hasApiToken, isLoggedIn, loginInstructions } from './auth';

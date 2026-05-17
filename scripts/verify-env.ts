@@ -73,6 +73,10 @@ const envSchema = z.object({
   NOTION_OAUTH_CLIENT_SECRET: z.string().trim().min(1, 'must be non-empty'),
   NOTION_OAUTH_REDIRECT_URI: z.string().url('must be a valid URL'),
   NOTION_WEBHOOK_SECRET: z.string().trim().min(1, 'must be non-empty'),
+  // Optional. When set, the `ntn` CLI uses this token for non-interactive auth
+  // (CI, Vercel Sandbox); otherwise it falls back to credentials stored by
+  // `ntn login`. See `.agents/skills/notion-cli/SKILL.md`.
+  NOTION_API_TOKEN: optionalNonEmptyString,
   NTN_VERSION: z.string().trim().min(1, 'must be non-empty'),
 
   // Clerk

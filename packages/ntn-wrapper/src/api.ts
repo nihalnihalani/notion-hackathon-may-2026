@@ -69,3 +69,70 @@ export async function callNotionApi<T = unknown>(
   const result = await runNtn(args, runOpts);
   return result.stdout;
 }
+
+// ---------------------------------------------------------------------------
+// Self-documentation surface.
+//
+// The skill at `.agents/skills/notion-cli/SKILL.md` emphasises agent-facing
+// discovery commands: `ntn api ls` to enumerate endpoints, `--help` for the
+// short summary, `--docs` for the human-readable reference, and `--spec` for
+// the OpenAPI fragment. All four are thin passthroughs that return raw stdout
+// — no JSON parsing — so agents can inspect the output verbatim.
+// ---------------------------------------------------------------------------
+
+/**
+ * List every Notion API endpoint the CLI knows about: `ntn api ls`.
+ * Returns the raw stdout (tab-separated `METHOD\tPATH\tSUMMARY` lines).
+ */
+export async function listApiEndpoints(opts: NtnRunOptions = {}): Promise<string> {
+  const result = await runNtn(['api', 'ls'], opts);
+  return result.stdout;
+}
+
+/**
+ * Short usage summary for a single endpoint: `ntn api <endpoint> --help`.
+ * Returns raw stdout. Validates `endpoint` shape up front so agents that
+ * pass a malformed path get a typed error instead of a CLI exit code.
+ */
+export async function getApiEndpointHelp(
+  endpoint: string,
+  opts: NtnRunOptions = {},
+): Promise<string> {
+  if (!ENDPOINT_REGEX.test(endpoint)) {
+    throw new NtnInvalidArgumentError(`Invalid Notion API endpoint: "${endpoint}".`);
+  }
+  const result = await runNtn(['api', endpoint, '--help'], opts);
+  return result.stdout;
+}
+
+/**
+ * Long-form human reference for a single endpoint:
+ * `ntn api <endpoint> --docs`. Returns raw stdout (Markdown-ish prose).
+ */
+export async function getApiEndpointDocs(
+  endpoint: string,
+  opts: NtnRunOptions = {},
+): Promise<string> {
+  if (!ENDPOINT_REGEX.test(endpoint)) {
+    throw new NtnInvalidArgumentError(`Invalid Notion API endpoint: "${endpoint}".`);
+  }
+  const result = await runNtn(['api', endpoint, '--docs'], opts);
+  return result.stdout;
+}
+
+/**
+ * OpenAPI fragment for a single endpoint: `ntn api <endpoint> --spec`.
+ * Returns raw stdout (YAML or JSON depending on CLI version). Callers that
+ * need a parsed object should `JSON.parse` / `YAML.parse` themselves — this
+ * wrapper deliberately doesn't pick a format.
+ */
+export async function getApiEndpointSpec(
+  endpoint: string,
+  opts: NtnRunOptions = {},
+): Promise<string> {
+  if (!ENDPOINT_REGEX.test(endpoint)) {
+    throw new NtnInvalidArgumentError(`Invalid Notion API endpoint: "${endpoint}".`);
+  }
+  const result = await runNtn(['api', endpoint, '--spec'], opts);
+  return result.stdout;
+}
