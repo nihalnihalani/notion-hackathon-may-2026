@@ -1,0 +1,286 @@
+"""Tests for scripts/handoff_watcher.py.
+
+These tests exercise:
+- The HANDOFFS.md status mutation (`_update_handoff_status`) — no
+  subprocess, just text I/O.
+- The CLI handler builders — verify shape, no execution.
+- The cycle function in dry-run mode — confirms no subprocess is
+  invoked even when wired CLIs exist.
+
+We deliberately do NOT test `subprocess.run` invocation here; this is
+the one file in the project allowed to call it, and live testing is
+better done via `python scripts/handoff_watcher.py --once --dry-run`.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+WATCHER_PATH = REPO_ROOT / "scripts" / "handoff_watcher.py"
+
+
+def _load_watcher(monkeypatch, warroom: Path):
+    """Import handoff_watcher with WARROOM_PATH pointed at a tmp dir."""
+    monkeypatch.setenv("WARROOM_PATH", str(warroom))
+    # The module reads WARROOM_PATH at import time. Force a fresh import.
+    for name in list(sys.modules):
+        if name == "handoff_watcher":
+            del sys.modules[name]
+    spec = importlib.util.spec_from_file_location("handoff_watcher", WATCHER_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# ---- CLI handlers --------------------------------------------------------
+
+
+def test_hermes_handler_emits_argv_list(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    cmd = mod._hermes_handler("inspect health", tmp_path / "ctx.md", {})
+    assert cmd[0] == "hermes"
+    assert "inspect health" in cmd
+    assert str(tmp_path / "ctx.md") in cmd
+
+
+def test_openclaw_handler_emits_argv_list(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    cmd = mod._openclaw_handler("plan demo", tmp_path / "ctx.md", {})
+    assert cmd[0] == "openclaw"
+    assert "plan demo" in cmd
+
+
+def test_codex_handler_emits_argv_list(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    cmd = mod._codex_handler("write fn", tmp_path / "ctx.md", {})
+    assert cmd[0] == "codex"
+
+
+def test_claude_handler_uses_alhinai_posture(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    cmd = mod._claude_handler(
+        "audit security", tmp_path / "ctx.md", {"Files Touched": "/srv/**"}
+    )
+    assert cmd[0] == "claude"
+    assert "--dangerously-skip-permissions" in cmd
+    assert "--permission-mode" in cmd
+    assert "bypassPermissions" in cmd
+    # Prompt mentions both the context path and the title.
+    prompt_idx = cmd.index("-p") + 1
+    assert "audit security" in cmd[prompt_idx]
+    assert str(tmp_path / "ctx.md") in cmd[prompt_idx]
+
+
+def test_unknown_owner_has_no_handler(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    assert "Hermes" in mod.AGENT_CLIS
+    assert "OpenClaw" in mod.AGENT_CLIS
+    assert "Codex" in mod.AGENT_CLIS
+    assert "Claude" in mod.AGENT_CLIS
+    assert "User" not in mod.AGENT_CLIS  # User tasks aren't executed by CLIs.
+
+
+# ---- _title_from_task_field ----------------------------------------------
+
+
+def test_title_from_task_field_strips_bridge_key(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    assert (
+        mod._title_from_task_field("inspect War Room health [wrb_abcd12345678]")
+        == "inspect War Room health"
+    )
+
+
+def test_title_from_task_field_empty_returns_untitled(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    assert mod._title_from_task_field("") == "(untitled)"
+
+
+# ---- _update_handoff_status ----------------------------------------------
+
+
+HANDOFF_TEXT = """
+- Task: inspect War Room health [wrb_aaaaaaaaaaaa]
+  Owner: Hermes
+  Files Touched: /home/alhinai/WarRoom/**
+  Status: PENDING
+  Result:
+  Next Action: Review the inbox.
+
+- Task: ship demo [wrb_bbbbbbbbbbbb]
+  Owner: OpenClaw
+  Files Touched: /srv/**
+  Status: PENDING
+  Result:
+  Next Action: Build the dashboard.
+"""
+
+
+def test_update_handoff_status_updates_in_place(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+
+    assert mod._update_handoff_status("wrb_aaaaaaaaaaaa", "IN PROGRESS") is True
+
+    new_text = mod.HANDOFFS_FILE.read_text(encoding="utf-8")
+    # The Hermes block flipped...
+    assert (
+        "- Task: inspect War Room health [wrb_aaaaaaaaaaaa]\n"
+        "  Owner: Hermes\n"
+        "  Files Touched: /home/alhinai/WarRoom/**\n"
+        "  Status: IN PROGRESS\n"
+    ) in new_text
+    # ...the OpenClaw block did NOT.
+    assert (
+        "- Task: ship demo [wrb_bbbbbbbbbbbb]\n"
+        "  Owner: OpenClaw\n"
+        "  Files Touched: /srv/**\n"
+        "  Status: PENDING\n"
+    ) in new_text
+
+
+def test_update_handoff_status_appends_result_suffix(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+
+    mod._update_handoff_status(
+        "wrb_aaaaaaaaaaaa", "COMPLETED", "exit=0 (see wrb_aaaaaaaaaaaa.log)"
+    )
+
+    text = mod.HANDOFFS_FILE.read_text(encoding="utf-8")
+    assert "Status: COMPLETED" in text
+    assert "Result: exit=0 (see wrb_aaaaaaaaaaaa.log)" in text
+
+
+def test_update_handoff_status_returns_false_for_missing_key(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+    assert mod._update_handoff_status("wrb_doesnotexist", "COMPLETED") is False
+    # File untouched.
+    assert mod.HANDOFFS_FILE.read_text(encoding="utf-8") == HANDOFF_TEXT
+
+
+def test_update_handoff_status_atomic_write_leaves_no_temp_file(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+    mod._update_handoff_status("wrb_aaaaaaaaaaaa", "IN PROGRESS")
+    leftovers = [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
+    assert leftovers == []
+
+
+# ---- _cycle in dry-run mode ---------------------------------------------
+
+
+def test_cycle_dry_run_does_not_invoke_subprocess(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+
+    # Sanity check: if subprocess.run is called, this test must fail loudly.
+    monkeypatch.setattr(
+        mod.subprocess,
+        "run",
+        MagicMock(
+            side_effect=AssertionError(
+                "subprocess.run must NOT be called in dry-run mode"
+            )
+        ),
+    )
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(
+        lock, execute=False, owners=None, timeout=10
+    )
+
+    assert actions == 2  # both PENDING handoffs counted
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert "wrb_aaaaaaaaaaaa" in state["handoffs"]
+    assert "wrb_bbbbbbbbbbbb" in state["handoffs"]
+    for entry in state["handoffs"].values():
+        assert entry["outcome"] == "dry_run"
+
+
+def test_cycle_skips_keys_already_in_state(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+    # Pre-seed state — both keys already dispatched once.
+    mod._save_state(
+        {
+            "handoffs": {
+                "wrb_aaaaaaaaaaaa": {"outcome": "completed", "owner": "Hermes"},
+                "wrb_bbbbbbbbbbbb": {"outcome": "dry_run", "owner": "OpenClaw"},
+            }
+        }
+    )
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=False, owners=None, timeout=10)
+    assert actions == 0
+
+
+def test_cycle_respects_owners_whitelist(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(HANDOFF_TEXT, encoding="utf-8")
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(
+        lock, execute=False, owners={"Hermes"}, timeout=10
+    )
+    assert actions == 1
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert "wrb_aaaaaaaaaaaa" in state["handoffs"]
+    assert "wrb_bbbbbbbbbbbb" not in state["handoffs"]
+
+
+def test_cycle_ignores_non_pending_handoffs(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(
+        "- Task: done [wrb_dddddddddddd]\n"
+        "  Owner: Hermes\n"
+        "  Files Touched: x\n"
+        "  Status: COMPLETED\n"
+        "  Result: shipped\n"
+        "  Next Action: None\n",
+        encoding="utf-8",
+    )
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=False, owners=None, timeout=10)
+    assert actions == 0
+
+
+def test_cycle_skips_owners_without_handler(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(
+        "- Task: human task [wrb_eeeeeeeeeeee]\n"
+        "  Owner: User\n"
+        "  Files Touched: x\n"
+        "  Status: PENDING\n"
+        "  Result:\n"
+        "  Next Action: None\n",
+        encoding="utf-8",
+    )
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=False, owners=None, timeout=10)
+    # The cycle records it (so it's not retried forever), but the outcome
+    # is no_handler — no shell invocation occurred.
+    assert actions == 1
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert state["handoffs"]["wrb_eeeeeeeeeeee"]["outcome"] == "no_handler"
