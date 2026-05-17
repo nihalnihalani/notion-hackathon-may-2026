@@ -372,21 +372,16 @@ def sync_dispatch(
                     f"Invalid Assignee {owner!r}; must be one of "
                     f"{', '.join(ALLOWED_OWNERS)}."
                 )
-                _record_dispatched(
-                    store,
-                    page_id=page_id,
-                    handoff_key=handoff_key,
-                    context_key=None,
-                    last_notion_status="Blocked",
-                    last_local_status="BLOCKED",
-                    last_synced_at=when,
-                    last_sync_hash=sync_hash,
-                )
                 # Blocked tasks do NOT enter the handoff log — only the
                 # Notion card is updated with the rejection reason. This
                 # matches plan.md §6.A behaviour ("invalid owner → Notion
                 # Blocked") and keeps `render_handoffs_md()` clean of
                 # rejected entries that an agent would otherwise pick up.
+                #
+                # Do not mark the page as handled in bridge state here. A
+                # human can fix the Assignee and put the card back to
+                # Pending; that corrected submission must be eligible for a
+                # normal dispatch.
                 try:
                     client.update_page(page_id, _props_blocked(reason, when, sync_hash))
                 except Exception:
@@ -401,18 +396,10 @@ def sync_dispatch(
                     f"Active lock conflict on {conflict!r}; release the lock in "
                     f"CURRENT_STATE.md before retrying."
                 )
-                _record_dispatched(
-                    store,
-                    page_id=page_id,
-                    handoff_key=handoff_key,
-                    context_key=None,
-                    last_notion_status="Blocked",
-                    last_local_status="BLOCKED",
-                    last_synced_at=when,
-                    last_sync_hash=sync_hash,
-                )
                 # Same rule as invalid-owner: blocked tasks stay out of the
-                # handoff log; only the Notion card carries the reason.
+                # handoff log; only the Notion card carries the reason. Do
+                # not mark the page handled until it can actually enter the
+                # queue, so releasing the lock and resubmitting can retry.
                 try:
                     client.update_page(page_id, _props_blocked(reason, when, sync_hash))
                 except Exception:

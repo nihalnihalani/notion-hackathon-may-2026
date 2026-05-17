@@ -74,10 +74,14 @@ from typing import Callable, Iterable, Optional
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from dotenv import load_dotenv  # noqa: E402
 from filelock import FileLock  # noqa: E402
 
+from src.redis_store import RedisStore, RedisStoreError  # noqa: E402
 from src.warroom_format import parse_handoffs  # noqa: E402
 
+
+load_dotenv(REPO_ROOT / ".env")
 
 WARROOM_PATH = Path(os.environ.get("WARROOM_PATH", "~/WarRoom")).expanduser().resolve()
 OPENCLAW_AGENT_ID = os.environ.get("OPENCLAW_AGENT_ID", "main")
@@ -91,6 +95,25 @@ DEFAULT_TIMEOUT = 600  # 10 minutes per invocation
 DEFAULT_INTERVAL = 10.0
 
 log = logging.getLogger("handoff_watcher")
+_STORE: Optional[RedisStore] = None
+_STORE_UNAVAILABLE = False
+
+
+def _store() -> Optional[RedisStore]:
+    global _STORE, _STORE_UNAVAILABLE
+    if os.environ.get("HANDOFF_WATCHER_DISABLE_REDIS") == "1":
+        return None
+    if _STORE is not None:
+        return _STORE
+    if _STORE_UNAVAILABLE:
+        return None
+    try:
+        _STORE = RedisStore()
+    except (RedisStoreError, OSError) as exc:
+        _STORE_UNAVAILABLE = True
+        log.warning("Redis unavailable; falling back to HANDOFFS.md only: %s", exc)
+        return None
+    return _STORE
 
 
 # ---- CLI invocation map ---------------------------------------------------
@@ -155,7 +178,7 @@ def _agent_prompt(title: str, context_path: Path, fields: dict) -> str:
         f"Read the handoff context at {context_path} and act on the task. "
         f"Task title: {title}. Files Touched: {fields.get('Files Touched', '')}. "
         f"Next Action from HANDOFFS.md: {next_action or '(none)'}. "
-        "Update HANDOFFS.md with Status COMPLETED or FAILED when done."
+        "Do not edit HANDOFFS.md; the watcher records status and result after your CLI exits."
     )
 
 
@@ -189,6 +212,20 @@ def _update_handoff_status(
     Returns True if the block was found and updated, False otherwise.
     Atomic write via temp file + os.replace.
     """
+    store = _store()
+    if store is not None:
+        current = store.get_handoff(key)
+        if current is not None:
+            result = current.get("result") or ""
+            if result_suffix and result_suffix not in result:
+                result = (result.rstrip() + " " + result_suffix).strip()
+            store.upsert_handoff(key, status=new_status, result=result)
+            rendered = store.render_handoffs_md()
+            tmp = HANDOFFS_FILE.with_suffix(HANDOFFS_FILE.suffix + ".tmp")
+            tmp.write_text(rendered, encoding="utf-8")
+            os.replace(tmp, HANDOFFS_FILE)
+            return True
+
     if not HANDOFFS_FILE.exists():
         return False
     text = HANDOFFS_FILE.read_text(encoding="utf-8")
@@ -271,6 +308,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _parse_iso(value: object) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return None
+
+
+def _running_timed_out(entry: object, timeout: int) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    if entry.get("outcome") != "running":
+        return False
+    started = _parse_iso(entry.get("started_at"))
+    if started is None:
+        return False
+    return (datetime.now(timezone.utc) - started).total_seconds() > max(timeout, 1)
+
+
 # ---- Dispatch one handoff ------------------------------------------------
 
 
@@ -328,11 +387,13 @@ def _dispatch_one(
             logf.flush()
             completed = subprocess.run(  # noqa: S603 — argv list, shell=False, whitelisted CLI
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
                 check=False,
                 cwd=str(WARROOM_PATH),
+                start_new_session=True,
             )
         rc = completed.returncode
     except subprocess.TimeoutExpired:
@@ -396,14 +457,35 @@ def _cycle(
     actions = 0
     for key, fields in parse_handoffs(text):
         status = (fields.get("Status") or "").strip().upper()
+        previous = seen.get(key)
+        if status == "IN PROGRESS":
+            if execute and _running_timed_out(previous, timeout):
+                with lock:
+                    _update_handoff_status(
+                        key,
+                        "FAILED",
+                        f"watcher recovered stale IN PROGRESS after {timeout}s",
+                    )
+                previous["outcome"] = "timeout_recovered"
+                previous["finished_at"] = _now_iso()
+                _save_state(state)
+                actions += 1
+            continue
         if status != "PENDING":
             continue
-        previous = seen.get(key)
         if previous and (not execute or previous.get("outcome") != "dry_run"):
             continue
         owner = (fields.get("Owner") or "").strip()
         if owners is not None and owner not in owners:
             continue
+
+        if execute:
+            state.setdefault("handoffs", {})[key] = {
+                "outcome": "running",
+                "owner": owner,
+                "started_at": _now_iso(),
+            }
+            _save_state(state)
 
         outcome = _dispatch_one(key, fields, lock, execute=execute, timeout=timeout)
 

@@ -223,6 +223,25 @@ def test_invalid_assignee_blocks_in_notion(store):
     reason = props["Result Summary"]["rich_text"][0]["text"]["content"]
     assert "Invalid Assignee" in reason
     assert "Skynet" in reason
+    assert store.get_bridge_state().get("pages", {}) == {}
+
+
+def test_corrected_invalid_assignee_can_be_resubmitted(store):
+    bad_page = _notion_page("page_bbb", owner="Skynet")
+    good_page = _notion_page("page_bbb", owner="Hermes")
+    client = _make_client([])
+    client.query_data_source.side_effect = [
+        {"results": [bad_page], "has_more": False},
+        {"results": [good_page], "has_more": False},
+    ]
+
+    assert sync_dispatch(client, "ds_xyz", store=store) == 1
+    assert store.render_handoffs_md() == ""
+
+    assert sync_dispatch(client, "ds_xyz", store=store) == 1
+    handoffs_md = store.render_handoffs_md()
+    assert "Inspect War Room health" in handoffs_md
+    assert "Owner: Hermes" in handoffs_md
 
 
 def test_missing_assignee_waits_without_blocking(store):
@@ -256,6 +275,27 @@ def test_active_lock_conflict_blocks_task(store):
     props = client.update_page.call_args.args[1]
     assert props["Status"]["status"]["name"] == "Blocked"
     assert "lock conflict" in props["Result Summary"]["rich_text"][0]["text"]["content"]
+    assert store.get_bridge_state().get("pages", {}) == {}
+
+
+def test_released_lock_can_be_resubmitted(store):
+    store.set_file(
+        "CURRENT_STATE.md",
+        "## Active Locks\n"
+        "- /home/alhinai/WarRoom/critical.py held by OpenClaw\n",
+    )
+    page = _notion_page("page_ccc", files="/home/alhinai/WarRoom/critical.py")
+    client = _make_client([])
+    client.query_data_source.return_value = {"results": [page], "has_more": False}
+
+    assert sync_dispatch(client, "ds_xyz", store=store) == 1
+    assert store.render_handoffs_md() == ""
+
+    store.set_file("CURRENT_STATE.md", "## Active Locks\n")
+    assert sync_dispatch(client, "ds_xyz", store=store) == 1
+    handoffs_md = store.render_handoffs_md()
+    assert "Inspect War Room health" in handoffs_md
+    assert "critical.py" in handoffs_md
 
 
 def test_local_write_must_precede_notion_dispatch(store):

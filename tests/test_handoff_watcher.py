@@ -31,6 +31,7 @@ ORCHESTRATOR_PATH = REPO_ROOT / "scripts" / "warroom_orchestrator.py"
 def _load_watcher(monkeypatch, warroom: Path):
     """Import handoff_watcher with WARROOM_PATH pointed at a tmp dir."""
     monkeypatch.setenv("WARROOM_PATH", str(warroom))
+    monkeypatch.setenv("HANDOFF_WATCHER_DISABLE_REDIS", "1")
     # The module reads WARROOM_PATH at import time. Force a fresh import.
     for name in list(sys.modules):
         if name == "handoff_watcher":
@@ -66,6 +67,7 @@ def test_hermes_handler_emits_argv_list(monkeypatch, tmp_path):
     assert "inspect health" in prompt
     assert str(tmp_path / "ctx.md") in prompt
     assert "Check the live bridge status." in prompt
+    assert "Do not edit HANDOFFS.md" in prompt
 
 
 def test_openclaw_handler_emits_argv_list(monkeypatch, tmp_path):
@@ -297,6 +299,68 @@ def test_cycle_does_not_let_old_dry_run_state_block_execute(monkeypatch, tmp_pat
     state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
     assert state["handoffs"]["wrb_aaaaaaaaaaaa"]["outcome"] == "missing_binary"
     assert state["handoffs"]["wrb_bbbbbbbbbbbb"]["outcome"] == "completed"
+
+
+def test_execute_uses_daemon_safe_subprocess_options(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(
+        "- Task: hermes task [wrb_aaaaaaaaaaaa]\n"
+        "  Owner: Hermes\n"
+        "  Files Touched: x\n"
+        "  Status: PENDING\n"
+        "  Result:\n"
+        "  Next Action: None\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "_binary_exists", lambda name: True)
+    run = MagicMock(return_value=mod.subprocess.CompletedProcess(["hermes"], 0))
+    monkeypatch.setattr(mod.subprocess, "run", run)
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=True, owners=None, timeout=10)
+
+    assert actions == 1
+    kwargs = run.call_args.kwargs
+    assert kwargs["stdin"] is mod.subprocess.DEVNULL
+    assert kwargs["start_new_session"] is True
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert state["handoffs"]["wrb_aaaaaaaaaaaa"]["outcome"] == "completed"
+
+
+def test_running_handoff_state_is_recovered_after_timeout(monkeypatch, tmp_path):
+    mod = _load_watcher(monkeypatch, tmp_path)
+    mod.HANDOFFS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    mod.HANDOFFS_FILE.write_text(
+        "- Task: stuck task [wrb_aaaaaaaaaaaa]\n"
+        "  Owner: Hermes\n"
+        "  Files Touched: x\n"
+        "  Status: IN PROGRESS\n"
+        "  Result:\n"
+        "  Next Action: None\n",
+        encoding="utf-8",
+    )
+    mod._save_state(
+        {
+            "handoffs": {
+                "wrb_aaaaaaaaaaaa": {
+                    "outcome": "running",
+                    "owner": "Hermes",
+                    "started_at": "2000-01-01T00:00:00Z",
+                }
+            }
+        }
+    )
+
+    lock = mod.FileLock(str(mod.LOCK_FILE))
+    actions = mod._cycle(lock, execute=True, owners=None, timeout=10)
+
+    assert actions == 1
+    text = mod.HANDOFFS_FILE.read_text(encoding="utf-8")
+    assert "Status: FAILED" in text
+    assert "watcher recovered stale IN PROGRESS after 10s" in text
+    state = json.loads(mod.STATE_FILE.read_text(encoding="utf-8"))
+    assert state["handoffs"]["wrb_aaaaaaaaaaaa"]["outcome"] == "timeout_recovered"
 
 
 def test_cycle_respects_owners_whitelist(monkeypatch, tmp_path):
