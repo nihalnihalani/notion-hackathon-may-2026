@@ -18,6 +18,7 @@
     "test:coverage": "turbo run test:coverage",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,mjs}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mjs}\"",
+    "format:check:changed": "bash scripts/ci/check-format-changed.sh",
     "dev": "turbo run dev --parallel",
     "verify:env": "tsx scripts/verify-env.ts"
   },

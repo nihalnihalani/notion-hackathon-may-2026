@@ -98,8 +98,8 @@ export function renderSocialImage(): ImageResponse {
               maxWidth: 980,
             }}
           >
-            Describe an agent in plain English. Forge ships a real, deployed
-            Notion Custom Agent in 90 seconds.
+            Describe an agent in plain English. Forge ships a real, deployed Notion Custom Agent in
+            90 seconds.
           </div>
         </div>
 

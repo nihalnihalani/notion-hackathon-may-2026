@@ -2,16 +2,17 @@
 # Forge — Deploy (preview)
 #
 # Runs on every pull request targeting main. This workflow owns the *full*
-# preview path: it lints + typechecks + tests + verify-envs the PR, then
-# deploys the resulting build to Vercel as a preview, branches the
+# preview path: it lints + checks changed-file formatting + typechecks + tests
+# + verify-envs + builds the PR, then deploys the resulting build to Vercel as
+# a preview, branches the
 # PlanetScale prod schema into a per-PR DB branch, posts the preview URL
 # and DB branch as a sticky comment on the PR, and (when the PR carries the
 # `e2e` label) runs the Playwright happy-path suite against the live
 # preview URL.
 #
 # The Vercel GitHub integration can also auto-build previews, but we drive
-# it from CI so the deploy is gated on `pnpm test && pnpm verify:env`
-# passing first — no green check, no preview URL.
+# it from CI so the deploy is gated on CI-equivalent checks passing first —
+# no green check, no preview URL.
 #
 # Required GitHub secrets (Repository Settings → Secrets and variables →
 # Actions):
@@ -50,9 +51,9 @@ jobs:
   # 1. Verify the PR is shippable before we spend a deploy slot on it.
   # ---------------------------------------------------------------------------
   verify:
-    name: Lint / typecheck / test / verify-env
+    name: Lint / format / typecheck / test / build / verify-env
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Match `verify-env` stub values from ci.yml exactly so a passing CI run
     # implies this job will also pass. Drift is a smell — review both together.
     env:
@@ -91,8 +92,12 @@ jobs:
       STRIPE_SECRET_KEY: sk_test_stripe_fake_ci_stub
       STRIPE_WEBHOOK_SECRET: whsec_stripe_fake_ci_stub
       FORGE_INTERNAL_TOKEN: ci_stub_token_0000000000000000000000000000000000000000000000
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -109,16 +114,22 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-preview-
       - run: pnpm install --frozen-lockfile
-      - name: Lint / typecheck / test / verify-env
+      - name: Lint / format / typecheck / test / build / verify-env
         run: |
           echo "::group::lint"
           pnpm lint -- --max-warnings=0
+          echo "::endgroup::"
+          echo "::group::format changed files"
+          pnpm format:check:changed -- "${BASE_SHA}" "${HEAD_SHA}"
           echo "::endgroup::"
           echo "::group::typecheck"
           pnpm typecheck
           echo "::endgroup::"
           echo "::group::test"
           pnpm test
+          echo "::endgroup::"
+          echo "::group::build"
+          pnpm build
           echo "::endgroup::"
           echo "::group::verify-env"
           pnpm verify:env
@@ -132,6 +143,7 @@ jobs:
   planetscale-branch:
     name: PlanetScale preview branch
     needs: verify
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -172,6 +184,7 @@ jobs:
   vercel-preview:
     name: Vercel preview deploy
     needs: [verify, planetscale-branch]
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
@@ -214,6 +227,7 @@ jobs:
   pr-comment:
     name: Sticky PR comment
     needs: [planetscale-branch, vercel-preview]
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -239,7 +253,7 @@ jobs:
   e2e:
     name: Playwright E2E (opt-in via `e2e` label)
     needs: vercel-preview
-    if: contains(github.event.pull_request.labels.*.name, 'e2e')
+    if: github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

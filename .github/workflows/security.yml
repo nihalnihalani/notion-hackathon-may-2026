@@ -6,12 +6,14 @@
 #      do NOT fail on `moderate` because dev-only transitive deps frequently
 #      sit at moderate and would otherwise wedge every PR. Cron job will
 #      escalate moderate to a Slack ping if needed (future).
-#   2. CodeQL JavaScript/TypeScript scan.
+#   2. CodeQL JavaScript/TypeScript scan when the repo is public. This repo is
+#      currently private; skipping CodeQL avoids GHAS/code-scanning failures
+#      until Advanced Security is enabled or the repo flips public.
 #   3. Secret-scan placeholder (GitHub Advanced Security handles real
 #      detection at the org level; this job documents that it runs).
 #
-# Required GitHub secrets: none — both pnpm audit and CodeQL use the
-# `GITHUB_TOKEN` provided automatically by Actions.
+# Required GitHub secrets: none — pnpm audit and CodeQL use the `GITHUB_TOKEN`
+# provided automatically by Actions.
 # =============================================================================
 name: Security
 
@@ -24,6 +26,7 @@ on:
     # Mondays 09:00 UTC: catches anything published over the weekend before
     # the engineering week starts.
     - cron: '0 9 * * 1'
+  workflow_dispatch:
 
 concurrency:
   group: security-${{ github.workflow }}-${{ github.ref }}
@@ -74,6 +77,7 @@ jobs:
 
   codeql:
     name: CodeQL (JavaScript/TypeScript)
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

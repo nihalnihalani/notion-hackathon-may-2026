@@ -2,15 +2,16 @@
 # Forge — Deploy (production)
 #
 # Runs on every push to main (post-merge). Pipeline:
-#   1. Install + build the monorepo with Turbo (cached).
-#   2. `prisma migrate deploy` against PlanetScale prod via the DATABASE_URL
+#   1. Re-run the release-candidate gates that must be true before prod.
+#   2. Install + build the monorepo with Turbo (cached).
+#   3. `prisma migrate deploy` against PlanetScale prod via the DATABASE_URL
 #      secret — safe because migrate deploy only forward-applies migrations
 #      already in git.
-#   3. `vercel deploy --prod` from a prebuilt artifact (deterministic — the
+#   4. `vercel deploy --prod` from a prebuilt artifact (deterministic — the
 #      same SHA produces the same upload).
-#   4. Upload Sentry source maps + create a release marker.
-#   5. Smoke-test `/api/healthz` against the new prod URL.
-#   6. Notify Slack on either outcome; on failure also open a GitHub issue
+#   5. Upload Sentry source maps + create a release marker.
+#   6. Smoke-test `/api/healthz` against the new prod URL.
+#   7. Notify Slack on either outcome; on failure also open a GitHub issue
 #      so an on-call human reviews before any rollback.
 #
 # Rollbacks are *manual* — see docs/CI_CD.md ("Rollback procedure"). We
@@ -60,10 +61,53 @@ env:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # 1. Build the monorepo. Cached against pnpm-lock + the source tree.
+  # 1. Verify the release candidate before touching production systems.
+  # ---------------------------------------------------------------------------
+  verify:
+    name: Verify release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DATABASE_URL: postgres://stub:stub@localhost:5432/stub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-prod-verify-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-prod-verify-
+      - run: pnpm install --frozen-lockfile
+      - name: Lint / typecheck / test / prisma validate
+        run: |
+          echo "::group::lint"
+          pnpm lint -- --max-warnings=0
+          echo "::endgroup::"
+          echo "::group::typecheck"
+          pnpm typecheck
+          echo "::endgroup::"
+          echo "::group::test"
+          pnpm test
+          echo "::endgroup::"
+          echo "::group::prisma validate"
+          pnpm --filter @forge/db exec prisma validate
+          echo "::endgroup::"
+
+  # ---------------------------------------------------------------------------
+  # 2. Build the monorepo. Cached against pnpm-lock + the source tree.
   # ---------------------------------------------------------------------------
   build:
     name: Build
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -88,14 +132,14 @@ jobs:
         run: pnpm build
 
   # ---------------------------------------------------------------------------
-  # 2. Apply pending migrations to PlanetScale prod *before* the new app
+  # 3. Apply pending migrations to PlanetScale prod *before* the new app
   #    code goes live. `migrate deploy` only forward-applies migrations
   #    already in git, so re-runs against the same SHA are no-ops.
   # ---------------------------------------------------------------------------
   migrate:
     name: Prisma migrate deploy
     needs: build
-    if: ${{ !inputs.skip_migrations }}
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_migrations }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -118,7 +162,7 @@ jobs:
           echo "::endgroup::"
 
   # ---------------------------------------------------------------------------
-  # 3. Vercel production deploy (prebuilt — identical artifact across re-runs).
+  # 4. Vercel production deploy (prebuilt — identical artifact across re-runs).
   # ---------------------------------------------------------------------------
   vercel-prod:
     name: Vercel production deploy
@@ -161,7 +205,7 @@ jobs:
           echo "prod_url=${URL}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # 4. Upload Sentry source maps + create a release marker.
+  # 5. Upload Sentry source maps + create a release marker.
   #    Idempotent: Sentry no-ops if the release already exists.
   # ---------------------------------------------------------------------------
   sentry-release:
@@ -200,7 +244,7 @@ jobs:
           finalize: true
 
   # ---------------------------------------------------------------------------
-  # 5. Smoke test — fail the deploy if /api/healthz isn't returning ok.
+  # 6. Smoke test — fail the deploy if /api/healthz isn't returning ok.
   # ---------------------------------------------------------------------------
   smoke:
     name: Post-deploy smoke (/api/healthz)
@@ -221,17 +265,18 @@ jobs:
             if [ "${STATUS}" = "ok" ]; then
               echo "healthz ok on attempt ${i}"
               echo "${BODY}" | jq .
+              echo "::endgroup::"
               exit 0
             fi
             echo "attempt ${i} failed; sleeping 5s"
             sleep 5
           done
           echo "::error::healthz did not return status=ok after 5 attempts"
-          exit 1
           echo "::endgroup::"
+          exit 1
 
   # ---------------------------------------------------------------------------
-  # 6. Notify Slack — always runs, branches on success vs failure.
+  # 7. Notify Slack — always runs, branches on success vs failure.
   # ---------------------------------------------------------------------------
   notify:
     name: Slack notify
@@ -239,6 +284,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     steps:
       - name: Compute status
         id: status
@@ -246,17 +293,21 @@ jobs:
           if [ "${{ needs.vercel-prod.result }}" = "success" ] \
              && [ "${{ needs.sentry-release.result }}" = "success" ] \
              && [ "${{ needs.smoke.result }}" = "success" ]; then
-            echo "outcome=success" >> "$GITHUB_OUTPUT"
-            echo "emoji=:rocket:" >> "$GITHUB_OUTPUT"
-            echo "color=#36a64f" >> "$GITHUB_OUTPUT"
+            {
+              echo "outcome=success"
+              echo "emoji=:rocket:"
+              echo "color=#36a64f"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "outcome=failure" >> "$GITHUB_OUTPUT"
-            echo "emoji=:rotating_light:" >> "$GITHUB_OUTPUT"
-            echo "color=#cc0000" >> "$GITHUB_OUTPUT"
+            {
+              echo "outcome=failure"
+              echo "emoji=:rotating_light:"
+              echo "color=#cc0000"
+            } >> "$GITHUB_OUTPUT"
           fi
       - name: Slack webhook
+        if: env.SLACK_WEBHOOK_URL != ''
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           OUTCOME: ${{ steps.status.outputs.outcome }}
           EMOJI: ${{ steps.status.outputs.emoji }}
           COLOR: ${{ steps.status.outputs.color }}
@@ -283,9 +334,12 @@ jobs:
           # --data-binary @- so the JSON is never echoed in logs.
           printf '%s' "${PAYLOAD}" | curl -fsS -X POST -H 'Content-Type: application/json' \
             --data-binary @- "${SLACK_WEBHOOK_URL}" >/dev/null
+      - name: Slack webhook not configured
+        if: env.SLACK_WEBHOOK_URL == ''
+        run: echo "SLACK_WEBHOOK_URL is not configured; skipping deploy notification."
 
   # ---------------------------------------------------------------------------
-  # 7. On failure, open a GitHub issue so an on-call human investigates
+  # 8. On failure, open a GitHub issue so an on-call human investigates
   #    before any rollback decision.
   # ---------------------------------------------------------------------------
   open-failure-issue:
