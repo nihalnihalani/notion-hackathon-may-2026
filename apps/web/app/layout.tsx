@@ -3,6 +3,9 @@ import type { ReactNode } from 'react';
 import { ClerkProvider } from '@clerk/nextjs';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+
+import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/sonner';
 import './globals.css';
 
 // Resolve the canonical origin from env. If NEXT_PUBLIC_APP_URL is missing we
@@ -27,9 +30,21 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className="min-h-screen bg-neutral-950 text-neutral-50 antialiased">
-          {children}
+      {/*
+        `suppressHydrationWarning` is required by next-themes — it injects a
+        `class="dark"` before React hydrates, which would otherwise mismatch.
+      */}
+      <html lang="en" suppressHydrationWarning>
+        <body className="min-h-screen bg-background font-sans text-foreground antialiased">
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <Toaster position="bottom-right" />
+          </ThemeProvider>
           <Analytics />
           <SpeedInsights />
         </body>

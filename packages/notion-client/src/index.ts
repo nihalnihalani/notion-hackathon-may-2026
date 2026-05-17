@@ -151,6 +151,7 @@ export type {
 export {
   appendBuildLogEntry,
   clearBuildLog,
+  keepRecentBuildLogEntries,
   buildLogBlock,
   buildLogRichText,
 } from './build-log.js';

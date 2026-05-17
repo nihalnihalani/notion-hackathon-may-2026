@@ -12,11 +12,13 @@ import {
   buildLogBlock,
   buildLogRichText,
   clearBuildLog,
+  keepRecentBuildLogEntries,
 } from '../src/build-log.js';
 import { asBlockId } from '../src/types.js';
 import { mockFetch } from './helpers.js';
 
 const BLOCK_ID = asBlockId('11111111-1111-1111-1111-111111111111');
+const PARENT_ID = asBlockId('22222222-2222-2222-2222-222222222222');
 const TS = new Date(Date.UTC(2026, 4, 17, 12, 1, 3));
 
 describe('buildLogRichText', () => {
@@ -107,9 +109,82 @@ describe('appendBuildLogEntry', () => {
   });
 });
 
-describe('clearBuildLog', () => {
-  it('lists children and DELETEs each one', async () => {
-    // First response: GET children. Subsequent: DELETE per child.
+describe('clearBuildLog (O(1) archive + recreate)', () => {
+  it('issues exactly two Notion requests regardless of entry count', async () => {
+    // Request 1: DELETE the existing container.
+    // Request 2: PATCH /v1/blocks/{parent}/children with the fresh container.
+    const { fetch, calls } = mockFetch([
+      { status: 200, body: { object: 'block', id: 'old-container' } },
+      {
+        status: 200,
+        body: {
+          object: 'list',
+          results: [{ object: 'block', id: 'new-container', type: 'toggle' }],
+          next_cursor: null,
+          has_more: false,
+        },
+      },
+    ]);
+    const newId = await clearBuildLog({ token: 'k', fetch }, BLOCK_ID, PARENT_ID);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.method).toBe('DELETE');
+    expect(calls[0]!.url).toMatch(
+      /\/v1\/blocks\/11111111-1111-1111-1111-111111111111$/,
+    );
+    expect(calls[1]!.method).toBe('PATCH');
+    expect(calls[1]!.url).toMatch(
+      /\/v1\/blocks\/22222222-2222-2222-2222-222222222222\/children$/,
+    );
+    const body = JSON.parse(calls[1]!.body!);
+    expect(body.children).toHaveLength(1);
+    expect(body.children[0].type).toBe('toggle');
+    expect(body.children[0].toggle.rich_text[0].text.content).toBe('Build Log');
+    expect(newId).toBe('new-container');
+  });
+
+  it('accepts an override container shape (synced_block)', async () => {
+    const { fetch, calls } = mockFetch([
+      { status: 200, body: { object: 'block', id: 'old' } },
+      {
+        status: 200,
+        body: {
+          object: 'list',
+          results: [{ object: 'block', id: 'new-synced', type: 'synced_block' }],
+          next_cursor: null,
+          has_more: false,
+        },
+      },
+    ]);
+    await clearBuildLog(
+      { token: 'k', fetch },
+      BLOCK_ID,
+      PARENT_ID,
+      {
+        type: 'synced_block',
+        payload: { synced_from: null, children: [] },
+      },
+    );
+    const body = JSON.parse(calls[1]!.body!);
+    expect(body.children[0].type).toBe('synced_block');
+    expect(body.children[0].synced_block.synced_from).toBeNull();
+  });
+
+  it('throws when Notion returns no created block', async () => {
+    const { fetch } = mockFetch([
+      { status: 200, body: { object: 'block', id: 'old' } },
+      {
+        status: 200,
+        body: { object: 'list', results: [], next_cursor: null, has_more: false },
+      },
+    ]);
+    await expect(
+      clearBuildLog({ token: 'k', fetch }, BLOCK_ID, PARENT_ID),
+    ).rejects.toThrow(/empty results/);
+  });
+});
+
+describe('keepRecentBuildLogEntries (O(n) trim helper)', () => {
+  it('archives all entries when keepLast=0', async () => {
     const { fetch, calls } = mockFetch([
       {
         status: 200,
@@ -126,16 +201,38 @@ describe('clearBuildLog', () => {
       { status: 200, body: { object: 'block', id: 'b1' } },
       { status: 200, body: { object: 'block', id: 'b2' } },
     ]);
-    await clearBuildLog({ token: 'k', fetch }, BLOCK_ID);
-    expect(calls).toHaveLength(3);
-    expect(calls[0]!.method).toBe('GET');
-    expect(calls[1]!.method).toBe('DELETE');
-    expect(calls[1]!.url).toMatch(/\/v1\/blocks\/b1$/);
-    expect(calls[2]!.method).toBe('DELETE');
-    expect(calls[2]!.url).toMatch(/\/v1\/blocks\/b2$/);
+    await keepRecentBuildLogEntries({ token: 'k', fetch }, BLOCK_ID, 0);
+    expect(calls.filter((c) => c.method === 'GET')).toHaveLength(1);
+    expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(2);
   });
 
-  it('paginates through has_more cursors', async () => {
+  it('keeps the most-recent N entries (insertion order)', async () => {
+    const { fetch, calls } = mockFetch([
+      {
+        status: 200,
+        body: {
+          object: 'list',
+          results: [
+            { object: 'block', id: 'old1', type: 'paragraph' },
+            { object: 'block', id: 'old2', type: 'paragraph' },
+            { object: 'block', id: 'recent1', type: 'paragraph' },
+            { object: 'block', id: 'recent2', type: 'paragraph' },
+          ],
+          next_cursor: null,
+          has_more: false,
+        },
+      },
+      { status: 200, body: { object: 'block', id: 'old1' } },
+      { status: 200, body: { object: 'block', id: 'old2' } },
+    ]);
+    await keepRecentBuildLogEntries({ token: 'k', fetch }, BLOCK_ID, 2);
+    const deletes = calls.filter((c) => c.method === 'DELETE');
+    expect(deletes).toHaveLength(2);
+    expect(deletes[0]!.url).toMatch(/\/v1\/blocks\/old1$/);
+    expect(deletes[1]!.url).toMatch(/\/v1\/blocks\/old2$/);
+  });
+
+  it('paginates through has_more cursors when listing children', async () => {
     const { fetch, calls } = mockFetch([
       {
         status: 200,
@@ -158,11 +255,16 @@ describe('clearBuildLog', () => {
       { status: 200, body: { object: 'block', id: 'b1' } },
       { status: 200, body: { object: 'block', id: 'b2' } },
     ]);
-    await clearBuildLog({ token: 'k', fetch }, BLOCK_ID);
-    // 2 GETs (pagination) + 2 DELETEs.
+    await keepRecentBuildLogEntries({ token: 'k', fetch }, BLOCK_ID, 0);
     expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2);
     expect(calls.filter((c) => c.method === 'DELETE')).toHaveLength(2);
-    // Second GET carries start_cursor.
     expect(calls[1]!.url).toContain('start_cursor=cur1');
+  });
+
+  it('rejects negative keepLast', async () => {
+    const { fetch } = mockFetch({ status: 200, body: {} });
+    await expect(
+      keepRecentBuildLogEntries({ token: 'k', fetch }, BLOCK_ID, -1),
+    ).rejects.toThrow(/keepLast must be >= 0/);
   });
 });

@@ -114,4 +114,32 @@ describe('no-non-allowlisted-network', () => {
     const src = `await fetch('https://API.NOTION.COM/v1/users/me');`;
     expect(runRule(noNonAllowlistedNetwork, src)).toHaveLength(0);
   });
+
+  describe('wildcard allowlist entries (`*.foo.com`)', () => {
+    const opts = {
+      ...TEST_OPTS,
+      networkAllowlist: [...TEST_OPTS.networkAllowlist, '*.slack.com'],
+    };
+
+    it('matches any subdomain of the wildcard base', () => {
+      const src = `
+        await fetch('https://hooks.slack.com/services/xxx');
+        await fetch('https://acme.enterprise.slack.com/api');
+      `;
+      expect(runRule(noNonAllowlistedNetwork, src, opts)).toHaveLength(0);
+    });
+
+    it('does NOT match the bare host (requires a separate entry)', () => {
+      const src = `await fetch('https://slack.com/api/auth.test');`;
+      const v = runRule(noNonAllowlistedNetwork, src, opts);
+      expect(v).toHaveLength(1);
+      expect(v[0]?.severity).toBe('block');
+    });
+
+    it('does NOT match a similar-looking host with a different suffix', () => {
+      const src = `await fetch('https://attackerslack.com/x');`;
+      const v = runRule(noNonAllowlistedNetwork, src, opts);
+      expect(v).toHaveLength(1);
+    });
+  });
 });

@@ -2,7 +2,7 @@
   "name": "@forge/workflows",
   "version": "0.0.0",
   "private": true,
-  "description": "Vercel Workflow DevKit DAG that orchestrates Schema Smith → Tool Coder → Inspector → Shipper with retries.",
+  "description": "Vercel Workflow DevKit DAG that orchestrates Schema Smith → Tool Coder → Inspector → Shipper with retries, idempotency, and cancellation. Includes an Inngest backup variant behind a feature flag.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,6 +11,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./forge": {
+      "types": "./dist/forge.d.ts",
+      "default": "./dist/forge.js"
+    },
+    "./inngest": {
+      "types": "./dist/inngest/forge.d.ts",
+      "default": "./dist/inngest/forge.js"
+    },
+    "./triggers": {
+      "types": "./dist/triggers.d.ts",
+      "default": "./dist/triggers.js"
     }
   },
   "files": ["dist"],
@@ -20,7 +32,30 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@forge/agents": "workspace:*",
+    "@forge/connectors": "workspace:*",
+    "@forge/db": "workspace:*",
+    "@forge/notion-client": "workspace:*",
+    "@forge/ntn-wrapper": "workspace:*",
+    "zod": "3.23.8"
+  },
+  "peerDependencies": {
+    "inngest": "^3.0.0",
+    "workflow": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "inngest": {
+      "optional": true
+    },
+    "workflow": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "inngest": "^3.27.0",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

@@ -12,10 +12,14 @@
  *  1. Call Anthropic Messages (Opus 4.7 by default) via either the direct API
  *     or the Vercel AI Gateway (`aiGatewayUrl`).
  *
- *  2. The system prompt is wrapped in an ephemeral cache block —
- *     `cache_control: { type: 'ephemeral' }` — because it's the only piece
- *     that repeats across Schema Smith calls. The user message (description +
- *     workspace context) is the variable part.
+ *  2. The system prompt is sent as TWO blocks: the first (static) block
+ *     — role, output contract, JSchemaSpec reference, pattern hints, scope
+ *     vocabulary — is wrapped in `cache_control: { type: 'ephemeral' }`
+ *     so it shares one cache key across every workspace + every call. The
+ *     second block carries the per-call `WorkspaceContext` (database ids,
+ *     existing-agent list) and is NOT cached. This is the fix for the
+ *     previous "interpolated workspace context into the cached prompt"
+ *     bug, which broke cache reuse per workspace and per database-added.
  *
  *  3. Parse the response → strict JSON → zod-validate against
  *     {@link schemaSmithOutputSchema}. On validation failure, retry ONCE with
@@ -27,8 +31,10 @@
  *     appended (counts against the same retry budget).
  *
  *  5. Fallback: if the primary provider throws a `RateLimitError` or a 5xx,
- *     auto-fall-back to OpenAI (`gpt-5` by default) — same prompt, same
- *     parsing. Both providers failing → {@link ProviderFallbackError}.
+ *     auto-fall-back to OpenAI (`gpt-5-thinking-mini` by default — the
+ *     August-2025 reasoning mini SKU; the bare `gpt-5` id is not a real
+ *     model). Same prompt, same parsing. Both providers failing →
+ *     {@link ProviderFallbackError}.
  *
  *  6. Cost + latency are emitted via `logger.info('schema-smith.complete', …)`
  *     so the orchestrator can persist a `GenerationStep` row + push a
@@ -91,16 +97,18 @@ export async function schemaSmith(input: SchemaSmithInput): Promise<SchemaSmithO
   const startedAt = Date.now();
   const logger = input.config.logger ?? noopLogger;
   const primaryModel = input.config.primaryModel ?? 'claude-opus-4-7';
-  const fallbackModel = input.config.fallbackModel ?? 'gpt-5';
+  const fallbackModel = input.config.fallbackModel ?? 'gpt-5-thinking-mini';
 
-  const systemPrompt = buildSystemPrompt(input.workspaceContext);
+  const staticSystem = buildStaticSystemPrompt();
+  const workspaceSystem = buildWorkspaceContextPrompt(input.workspaceContext);
   const userPrompt = buildUserPrompt(input.description);
 
   // Attempt 1 + (on parse/validate failure) Attempt 2 on the primary provider.
   try {
     const out = await runWithAnthropic({
       input,
-      systemPrompt,
+      staticSystem,
+      workspaceSystem,
       userPrompt,
       model: primaryModel,
       startedAt,
@@ -117,7 +125,8 @@ export async function schemaSmith(input: SchemaSmithInput): Promise<SchemaSmithO
       try {
         const out = await runWithOpenai({
           input,
-          systemPrompt,
+          staticSystem,
+          workspaceSystem,
           userPrompt,
           model: fallbackModel,
           startedAt,
@@ -151,7 +160,10 @@ export async function schemaSmith(input: SchemaSmithInput): Promise<SchemaSmithO
 
 interface RunContext {
   input: SchemaSmithInput;
-  systemPrompt: string;
+  /** Stable, large, cacheable. Renders once per process. */
+  staticSystem: string;
+  /** Per-call: contains workspace ids + agent list. Never cached. */
+  workspaceSystem: string;
   userPrompt: string;
   model: string;
   startedAt: number;
@@ -169,13 +181,25 @@ async function runWithAnthropic(ctx: RunContext): Promise<SchemaSmithOutput> {
         ? ctx.userPrompt
         : `${ctx.userPrompt}\n\nPREVIOUS_ATTEMPT_ERROR:\n${lastError}\n\nRespond again with corrected JSON.`;
 
+    // Two-block system: first block is cacheable; second is per-call.
+    // `cacheControl: false` on the per-call block prevents accidental
+    // cache-write billing on workspace-context bytes.
     const res = await client.complete(
       {
         model: ctx.model,
         maxTokens: 2048,
         temperature: 0,
-        cacheControl: true,
-        system: ctx.systemPrompt,
+        // Note: we DO NOT pass `cacheControl: true` here — that flag only
+        // wraps a string `system` and would defeat our explicit two-block
+        // shape. We attach cache_control on the static block directly.
+        system: [
+          {
+            type: 'text',
+            text: ctx.staticSystem,
+            cache_control: { type: 'ephemeral' },
+          },
+          { type: 'text', text: ctx.workspaceSystem },
+        ],
         messages: [{ role: 'user', content: userMessage }],
       },
       ctx.input.config.abortSignal === undefined
@@ -229,6 +253,11 @@ async function runWithOpenai(ctx: RunContext): Promise<SchemaSmithOutput> {
         ? ctx.userPrompt
         : `${ctx.userPrompt}\n\nPREVIOUS_ATTEMPT_ERROR:\n${lastError}\n\nRespond again with corrected JSON.`;
 
+    // OpenAI Chat Completions takes a single `system` string — no caching
+    // hook to preserve, so we concatenate the static + workspace blocks
+    // exactly in order. The model sees identical content to the Anthropic
+    // path; only the wire format differs.
+    const openaiSystem = `${ctx.staticSystem}\n\n${ctx.workspaceSystem}`;
     const res = await client.complete(
       {
         model: ctx.model,
@@ -236,7 +265,7 @@ async function runWithOpenai(ctx: RunContext): Promise<SchemaSmithOutput> {
         temperature: 0,
         responseFormat: { type: 'json_object' },
         messages: [
-          { role: 'system', content: ctx.systemPrompt },
+          { role: 'system', content: openaiSystem },
           { role: 'user', content: userMessage },
         ],
       },
@@ -362,34 +391,23 @@ function extractText(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * System prompt for Schema Smith. Wrapped as an ephemeral cache block by the
- * Anthropic client — this is the part that repeats across calls within a 5min
- * window.
+ * STATIC system prompt for Schema Smith.
  *
- * We *do* include the workspace context here. PLAN.md §4 calls out that
- * workspace context goes "inline" with the system prompt; the trade-off is
- * lower cache hit rate (one cache entry per workspace) for higher quality
- * because the model sees the schema during planning, not as a parameter.
+ * This is the cacheable block — role, output contract, JSchemaSpec
+ * reference, pattern hints, scope vocabulary, quality bar. Contains
+ * NOTHING workspace-specific. Stable across every workspace, every call,
+ * every retry, so it hits the 5-minute ephemeral cache for the price of
+ * one write per ~5min window.
+ *
+ * Quality trade-off: Schema Smith no longer sees the workspace inline as
+ * part of the cached prompt. We compensate by passing the workspace as a
+ * second (non-cached) system block — the model still receives it before
+ * the user prompt, just at a different cache tier. Anthropic's docs
+ * confirm only blocks BEFORE the first `cache_control` boundary are
+ * cached, so the contract here is: static first, workspace second.
  */
-function buildSystemPrompt(ctx: WorkspaceContext): string {
+function buildStaticSystemPrompt(): string {
   const patternsBlock = ALL_AGENT_PATTERNS.map((p) => `- ${p}: ${PATTERN_HINTS[p]}`).join('\n');
-
-  const dbBlock =
-    ctx.databases.length === 0
-      ? 'No databases in this workspace yet.'
-      : ctx.databases
-          .map((db) => {
-            const props = db.properties.map((p) => `      - ${p.name} (${p.type})`).join('\n');
-            return `  - id=${db.id}  name=${db.name}\n${props}`;
-          })
-          .join('\n');
-
-  const agentsBlock =
-    ctx.existingAgents.length === 0
-      ? 'No agents shipped yet.'
-      : ctx.existingAgents
-          .map((a) => `  - ${a.name} [${a.pattern}] — ${truncate(a.description, 160)}`)
-          .join('\n');
 
   return `You are Schema Smith, the first sub-agent in the Forge pipeline.
 You convert ONE English description of a Notion Custom Agent into a strict JSON
@@ -462,15 +480,6 @@ requiredOAuth lists external providers (GitHub, Linear, Stripe, Slack, Google,
 Sentry, Vercel, Anthropic, OpenAI, MiniMax) the worker calls. Omit Notion —
 it's the always-implicit host. Empty array if none.
 
-# Workspace context (read carefully — do not invent IDs)
-
-Databases:
-${dbBlock}
-
-Existing agents (do NOT duplicate behavior; reference them in your rationale
-if relevant):
-${agentsBlock}
-
 # Quality bar
 
 - Prefer reusing an existing database's id over inventing a new shape.
@@ -484,6 +493,46 @@ ${agentsBlock}
   (usually empty: \`{kind:"object", describe:"...", properties:{}}\`).
 - For \`database-query\` agents, requiredScopes MUST include at least
   databases.read.
+
+The user message will be preceded by a "WORKSPACE CONTEXT" block carrying the
+caller's databases and existing agents — read that block carefully and do
+not invent IDs.
+`;
+}
+
+/**
+ * Per-call WORKSPACE CONTEXT system prompt for Schema Smith.
+ *
+ * Built fresh per generation; NEVER cached. Anthropic prompt-cache rules
+ * say only the blocks before the first `cache_control` are cached, so
+ * this block sits second in the system array.
+ */
+function buildWorkspaceContextPrompt(ctx: WorkspaceContext): string {
+  const dbBlock =
+    ctx.databases.length === 0
+      ? 'No databases in this workspace yet.'
+      : ctx.databases
+          .map((db) => {
+            const props = db.properties.map((p) => `      - ${p.name} (${p.type})`).join('\n');
+            return `  - id=${db.id}  name=${db.name}\n${props}`;
+          })
+          .join('\n');
+
+  const agentsBlock =
+    ctx.existingAgents.length === 0
+      ? 'No agents shipped yet.'
+      : ctx.existingAgents
+          .map((a) => `  - ${a.name} [${a.pattern}] — ${truncate(a.description, 160)}`)
+          .join('\n');
+
+  return `# WORKSPACE CONTEXT (read carefully — do not invent IDs)
+
+Databases:
+${dbBlock}
+
+Existing agents (do NOT duplicate behavior; reference them in your rationale
+if relevant):
+${agentsBlock}
 `;
 }
 

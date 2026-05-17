@@ -1,0 +1,248 @@
+# =============================================================================
+# Tool Coder — Promptfoo eval suite
+#
+# Input: (SchemaSmithResult, description) → generated `src/index.ts`
+# Expected output: a JSON object matching ToolCoderResult:
+#   {
+#     "tsSource":      string (TypeScript source of src/index.ts)
+#     "packageJson":   object (deps must be in allowlist)
+#     "envSchema":     string (zod schema for env vars)
+#     "rationale":     string
+#   }
+#
+# Assertions exercise: syntactic invariants (worker.tool/sync/webhook is
+# referenced), allowlist conformance, and forbidden-API detection (no
+# `child_process`, no `fs.writeFileSync` to absolute paths, etc.).
+# =============================================================================
+description: Tool Coder — schema spec → TS worker source
+prompts:
+  - file://../prompts/tool-coder.txt
+
+providers:
+  - id: anthropic:messages:claude-opus-4-7
+    config:
+      max_tokens: 4000
+      temperature: 0.1
+      # Tool Coder uses extended thinking — disabled in eval to keep cost
+      # predictable + comparable across runs. Re-enable for nightly if a
+      # quality regression is suspected.
+      thinking: { type: 'disabled' }
+      headers:
+        anthropic-beta: 'prompt-caching-2024-07-31'
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const o = JSON.parse(output);
+        const required = ['tsSource', 'packageJson', 'envSchema', 'rationale'];
+        const missing = required.filter((k) => !(k in o));
+        return missing.length === 0 || `missing keys: ${missing.join(',')}`;
+    # Generated source must reference at least one worker.* primitive.
+    - type: javascript
+      value: |
+        const o = JSON.parse(output);
+        return /\bworker\.(tool|sync|webhook|scheduled)\(/.test(o.tsSource)
+          || 'tsSource missing worker.tool/sync/webhook/scheduled call';
+    # Forbidden APIs.
+    - type: javascript
+      value: |
+        const o = JSON.parse(output);
+        const banned = ['child_process', 'eval(', 'new Function(', 'process.exit'];
+        const hit = banned.find((b) => o.tsSource.includes(b));
+        return !hit || `forbidden API used: ${hit}`;
+    # packageJson must be an object with a deps map.
+    - type: javascript
+      value: |
+        const o = JSON.parse(output);
+        return o.packageJson && typeof o.packageJson === 'object' && o.packageJson.dependencies
+          || 'packageJson.dependencies missing';
+
+tests:
+  # ---------- 1. GitHub PR summarizer (tool pattern) ----------
+  - description: GitHub PR summarizer emits worker.tool with @octokit dep
+    vars:
+      description: 'Summarize the latest GitHub PR.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({ repo: j.string(), prNumber: j.number() })",
+          "outputSchema": "j.object({ summary: j.string() })",
+          "requiredScopes": ["read:repo"],
+          "requiredOAuth": ["github"]
+        }
+    assert:
+      - type: contains
+        value: 'worker.tool'
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.packageJson.dependencies['@octokit/rest']
+            || o.packageJson.dependencies['octokit']
+            || 'expected @octokit dep';
+
+  # ---------- 2. Stripe webhook → worker.webhook ----------
+  - description: Stripe webhook emits worker.webhook
+    vars:
+      description: 'Stripe invoice.paid → Notion DB row.'
+      schemaSpec: |
+        {
+          "pattern": "webhook",
+          "inputSchema": "j.object({ stripeSig: j.string(), body: j.string() })",
+          "outputSchema": "j.object({ ok: j.boolean() })",
+          "requiredScopes": ["insert:db"],
+          "requiredOAuth": ["stripe"]
+        }
+    assert:
+      - type: contains
+        value: 'worker.webhook'
+
+  # ---------- 3. Linear sync → worker.sync ----------
+  - description: Two-way Linear sync emits worker.sync
+    vars:
+      description: 'Notion ↔ Linear two-way sync.'
+      schemaSpec: |
+        {
+          "pattern": "sync",
+          "inputSchema": "j.object({ direction: j.enum(['n2l','l2n']) })",
+          "outputSchema": "j.object({ syncedCount: j.number() })",
+          "requiredScopes": ["read:db","write:db"],
+          "requiredOAuth": ["linear"]
+        }
+    assert:
+      - type: contains
+        value: 'worker.sync'
+
+  # ---------- 4. Scheduled standup → worker.scheduled ----------
+  - description: Scheduled standup emits worker.scheduled with cron
+    vars:
+      description: 'Daily 9am Linear standup digest.'
+      schemaSpec: |
+        {
+          "pattern": "scheduled",
+          "inputSchema": "j.object({})",
+          "outputSchema": "j.object({ digestPageId: j.string() })",
+          "requiredScopes": ["create:page"],
+          "requiredOAuth": ["linear"]
+        }
+    assert:
+      - type: contains
+        value: 'worker.scheduled'
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return /cron|schedule/i.test(o.tsSource) || 'no cron/schedule in tsSource';
+
+  # ---------- 5. Allowlist enforcement (negative test) ----------
+  - description: Should NOT add unlisted deps (e.g. left-pad)
+    vars:
+      description: 'Pad a string.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({ s: j.string() })",
+          "outputSchema": "j.object({ padded: j.string() })",
+          "requiredScopes": [],
+          "requiredOAuth": []
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          const banned = ['left-pad', 'request', 'jsonwebtoken'];
+          const hit = banned.find((b) => o.packageJson.dependencies && o.packageJson.dependencies[b]);
+          return !hit || `disallowed dep: ${hit}`;
+
+  # ---------- 6. Env schema for OAuth providers ----------
+  - description: envSchema must include OAuth token vars
+    vars:
+      description: 'GitHub repo lister.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({})",
+          "outputSchema": "j.object({ repos: j.array(j.string()) })",
+          "requiredScopes": ["read:repo"],
+          "requiredOAuth": ["github"]
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return /GITHUB_(TOKEN|OAUTH)/i.test(o.envSchema) || 'envSchema missing GITHUB_* var';
+
+  # ---------- 7. Input validation present ----------
+  - description: Generated handler validates input via the j-schema
+    vars:
+      description: 'Capitalize a string.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({ text: j.string() })",
+          "outputSchema": "j.object({ upper: j.string() })",
+          "requiredScopes": [],
+          "requiredOAuth": []
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return /\.parse\(|\.safeParse\(|\bvalidate\b/.test(o.tsSource)
+            || 'no input validation in tsSource';
+
+  # ---------- 8. No hardcoded API keys ----------
+  - description: tsSource never contains literal sk- / pk- / token-like strings
+    vars:
+      description: 'OpenAI completion wrapper.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({ prompt: j.string() })",
+          "outputSchema": "j.object({ completion: j.string() })",
+          "requiredScopes": [],
+          "requiredOAuth": []
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          // Must read from env, not hardcode.
+          return !/['"]sk-[a-zA-Z0-9]{20,}['"]/.test(o.tsSource) || 'hardcoded sk- key in tsSource';
+
+  # ---------- 9. Error handling on outbound fetch ----------
+  - description: Outbound fetch wrapped in try/catch or .catch()
+    vars:
+      description: 'Fetch a URL and return its title.'
+      schemaSpec: |
+        {
+          "pattern": "tool",
+          "inputSchema": "j.object({ url: j.string() })",
+          "outputSchema": "j.object({ title: j.string() })",
+          "requiredScopes": [],
+          "requiredOAuth": []
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return /try\s*\{|\.catch\(/.test(o.tsSource) || 'no error handling around fetch';
+
+  # ---------- 10. Long synthesis test ----------
+  - description: Multi-step Stripe + email + Notion handler stays under 800 LOC
+    vars:
+      description: 'On Stripe invoice.paid: upsert customer in Notion, email receipt via Resend.'
+      schemaSpec: |
+        {
+          "pattern": "webhook",
+          "inputSchema": "j.object({ stripeSig: j.string(), body: j.string() })",
+          "outputSchema": "j.object({ ok: j.boolean() })",
+          "requiredScopes": ["upsert:db","send:email"],
+          "requiredOAuth": ["stripe","resend"]
+        }
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          const loc = o.tsSource.split('\n').length;
+          return loc <= 800 || `tsSource too long: ${loc} lines`;

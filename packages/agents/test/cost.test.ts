@@ -19,6 +19,40 @@ describe('anthropicCostUsd', () => {
     );
   });
 
+  it('pins the Opus 4.7 numbers — regression guard against the old Sonnet typo', () => {
+    // This test exists because commit 5e98e6e shipped Opus 4.7 pointing at
+    // Sonnet's $3/$15 schedule, which silently under-billed every Tool Coder
+    // generation by ~40%. Do NOT loosen these values without a public
+    // pricing change reference.
+    expect(ANTHROPIC_PRICES_USD_PER_MTOK['claude-opus-4-7']).toEqual({
+      input: 5,
+      output: 25,
+      cacheWrite: 6.25,
+      cacheRead: 0.5,
+    });
+    expect(ANTHROPIC_PRICES_USD_PER_MTOK['claude-sonnet-4-7']).toEqual({
+      input: 3,
+      output: 15,
+      cacheWrite: 3.75,
+      cacheRead: 0.3,
+    });
+    expect(ANTHROPIC_PRICES_USD_PER_MTOK['claude-sonnet-4-6']).toEqual({
+      input: 3,
+      output: 15,
+      cacheWrite: 3.75,
+      cacheRead: 0.3,
+    });
+  });
+
+  it('computes Opus 4.7 1M-input + 1M-output at $30', () => {
+    // 1M input × $5 + 1M output × $25 = $5 + $25 = $30.
+    const cost = anthropicCostUsd(
+      { input_tokens: 1_000_000, output_tokens: 1_000_000 },
+      'claude-opus-4-7',
+    );
+    expect(cost).toBeCloseTo(30, 6);
+  });
+
   it('adds cache-read + cache-write line items', () => {
     const cost = anthropicCostUsd(
       {
@@ -54,15 +88,28 @@ describe('anthropicCostUsd', () => {
 });
 
 describe('openaiCostUsd', () => {
-  it('prices a gpt-5 call', () => {
+  it('prices a gpt-5-thinking-mini call', () => {
     const cost = openaiCostUsd(
       { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
-      'gpt-5',
+      'gpt-5-thinking-mini',
     );
     expect(cost).toBeCloseTo(
-      OPENAI_PRICES_USD_PER_MTOK['gpt-5'].input + OPENAI_PRICES_USD_PER_MTOK['gpt-5'].output,
+      OPENAI_PRICES_USD_PER_MTOK['gpt-5-thinking-mini'].input +
+        OPENAI_PRICES_USD_PER_MTOK['gpt-5-thinking-mini'].output,
       6,
     );
+  });
+
+  it('returns 0 for the unreleased bare "gpt-5" id (regression guard)', () => {
+    // The bare `gpt-5` model id was never released by OpenAI — only the
+    // `gpt-5-thinking*` reasoning-tier SKUs ship. Returning 0 here is a
+    // loud signal in PostHog dashboards that the caller is using a wrong id.
+    expect(
+      openaiCostUsd(
+        { prompt_tokens: 1_000_000, completion_tokens: 1_000_000, total_tokens: 2_000_000 },
+        'gpt-5',
+      ),
+    ).toBe(0);
   });
 
   it('returns 0 for unknown model', () => {

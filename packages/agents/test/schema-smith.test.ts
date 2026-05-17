@@ -74,7 +74,7 @@ function fakeOpenaiOk(body: string): OpenaiClientLike {
   return {
     complete: vi.fn(async () => ({
       id: 'cmpl_1',
-      model: 'gpt-5',
+      model: 'gpt-5-thinking-mini',
       choices: [
         {
           index: 0,
@@ -331,11 +331,15 @@ describe('schemaSmith — retries exhausted', () => {
 });
 
 describe('schemaSmith — workspace context renders into prompt', () => {
-  it('includes database ids + property names in the system prompt', async () => {
-    let capturedSystem = '';
+  it('puts workspace context in the SECOND (non-cached) system block', async () => {
+    // The system prompt is sent as two blocks:
+    //   [0] static, with cache_control: 'ephemeral'
+    //   [1] workspace context, no cache_control
+    // This is what makes the prompt cache hit across workspaces.
+    let capturedSystem: unknown = undefined;
     const anthropicClient: AnthropicClientLike = {
       complete: vi.fn(async (params) => {
-        if (typeof params.system === 'string') capturedSystem = params.system;
+        capturedSystem = params.system;
         return {
           id: 'm',
           content: [{ type: 'text', text: JSON.stringify(SAMPLE_OUTPUT) }],
@@ -367,8 +371,22 @@ describe('schemaSmith — workspace context renders into prompt', () => {
       },
       config: { anthropicApiKey: 'k', anthropicClient },
     });
-    expect(capturedSystem).toContain('abc123-def-456');
-    expect(capturedSystem).toContain('Severity (select)');
-    expect(capturedSystem).toContain('bug-triager');
+
+    expect(capturedSystem).toEqual([
+      {
+        type: 'text',
+        text: expect.any(String),
+        cache_control: { type: 'ephemeral' },
+      },
+      { type: 'text', text: expect.any(String) },
+    ]);
+    const blocks = capturedSystem as Array<{ text: string; cache_control?: unknown }>;
+    // Workspace ids and per-call data live in the SECOND block.
+    expect(blocks[1]!.text).toContain('abc123-def-456');
+    expect(blocks[1]!.text).toContain('Severity (select)');
+    expect(blocks[1]!.text).toContain('bug-triager');
+    // The static block is cacheable — and carries Schema Smith's role.
+    expect(blocks[0]!.text).toContain('Schema Smith');
+    expect(blocks[0]!.text).not.toContain('abc123-def-456');
   });
 });

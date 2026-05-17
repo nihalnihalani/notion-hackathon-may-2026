@@ -151,20 +151,29 @@ describe('toolCoder — happy path', () => {
     expect(complete!.meta!['workerName']).toMatch(/^forge-/u);
   });
 
-  it('caches the system prompt (cacheControl=true)', async () => {
+  it('sends the system prompt as a single ephemeral-cached block', async () => {
     const anthropicClient = fakeAnthropic([VALID_BODY]);
     await toolCoder({
       description: 'desc',
       schema: SAMPLE_SCHEMA,
       config: { anthropicApiKey: 'sk-test', anthropicClient },
     });
-    // The system prompt should be a large string carrying few-shot
-    // examples; cacheControl=true tells the client to wrap it ephemerally.
-    const call = (anthropicClient.complete as unknown as { mock: { calls: unknown[][] } }).mock
-      .calls[0]?.[0] as { cacheControl?: boolean; system?: string };
-    expect(call.cacheControl).toBe(true);
-    expect(typeof call.system).toBe('string');
-    expect((call.system as string).length).toBeGreaterThan(2000);
+    // Tool Coder has no workspace-specific system content (unlike Schema
+    // Smith), so the system array has exactly one block — wrapped in
+    // cache_control: 'ephemeral'. The workspace-independent shape is what
+    // gives Tool Coder its dominant cache hit rate.
+    const captured = anthropicClient.calls[0]!.system;
+    expect(captured).toEqual([
+      {
+        type: 'text',
+        text: expect.any(String),
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
+    const blocks = captured as Array<{ text: string }>;
+    // The few-shot catalog alone makes the prompt > 2KB.
+    expect(blocks[0]!.text.length).toBeGreaterThan(2000);
+    expect(blocks[0]!.text).toContain('Tool Coder');
   });
 });
 

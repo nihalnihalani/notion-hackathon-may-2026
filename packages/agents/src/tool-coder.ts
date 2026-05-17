@@ -11,9 +11,12 @@
  *
  *  1. Call Anthropic Messages (Opus 4.7 by default). The system prompt is
  *     LARGE — it carries the Worker-template reference + the j-builder
- *     cheatsheet + all eight {@link FEW_SHOT_EXAMPLES} — and is wrapped
- *     in `cache_control: { type: 'ephemeral' }`. Cache hit rate is the
- *     dominant cost driver for this sub-agent.
+ *     cheatsheet + all eight {@link FEW_SHOT_EXAMPLES} — and is sent as
+ *     an explicit one-block system array with
+ *     `cache_control: { type: 'ephemeral' }` on that block. Per-call
+ *     inputs (description, schema, workerName) live in the user message,
+ *     NOT in the system, so the cache key is workspace-independent.
+ *     Cache hit rate is the dominant cost driver for this sub-agent.
  *
  *  2. Extended thinking budget = 4096 tokens; max_output = 4096. We pass
  *     `maxTokens: 4096` to the connector. Extended thinking is REQUESTED
@@ -32,9 +35,11 @@
  *     retries throw {@link ToolCoderError}.
  *
  *  5. Fallback: on Anthropic RateLimitError or 5xx, switch to OpenAI
- *     (`config.fallbackModel ?? 'gpt-5'`). Extended thinking is NOT
- *     requested on the fallback — GPT-5's surface differs. Both
- *     providers failing → {@link ProviderFallbackError}.
+ *     (`config.fallbackModel ?? 'gpt-5-thinking-mini'` — the August-2025
+ *     reasoning mini SKU; the bare `gpt-5` id is not a real model).
+ *     Extended thinking is NOT requested on the fallback — the OpenAI
+ *     reasoning surface differs. Both providers failing →
+ *     {@link ProviderFallbackError}.
  *
  *  6. The `packageJsonPatch` is computed deterministically from the
  *     IMPORTS in the generated source (so the model can't sneak in a
@@ -109,7 +114,7 @@ export async function toolCoder(input: ToolCoderInput): Promise<ToolCoderOutput>
   const startedAt = Date.now();
   const logger = input.config.logger ?? noopLogger;
   const primaryModel = input.config.primaryModel ?? 'claude-opus-4-7';
-  const fallbackModel = input.config.fallbackModel ?? 'gpt-5';
+  const fallbackModel = input.config.fallbackModel ?? 'gpt-5-thinking-mini';
 
   const workerName = deriveWorkerName(input.description);
 
@@ -194,13 +199,23 @@ async function runWithAnthropic(ctx: RunContext): Promise<ToolCoderOutput> {
         ? ctx.userPrompt
         : `${ctx.userPrompt}\n\nPREVIOUS_ATTEMPT_PARSE_ERROR:\n${lastError}\n\nRegenerate the FULL src/index.ts with the parse error corrected. Output only one fenced \`\`\`typescript code block.`;
 
+    // Explicit one-block system array with cache_control attached. We
+    // don't use the `cacheControl: true` convenience flag because we want
+    // wire-shape parity with Schema Smith's two-block variant — and so a
+    // future per-call addendum (e.g. workspace context) can be appended
+    // as a second non-cached block without flipping the call site.
     const res = await client.complete(
       {
         model: ctx.model,
         maxTokens: MAX_OUTPUT_TOKENS,
         temperature: 0,
-        cacheControl: true,
-        system: ctx.systemPrompt,
+        system: [
+          {
+            type: 'text',
+            text: ctx.systemPrompt,
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
         messages: [{ role: 'user', content: userMessage }],
       },
       ctx.input.config.abortSignal === undefined

@@ -2,7 +2,7 @@
   "name": "@forge/mcp-server",
   "version": "0.0.0",
   "private": true,
-  "description": "Forge exposed as an MCP server so external agents (Claude Desktop, Cursor, etc.) can run forge.generate.",
+  "description": "Forge exposed as an MCP server so external agents (Claude Code, Cursor, ChatGPT, etc.) can invoke forge.generate, query generation status, and list deployed agents.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,14 +13,24 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@forge/db": "workspace:*",
+    "@forge/workflows": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

@@ -360,7 +360,9 @@ export interface OpenaiClientLike {
  *  - `openaiApiKey`: required only if the fallback path can be triggered.
  *    Schema Smith degrades to "no fallback" when missing.
  *  - `primaryModel` / `fallbackModel`: model ids. Defaults
- *    (`claude-opus-4-7` + `gpt-5`) match PLAN.md.
+ *    (`claude-opus-4-7` + `gpt-5-thinking-mini`) match PLAN.md. Note: the
+ *    bare `gpt-5` id is NOT a real OpenAI model — only the reasoning-tier
+ *    `gpt-5-thinking*` SKUs ship.
  *  - `logger`: structured logger; defaults to {@link noopLogger}.
  *  - `abortSignal`: propagated into every HTTP call so the Workflow can cancel
  *    mid-step.

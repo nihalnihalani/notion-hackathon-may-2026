@@ -28,9 +28,24 @@ const envSchema = z.object({
     .regex(/^sk-ant-/, 'must start with "sk-ant-" (Anthropic API key format)'),
 
   // OpenAI
+  // Real OpenAI keys are `sk-` followed by an optional class prefix
+  // (`proj-`, `svcacct-`, `admin-`, or `None-` for legacy/personal) and at
+  // least 20 chars of `[A-Za-z0-9_-]`. The previous regex (`/^sk-(proj-)?/`)
+  // accepted literally `sk-` which is useless as a guard.
+  //
+  // We additionally refuse a `fake-ci-stub` placeholder when CI=false so a
+  // contributor who copy-pasted the CI stub into their local .env hears
+  // about it before shipping a request with no real key.
   OPENAI_API_KEY: z
     .string()
-    .regex(/^sk-(proj-)?/, 'must start with "sk-" or "sk-proj-"'),
+    .regex(
+      /^sk-(proj-|svcacct-|admin-|None-)?[A-Za-z0-9_-]{20,}$/,
+      'invalid OpenAI key format',
+    )
+    .refine(
+      (s) => !s.includes('fake-ci-stub') || process.env['CI'] === 'true',
+      'placeholder key in non-CI env',
+    ),
   OPENAI_ORG_ID: z.string().trim().min(1).optional(),
 
   // Notion Developer Platform

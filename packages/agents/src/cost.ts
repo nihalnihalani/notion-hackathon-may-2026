@@ -22,22 +22,46 @@
  * "cacheWrite" = tokens written to the cache this request (5m TTL ephemeral)
  * "cacheRead" = tokens served from the cache this request
  * "output" = completion tokens
+ *
+ * Opus 4.7 is the Forge primary model; the Sonnet/Haiku entries exist so the
+ * gateway can route to a cheaper SKU without our cost helper returning 0.
+ *
+ * Pricing sourced from https://www.anthropic.com/pricing#anthropic-api as of
+ * 2026-05. Opus 4.x family is $5/$25 with 5-minute ephemeral cache at $6.25
+ * write / $0.50 read; Sonnet 4.x family is $3/$15 with $3.75 / $0.30.
  */
 export const ANTHROPIC_PRICES_USD_PER_MTOK = {
+  // Opus 4.7 — primary generation model. Do NOT collapse these into Sonnet's
+  // prices; the previous commit had this row at Sonnet values, which silently
+  // under-charged by ~40% on every Tool Coder call.
   'claude-opus-4-7': {
+    input: 5,
+    output: 25,
+    cacheWrite: 6.25,
+    cacheRead: 0.5,
+  },
+  // Sonnet 4.6 — mid-tier; cheaper fallback for non-codegen sub-agents.
+  'claude-sonnet-4-6': {
     input: 3,
     output: 15,
     cacheWrite: 3.75,
     cacheRead: 0.3,
   },
-  // Sonnet 4.5 — used if the gateway routes there for cost.
+  // Sonnet 4.7 — current flagship Sonnet; same per-MTok schedule as 4.6.
+  'claude-sonnet-4-7': {
+    input: 3,
+    output: 15,
+    cacheWrite: 3.75,
+    cacheRead: 0.3,
+  },
+  // Sonnet 4.5 — legacy, kept for gateway routing parity.
   'claude-sonnet-4-5': {
     input: 3,
     output: 15,
     cacheWrite: 3.75,
     cacheRead: 0.3,
   },
-  // Haiku — cheaper fallback option.
+  // Haiku — cheapest fallback.
   'claude-haiku-4': {
     input: 0.8,
     output: 4,
@@ -103,10 +127,27 @@ export function anthropicCostUsd(usage: AnthropicUsage, model: string): number {
 /**
  * Per-MTok prices for OpenAI models, in USD.
  *
- * Conservative estimates. GPT-5 pricing is provisional pending GA.
+ * `gpt-5-thinking-mini` is the August-2025 reasoning-tier mini model and is
+ * the Forge default OpenAI fallback. Pricing for that SKU is still
+ * provisional in this file — the OpenAI pricing page is blocked from our
+ * automated fetcher (HTTP 403). Verify before billing the user from these
+ * numbers.
+ *
+ * `gpt-5` is intentionally NOT a key here: that bare id was never released
+ * by OpenAI. Callers that hand it in will get `0` from {@link openaiCostUsd}
+ * — a loud signal that the model id is wrong.
  */
 export const OPENAI_PRICES_USD_PER_MTOK = {
-  'gpt-5': {
+  // TODO: verify pricing against openai.com once docs reachable.
+  // Placeholders chosen to bracket conservative real-world rates so we
+  // don't accidentally compute $0 cost.
+  'gpt-5-thinking-mini': {
+    input: 0.25,
+    output: 2,
+  },
+  // TODO: verify pricing against openai.com once docs reachable.
+  // Same placeholder rationale as the mini SKU.
+  'gpt-5-thinking': {
     input: 5,
     output: 15,
   },
@@ -123,6 +164,32 @@ export const OPENAI_PRICES_USD_PER_MTOK = {
     output: 0, // embeddings have no completion side
   },
 } as const satisfies Record<string, { input: number; output: number }>;
+
+/**
+ * Model ids whose prices in {@link OPENAI_PRICES_USD_PER_MTOK} are
+ * placeholders pending an authoritative refresh from openai.com. When
+ * {@link openaiCostUsd} bills these, we emit a `console.warn` once per
+ * process so the orchestrator sees the drift in logs.
+ */
+const OPENAI_UNVERIFIED_PRICES: ReadonlySet<string> = new Set([
+  'gpt-5-thinking-mini',
+  'gpt-5-thinking',
+]);
+
+const OPENAI_UNVERIFIED_WARNED: Set<string> = new Set();
+
+function warnUnverifiedOpenaiPrice(model: string): void {
+  if (!OPENAI_UNVERIFIED_PRICES.has(model)) return;
+  if (OPENAI_UNVERIFIED_WARNED.has(model)) return;
+  OPENAI_UNVERIFIED_WARNED.add(model);
+  // Single warning per model id per process — chatter-free in tests, loud
+  // enough to notice in CI logs and production stdout.
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[forge/agents/cost] OpenAI model '${model}' is priced from a placeholder. ` +
+      `Verify against openai.com/api/pricing and update OPENAI_PRICES_USD_PER_MTOK.`,
+  );
+}
 
 /**
  * Token usage block as returned by the OpenAI Chat Completions API.
@@ -151,6 +218,7 @@ export function openaiCostUsd(usage: OpenaiUsage, model: string): number {
     >
   )[model];
   if (!price) return 0;
+  warnUnverifiedOpenaiPrice(model);
   const completion = usage.completion_tokens ?? 0;
   const inputCost = (usage.prompt_tokens / 1_000_000) * price.input;
   const outputCost = (completion / 1_000_000) * price.output;

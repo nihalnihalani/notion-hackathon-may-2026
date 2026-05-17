@@ -2,7 +2,7 @@
   "name": "@forge/installer",
   "version": "0.0.0",
   "private": true,
-  "description": "Creates the Forge page + Forge Requests DB inside a user's Notion workspace on first OAuth (idempotent).",
+  "description": "Creates the Forge page + Forge Requests DB + Forge Agents DB inside a user's Notion workspace on first OAuth (idempotent).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@forge/db": "workspace:*",
+    "@forge/notion-client": "workspace:*",
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
     "vitest": "2.1.8"
   }
 }

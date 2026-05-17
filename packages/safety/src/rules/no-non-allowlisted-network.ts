@@ -59,10 +59,28 @@ function extractHost(url: string): string | null {
   }
 }
 
-/** Exact-match host check. Subdomain matching is the CALLER's responsibility. */
+/**
+ * Host check.
+ *
+ * Matches either:
+ *   1. exact host equality (case-insensitive), OR
+ *   2. wildcard prefix `*.<base>` — `*.slack.com` matches `foo.slack.com`
+ *      and `bar.baz.slack.com`, but NOT the bare `slack.com`. Wildcards
+ *      ONLY appear at the leading label. Bare-host coverage requires a
+ *      separate non-wildcard entry.
+ */
 function isHostAllowed(host: string, allowlist: readonly string[]): boolean {
   const lower = host.toLowerCase();
-  return allowlist.some((entry) => entry.toLowerCase() === lower);
+  for (const entry of allowlist) {
+    const e = entry.toLowerCase();
+    if (e.startsWith('*.')) {
+      const suffix = e.slice(1); // ".slack.com"
+      if (lower.endsWith(suffix) && lower.length > suffix.length) return true;
+      continue;
+    }
+    if (e === lower) return true;
+  }
+  return false;
 }
 
 interface CallSite {

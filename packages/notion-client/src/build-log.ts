@@ -26,6 +26,7 @@
  */
 
 import { appendBlocks, getBlockChildren, deleteBlock } from './blocks.js';
+import { asBlockId } from './types.js';
 import type {
   BlockId,
   NotionBlock,
@@ -124,25 +125,112 @@ export async function appendBuildLogEntry(
 }
 
 /**
- * Wipe the Build Log between generations.
+ * Wipe the Build Log between generations — O(1) variant.
  *
- * We page through `getBlockChildren` and DELETE each one. Notion's delete is
- * a soft-delete (sets `in_trash: true`) so the audit trail is preserved.
+ * Strategy: archive the existing container block (1 DELETE), then create a
+ * fresh empty container under the same parent page (1 PATCH /children).
+ * Returns the new container's BlockId so the caller can persist it back to
+ * the workspace row.
  *
- * Note on rate: this is N requests. For a fresh generation we expect ≤30
- * lines, so worst-case ~30 DELETEs — well under the 3 req/sec budget IF the
- * pacer is configured. For very long logs the caller should consider
- * archiving the container itself instead.
+ * Why this is O(1): regardless of how many entries the old container held
+ * (10 or 10_000), we issue exactly two Notion requests. The previous
+ * implementation paged through children and issued one DELETE per entry,
+ * which under the 3-req/sec sustained rate limit means a 300-entry log
+ * takes >100 s to wipe — far over the Notion webhook 30 s budget.
+ *
+ * Trade-off: archiving the toggle drops the prior log's reference id and
+ * its in-trash audit chain is now anchored to the archived container, not
+ * to individual entries. Forge's between-generation reset semantics WANT
+ * a clean slate, so this is intentional. Callers who need to preserve N
+ * recent entries (e.g. live tail during a re-run) should use
+ * {@link keepRecentBuildLogEntries} instead.
+ *
+ * @param config - Notion client config (auth, fetch, etc.)
+ * @param containerBlockId - The current build log container (toggle/synced).
+ * @param parentBlockId - The page (or other parent) the new container will
+ *                        be created under. Required because Notion does not
+ *                        support re-parenting; we must create a fresh
+ *                        child on the same parent.
+ * @param newContainer - Block creation payload for the fresh container.
+ *                       Defaults to an empty toggle named "Build Log".
+ * @returns The BlockId of the newly-created container.
  */
 export async function clearBuildLog(
   config: NotionClientConfig,
-  blockId: BlockId,
+  containerBlockId: BlockId,
+  parentBlockId: BlockId,
+  newContainer?: {
+    type: 'toggle' | 'synced_block' | 'paragraph';
+    payload: Record<string, unknown>;
+  },
+): Promise<BlockId> {
+  // 1 request: archive the existing container (soft-delete, in_trash:true).
+  await deleteBlock(config, containerBlockId);
+
+  // 1 request: create a fresh container as a child of `parentBlockId`.
+  const created = await appendBlocks(config, parentBlockId, [
+    buildContainerBlock(newContainer) as unknown as NotionBlock,
+  ]);
+  const fresh = created.results[0];
+  if (!fresh) {
+    throw new Error(
+      'clearBuildLog: Notion returned an empty results[] from PATCH /blocks/{parent}/children',
+    );
+  }
+  return asBlockId(fresh.id);
+}
+
+/**
+ * Default empty Build Log container — a collapsed toggle titled "Build Log".
+ * Matches the shape the installer creates on first install.
+ */
+function buildContainerBlock(
+  override?: { type: 'toggle' | 'synced_block' | 'paragraph'; payload: Record<string, unknown> },
+): { object: 'block'; type: string; [k: string]: unknown } {
+  if (override) {
+    return { object: 'block', type: override.type, [override.type]: override.payload };
+  }
+  return {
+    object: 'block',
+    type: 'toggle',
+    toggle: {
+      rich_text: [{ type: 'text', text: { content: 'Build Log', link: null } }],
+      children: [],
+    },
+  };
+}
+
+/**
+ * Trim the Build Log container to its `keepLast` most-recent entries.
+ *
+ * Use this when the audit trail of older entries must be preserved across
+ * resets — e.g. a re-run of a previous generation that still wants the
+ * earlier attempt visible above the new lines.
+ *
+ * Cost: O(n) — one GET to list children (paginated, so possibly several
+ * GETs) plus one DELETE per entry being trimmed. If you don't need to
+ * keep history, prefer {@link clearBuildLog} which is O(1).
+ *
+ * @param config - Notion client config.
+ * @param containerBlockId - The build log container to trim.
+ * @param keepLast - Number of most-recent entries to retain (>=0). When 0,
+ *                   behaves like the legacy clear-all-children behavior
+ *                   (still O(n) — use {@link clearBuildLog} instead).
+ */
+export async function keepRecentBuildLogEntries(
+  config: NotionClientConfig,
+  containerBlockId: BlockId,
+  keepLast: number,
 ): Promise<void> {
-  // We collect all children first to avoid mutating during pagination.
+  if (keepLast < 0) {
+    throw new Error(`keepRecentBuildLogEntries: keepLast must be >= 0, got ${keepLast}`);
+  }
+
+  // Collect all children first to avoid mutating during pagination.
   const ids: BlockId[] = [];
   let cursor: string | undefined;
   do {
-    const page = await getBlockChildren(config, blockId, {
+    const page = await getBlockChildren(config, containerBlockId, {
       ...(cursor === undefined ? {} : { start_cursor: cursor }),
       page_size: 100,
     });
@@ -150,7 +238,10 @@ export async function clearBuildLog(
     cursor = page.has_more ? (page.next_cursor ?? undefined) : undefined;
   } while (cursor);
 
-  for (const id of ids) {
+  // Notion returns children in insertion order; the last `keepLast` are
+  // the most recent. Everything before that gets archived.
+  const toArchive = keepLast === 0 ? ids : ids.slice(0, Math.max(0, ids.length - keepLast));
+  for (const id of toArchive) {
     await deleteBlock(config, id);
   }
 }

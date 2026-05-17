@@ -1,0 +1,165 @@
+# =============================================================================
+# Forge — Nightly Promptfoo eval suite
+#
+# Runs every night at 03:00 UTC. Executes the full Promptfoo eval suite for
+# all four sub-agents (Schema Smith, Tool Coder, Inspector, Shipper) against
+# the real Anthropic + OpenAI APIs, compares each agent's pass-rate to the
+# checked-in baseline, fails the run if any agent regresses by more than 5
+# percentage points, publishes the HTML report to GitHub Pages, and posts a
+# Slack alert on regression.
+#
+# Why only nightly (not per-PR): each full sweep costs real $ + model
+# latency. PR CI runs the *dry* (config-validation) eval only.
+#
+# Required GitHub secrets:
+#   ANTHROPIC_API_KEY   Production Anthropic key (Opus 4.7 access)
+#   OPENAI_API_KEY      Production OpenAI key (GPT-5 + embeddings)
+#   OPENAI_ORG_ID       OpenAI org id (optional but recommended)
+#   SLACK_WEBHOOK_URL   Slack #forge-evals channel
+# =============================================================================
+name: Evals (nightly)
+
+on:
+  schedule:
+    # 03:00 UTC = quiet for both EU + US engineers; matches Anthropic cache
+    # off-peak window so prompt-cache reads cost less.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      regression_threshold_pct:
+        description: 'Max allowed drop in pass-rate (percentage points) before failing the run'
+        type: string
+        default: '5'
+
+concurrency:
+  group: evals-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+
+jobs:
+  evals:
+    name: Run Promptfoo evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      regressed: ${{ steps.compare.outputs.regressed }}
+      summary: ${{ steps.compare.outputs.summary }}
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_ORG_ID: ${{ secrets.OPENAI_ORG_ID }}
+      REGRESSION_THRESHOLD_PCT: ${{ inputs.regression_threshold_pct || '5' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run eval suite
+        run: |
+          echo "::group::promptfoo eval"
+          pnpm --filter @forge/eval-harness eval -- --format json --output evals-output/
+          echo "::endgroup::"
+
+      - id: compare
+        name: Compare to baseline
+        run: |
+          echo "::group::baseline diff"
+          pnpm --filter @forge/eval-harness baseline:check -- \
+            --results evals-output/ \
+            --threshold "${REGRESSION_THRESHOLD_PCT}" \
+            --output evals-output/diff.json
+          REGRESSED=$(jq -r '.regressed' evals-output/diff.json)
+          SUMMARY=$(jq -r '.summary' evals-output/diff.json)
+          {
+            echo "regressed=${REGRESSED}"
+            echo "summary<<EOF"
+            echo "${SUMMARY}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "${SUMMARY}"
+          echo "::endgroup::"
+          if [ "${REGRESSED}" = "true" ]; then
+            echo "::error::One or more sub-agents regressed beyond the ${REGRESSION_THRESHOLD_PCT}pp threshold"
+            exit 1
+          fi
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          echo "::group::promptfoo view"
+          pnpm --filter @forge/eval-harness eval:report -- \
+            --input evals-output/ \
+            --output evals-output/html/
+          echo "::endgroup::"
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals-html-report
+          path: packages/eval-harness/evals-output/html/
+          retention-days: 30
+
+      - name: Upload Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/eval-harness/evals-output/html/
+
+  publish:
+    name: Publish report to GitHub Pages
+    needs: evals
+    if: always() && needs.evals.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify:
+    name: Slack on regression
+    needs: evals
+    if: failure() && needs.evals.outputs.regressed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Slack webhook
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SUMMARY: ${{ needs.evals.outputs.summary }}
+        run: |
+          set -euo pipefail
+          PAYLOAD=$(jq -n \
+            --arg text ":warning: Forge nightly eval regression detected" \
+            --arg summary "${SUMMARY}" \
+            --arg run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '{
+              text: $text,
+              attachments: [{
+                color: "#cc0000",
+                fields: [
+                  { title: "Summary", value: $summary, short: false },
+                  { title: "Run", value: $run, short: false }
+                ]
+              }]
+            }')
+          printf '%s' "${PAYLOAD}" | curl -fsS -X POST -H 'Content-Type: application/json' \
+            --data-binary @- "${SLACK_WEBHOOK_URL}" >/dev/null

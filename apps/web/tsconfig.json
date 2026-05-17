@@ -22,7 +22,7 @@
   "include": [
     "next-env.d.ts",
     "next.config.ts",
-    "middleware.ts",
+    "proxy.ts",
     "app/**/*",
     "components/**/*",
     "lib/**/*",
