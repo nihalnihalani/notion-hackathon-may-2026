@@ -1,4 +1,4 @@
-requests==2.32.3
-python-dotenv==1.0.1
-filelock==3.13.1
-pytest==8.0.0
+requests==2.34.2
+python-dotenv==1.2.2
+filelock==3.29.0
+pytest==9.0.3
