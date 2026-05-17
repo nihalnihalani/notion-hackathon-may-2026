@@ -554,3 +554,72 @@ def test_timeout_is_passed_to_session_request():
     )
     client.query_database("db", {})
     assert session.request.call_args.kwargs["timeout"] == 7.5
+
+def test_retries_on_connection_error_and_eventually_succeeds():
+    import requests
+    fail = requests.exceptions.ConnectionError("Connection reset by peer")
+    success = _make_response(200, {"ok": True})
+    sleeps: list[float] = []
+    
+    session = MagicMock(name="Session")
+    session.headers = {}
+    session.request.side_effect = [fail, success]
+    
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    ticks_iter = iter([0.0, 100.0, 200.0])
+    def fake_monotonic() -> float:
+        return next(ticks_iter)
+        
+    client = NotionHTTPClient(
+        token="ntn_test",
+        session=session,
+        sleep=fake_sleep,
+        monotonic=fake_monotonic,
+        min_interval_seconds=0.0,
+        backoff_base=0.5,
+    )
+
+    result = client.update_block("b1", {"code": {"rich_text": []}})
+
+    assert result == {"ok": True}
+    assert session.request.call_count == 2
+    assert len(sleeps) == 1
+    assert 0.5 <= sleeps[0] <= 1.0
+
+
+def test_retries_connection_error_gives_up_after_max_attempts():
+    import requests
+    fail = requests.exceptions.ConnectionError("Network unreachable")
+    sleeps: list[float] = []
+    
+    session = MagicMock(name="Session")
+    session.headers = {}
+    session.request.side_effect = [fail, fail, fail, fail]
+    
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    ticks_iter = iter([0.0, 100.0, 200.0, 300.0, 400.0, 500.0])
+    def fake_monotonic() -> float:
+        return next(ticks_iter)
+        
+    client = NotionHTTPClient(
+        token="ntn_test",
+        session=session,
+        sleep=fake_sleep,
+        monotonic=fake_monotonic,
+        min_interval_seconds=0.0,
+        max_retries=2,
+        backoff_base=0.1,
+    )
+
+    with pytest.raises(NotionAPIError) as excinfo:
+        client.update_page("p1", {"x": 1})
+
+    assert excinfo.value.status_code == 0
+    assert "Network error" in str(excinfo.value)
+    # max_retries=2 -> 1 initial + 2 retries == 3 requests.
+    assert session.request.call_count == 3
+    assert len(sleeps) == 2

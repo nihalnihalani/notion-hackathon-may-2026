@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Mapping, Optional
 
 from dotenv import dotenv_values
+from src.notion_http import NotionHTTPClient
 
 
 class ConfigError(RuntimeError):
@@ -52,12 +53,7 @@ def load_config(
     env_file: Optional[os.PathLike] = None,
     environ: Optional[Mapping[str, str]] = None,
 ) -> Config:
-    """Load and validate bridge configuration.
-
-    Resolution order: explicit `environ` (or `os.environ` when omitted) wins over
-    values loaded from `env_file`. This matches the standard `dotenv` contract
-    and keeps tests independent of whatever leaks into the shell.
-    """
+    """Load and validate bridge configuration."""
     file_values: dict[str, str] = {}
     if env_file is not None:
         env_path = Path(env_file)
@@ -108,40 +104,5 @@ def load_config(
         poll_seconds=poll_seconds,
     )
 
-def build_client(cfg: Config):
-    import requests
-    class RawNotionClient:
-        def __init__(self, token, version):
-            self.session = requests.Session()
-            self.session.headers.update({
-                "Authorization": f"Bearer {token}",
-                "Notion-Version": version,
-                "Content-Type": "application/json"
-            })
-            self.base_url = "https://api.notion.com/v1"
-            
-        def query_database(self, db_id, payload):
-            # Fallback logic for normal DBs or Data Sources
-            url = f"{self.base_url}/databases/{db_id}/query"
-            res = self.session.post(url, json=payload)
-            if res.status_code in (404, 400):
-                url = f"{self.base_url}/data_sources/{db_id}/query"
-                res_ds = self.session.post(url, json=payload)
-                if res_ds.status_code == 200:
-                    res = res_ds
-            res.raise_for_status()
-            return res.json()
-            
-        def update_page(self, page_id, properties):
-            url = f"{self.base_url}/pages/{page_id}"
-            res = self.session.patch(url, json={"properties": properties})
-            res.raise_for_status()
-            return res.json()
-            
-        def update_block(self, block_id, code_payload):
-            url = f"{self.base_url}/blocks/{block_id}"
-            res = self.session.patch(url, json={"code": code_payload})
-            res.raise_for_status()
-            return res.json()
-            
-    return RawNotionClient(cfg.notion_token, cfg.notion_version)
+def build_client(cfg: Config) -> NotionHTTPClient:
+    return NotionHTTPClient(token=cfg.notion_token, notion_version=cfg.notion_version)

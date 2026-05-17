@@ -205,41 +205,60 @@ class NotionHTTPClient:
         attempt = 0
         while True:
             self._pace()
-            response = self._session.request(
-                method,
-                url,
-                json=json,
-                params=params,
-                timeout=self._timeout,
-            )
-            self._last_request_at = self._monotonic()
-            status = response.status_code
-
-            if 200 <= status < 300:
-                if not response.content:
-                    return {}
-                try:
-                    return response.json()
-                except ValueError as exc:
-                    raise NotionAPIError(status, f"invalid JSON response: {exc}") from exc
-
-            if status in RETRY_STATUS_CODES and attempt < self._max_retries:
-                delay = self._compute_backoff(attempt, response)
-                log.warning(
-                    "Notion %s %s -> %s; retrying in %.2fs (attempt %d/%d)",
+            try:
+                response = self._session.request(
                     method,
-                    path,
-                    status,
-                    delay,
-                    attempt + 1,
-                    self._max_retries,
+                    url,
+                    json=json,
+                    params=params,
+                    timeout=self._timeout,
                 )
-                self._sleep(delay)
-                attempt += 1
-                continue
+                self._last_request_at = self._monotonic()
+                status = response.status_code
+    
+                if 200 <= status < 300:
+                    if not response.content:
+                        return {}
+                    try:
+                        return response.json()
+                    except ValueError as exc:
+                        raise NotionAPIError(status, f"invalid JSON response: {exc}") from exc
+    
+                if status in RETRY_STATUS_CODES and attempt < self._max_retries:
+                    delay = self._compute_backoff(attempt, response)
+                    log.warning(
+                        "Notion %s %s -> %s; retrying in %.2fs (attempt %d/%d)",
+                        method,
+                        path,
+                        status,
+                        delay,
+                        attempt + 1,
+                        self._max_retries,
+                    )
+                    self._sleep(delay)
+                    attempt += 1
+                    continue
+    
+                message, payload = _extract_error(response)
+                raise NotionAPIError(status, message, payload)
 
-            message, payload = _extract_error(response)
-            raise NotionAPIError(status, message, payload)
+            except requests.RequestException as exc:
+                self._last_request_at = self._monotonic()
+                if attempt < self._max_retries:
+                    delay = self._compute_backoff(attempt, None)
+                    log.warning(
+                        "Notion %s %s -> network error (%s); retrying in %.2fs (attempt %d/%d)",
+                        method,
+                        path,
+                        type(exc).__name__,
+                        delay,
+                        attempt + 1,
+                        self._max_retries,
+                    )
+                    self._sleep(delay)
+                    attempt += 1
+                    continue
+                raise NotionAPIError(0, f"Network error: {exc}") from exc
 
     def _pace(self) -> None:
         if self._min_interval <= 0 or self._last_request_at is None:
@@ -249,7 +268,7 @@ class NotionHTTPClient:
         if remaining > 0:
             self._sleep(remaining)
 
-    def _compute_backoff(self, attempt: int, response: requests.Response) -> float:
+    def _compute_backoff(self, attempt: int, response: Optional[requests.Response]) -> float:
         retry_after = response.headers.get("Retry-After") if response is not None else None
         if retry_after:
             try:
