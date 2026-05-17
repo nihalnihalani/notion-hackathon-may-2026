@@ -1,56 +1,109 @@
+"""Config loader for the Notion War Room bridge.
+
+Loads environment variables from a .env file plus the process environment,
+validates the values required by the bridge daemon, and returns a frozen
+dataclass that the rest of the code can rely on.
+"""
+
+from __future__ import annotations
+
 import os
-from dotenv import load_dotenv
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping, Optional
 
-def load_config():
-    # Load .env first, then .env.local will override if it exists
-    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
-    load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env.local'))
-    cfg = {
-        "NOTION_TOKEN": os.getenv("NOTION_TOKEN"),
-        "NOTION_COMMAND_CENTER_DB_ID": os.getenv("NOTION_COMMAND_CENTER_DB_ID"),
-        "NOTION_STATE_BLOCK_ID": os.getenv("NOTION_STATE_BLOCK_ID"),
-        "NOTION_VERSION": os.getenv("NOTION_VERSION", "2025-09-03"),
-        "WARROOM_PATH": os.path.expanduser(os.getenv("WARROOM_PATH", "~/WarRoom")),
-        "POLL_SECONDS": int(os.getenv("POLL_SECONDS", "15"))
-    }
-    required = ["NOTION_TOKEN", "NOTION_COMMAND_CENTER_DB_ID", "NOTION_STATE_BLOCK_ID"]
-    missing = [k for k in required if not cfg.get(k)]
-    if missing:
-        raise RuntimeError(f"Missing required env vars: {missing}")
-    return cfg
+from dotenv import dotenv_values
 
-def build_client(cfg):
-    """Build a raw requests wrapper for Notion API 2025-09-03.
-    The official Python SDK does not fully support the new data_sources split yet.
+
+class ConfigError(RuntimeError):
+    """Raised when required configuration is missing or invalid."""
+
+
+@dataclass(frozen=True)
+class Config:
+    notion_token: str
+    notion_version: str
+    notion_dashboard_page_id: str
+    notion_command_center_data_source_id: Optional[str]
+    notion_command_center_database_id: Optional[str]
+    warroom_path: Path
+    poll_seconds: int
+
+
+DEFAULT_NOTION_VERSION = "2025-09-03"
+DEFAULT_WARROOM_PATH = "~/WarRoom"
+DEFAULT_POLL_SECONDS = 5
+
+
+def _expand_path(raw: str) -> Path:
+    return Path(os.path.expandvars(os.path.expanduser(raw))).resolve()
+
+
+def _coerce_int(name: str, raw: str, default: int) -> int:
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+
+
+def load_config(
+    env_file: Optional[os.PathLike] = None,
+    environ: Optional[Mapping[str, str]] = None,
+) -> Config:
+    """Load and validate bridge configuration.
+
+    Resolution order: explicit `environ` (or `os.environ` when omitted) wins over
+    values loaded from `env_file`. This matches the standard `dotenv` contract
+    and keeps tests independent of whatever leaks into the shell.
     """
-    import requests
-    class RawNotionClient:
-        def __init__(self, token, version):
-            self.session = requests.Session()
-            self.session.headers.update({
-                "Authorization": f"Bearer {token}",
-                "Notion-Version": version,
-                "Content-Type": "application/json"
-            })
-            self.base_url = "https://api.notion.com/v1"
-            
-        def query_database(self, db_id, payload):
-            # Using the new 2025-09-03 data_sources endpoint
-            url = f"{self.base_url}/data_sources/{db_id}/query"
-            res = self.session.post(url, json=payload)
-            res.raise_for_status()
-            return res.json()
-            
-        def update_page(self, page_id, properties):
-            url = f"{self.base_url}/pages/{page_id}"
-            res = self.session.patch(url, json={"properties": properties})
-            res.raise_for_status()
-            return res.json()
-            
-        def update_block(self, block_id, code_payload):
-            url = f"{self.base_url}/blocks/{block_id}"
-            res = self.session.patch(url, json={"code": code_payload})
-            res.raise_for_status()
-            return res.json()
-            
-    return RawNotionClient(cfg["NOTION_TOKEN"], cfg["NOTION_VERSION"])
+    file_values: dict[str, str] = {}
+    if env_file is not None:
+        env_path = Path(env_file)
+        if not env_path.exists():
+            raise ConfigError(f"env file not found: {env_path}")
+        file_values = {k: v for k, v in dotenv_values(env_path).items() if v is not None}
+
+    process_env: Mapping[str, str] = environ if environ is not None else os.environ
+
+    def get(name: str) -> Optional[str]:
+        value = process_env.get(name)
+        if value is None or value == "":
+            value = file_values.get(name)
+        if value is None or value == "":
+            return None
+        return value
+
+    token = get("NOTION_TOKEN")
+    if not token:
+        raise ConfigError("NOTION_TOKEN is required")
+
+    dashboard_page_id = get("NOTION_DASHBOARD_PAGE_ID")
+    if not dashboard_page_id:
+        raise ConfigError("NOTION_DASHBOARD_PAGE_ID is required")
+
+    data_source_id = get("NOTION_COMMAND_CENTER_DATA_SOURCE_ID")
+    database_id = get("NOTION_COMMAND_CENTER_DATABASE_ID")
+    if not data_source_id and not database_id:
+        raise ConfigError(
+            "either NOTION_COMMAND_CENTER_DATA_SOURCE_ID or "
+            "NOTION_COMMAND_CENTER_DATABASE_ID is required"
+        )
+
+    warroom_raw = get("WARROOM_PATH") or DEFAULT_WARROOM_PATH
+    warroom_path = _expand_path(warroom_raw)
+
+    poll_seconds = _coerce_int(
+        "POLL_SECONDS", get("POLL_SECONDS") or "", DEFAULT_POLL_SECONDS
+    )
+
+    return Config(
+        notion_token=token,
+        notion_version=get("NOTION_VERSION") or DEFAULT_NOTION_VERSION,
+        notion_dashboard_page_id=dashboard_page_id,
+        notion_command_center_data_source_id=data_source_id,
+        notion_command_center_database_id=database_id,
+        warroom_path=warroom_path,
+        poll_seconds=poll_seconds,
+    )
