@@ -28,7 +28,6 @@
     "dotenv": "^16.4.7",
     "eslint": "9.16.0",
     "eslint-plugin-unicorn": "56.0.1",
-    "node-gyp": "^12.3.0",
     "prettier": "3.4.2",
     "tsx": "4.19.2",
     "turbo": "2.3.3",
